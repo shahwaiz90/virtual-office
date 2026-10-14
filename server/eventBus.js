@@ -61,21 +61,30 @@ class EventBus extends EventEmitter {
     const agentList = Array.from(this.agents.values());
     if (agentList.length === 0) return;
 
-    const pmId = agentList[0]?.id || 'project-manager';
-    const leadId = agentList[1]?.id || 'tech-lead';
-    const devId = agentList[2]?.id || 'developer';
-    const testerId = agentList[3]?.id || 'tester';
+    const pmAgent = agentList.find((a) => (a.id + ' ' + (a.role || '')).toLowerCase().match(/pm|manager|owner/)) || agentList[0];
+    const leadAgent = agentList.find((a) => (a.id + ' ' + (a.role || '')).toLowerCase().match(/lead|architect/)) || agentList[1] || agentList[0];
+    const devAgent = agentList.find((a) => (a.id + ' ' + (a.role || '')).toLowerCase().match(/dev|author|code/)) || agentList[2] || agentList[0];
+    const testerAgent = agentList.find((a) => (a.id + ' ' + (a.role || '')).toLowerCase().match(/test|qa/)) || agentList[3] || agentList[0];
+
+    const pmId = pmAgent.id;
+    const pmRole = pmAgent.role || pmAgent.name;
+    const leadId = leadAgent.id;
+    const leadRole = leadAgent.role || leadAgent.name;
+    const devId = devAgent.id;
+    const devRole = devAgent.role || devAgent.name;
+    const testerId = testerAgent.id;
+    const testerRole = testerAgent.role || testerAgent.name;
 
     const initialTasks = [
       // 1. Intake & Sizing (Broken down by Stakeholder Intake -> PM)
       {
         id: 'TASK-1',
-        key: 'FEATURE-101',
+        key: `${pmAgent.badge || 'PM'}-101`,
         title: 'Ingest Ticket & Scope Requirements',
         description: 'Auto-ingest backlog issue, analyze constraints, and produce engineering specification',
         assignedTo: pmId,
         delegatedBy: 'stakeholder-intake',
-        delegatedByRole: 'Stakeholder Intake',
+        delegatedByRole: 'Project Stakeholder',
         column: 'done',
         skill: 'requirement-analysis',
         progress: 100,
@@ -83,12 +92,12 @@ class EventBus extends EventEmitter {
       },
       {
         id: 'TASK-2',
-        key: 'FEATURE-101',
+        key: `${pmAgent.badge || 'PM'}-101`,
         title: 'Sprint Minute Estimation (<10m SLA)',
         description: 'Calculate granular minute estimations for Lead, Dev, and QA under 10m SLA',
         assignedTo: pmId,
         delegatedBy: pmId,
-        delegatedByRole: 'Project Manager',
+        delegatedByRole: pmRole,
         column: 'done',
         skill: 'sprint-planning',
         progress: 100,
@@ -98,12 +107,12 @@ class EventBus extends EventEmitter {
       // 2. Technical Architecture & Component Scoping (PM -> Technical Lead)
       {
         id: 'TASK-3',
-        key: 'FEATURE-101',
+        key: `${leadAgent.badge || 'LEAD'}-101`,
         title: 'Architecture Boundaries & Interface Contracts',
         description: 'Establish clean data layer contracts, state immutability, and boundary interfaces',
         assignedTo: leadId,
         delegatedBy: pmId,
-        delegatedByRole: 'Project Manager',
+        delegatedByRole: pmRole,
         column: 'done',
         skill: 'architecture',
         progress: 100,
@@ -111,12 +120,12 @@ class EventBus extends EventEmitter {
       },
       {
         id: 'TASK-4',
-        key: 'FEATURE-101',
+        key: `${leadAgent.badge || 'LEAD'}-101`,
         title: 'Pre-map Impacted Modules & Direct File Paths',
         description: 'Analyze call graphs to pre-map files in architecture plan so Dev avoids repo searches',
         assignedTo: leadId,
         delegatedBy: pmId,
-        delegatedByRole: 'Project Manager',
+        delegatedByRole: pmRole,
         column: 'done',
         skill: 'impact-analysis',
         progress: 100,
@@ -124,12 +133,12 @@ class EventBus extends EventEmitter {
       },
       {
         id: 'TASK-5',
-        key: 'FEATURE-101',
+        key: `${leadAgent.badge || 'LEAD'}-101`,
         title: 'Identify Business Rules & Author Unit Test Specs',
         description: 'Identify decision trees, edge cases, and define 100% required AAA unit test specs',
         assignedTo: leadId,
         delegatedBy: pmId,
-        delegatedByRole: 'Project Manager',
+        delegatedByRole: pmRole,
         column: 'in_progress',
         skill: 'tech-lead-planning',
         progress: 80,
@@ -139,12 +148,12 @@ class EventBus extends EventEmitter {
       // 3. Feature Implementation & Unit Test Authoring (Technical Lead -> Developer)
       {
         id: 'TASK-6',
-        key: 'FEATURE-101',
+        key: `${devAgent.badge || 'DEV'}-101`,
         title: 'Data Layer: Immutability DTOs & Service Client',
         description: 'Implement core domain DTOs with state immutability and repository caching',
         assignedTo: devId,
         delegatedBy: leadId,
-        delegatedByRole: 'Technical Lead',
+        delegatedByRole: leadRole,
         column: 'in_progress',
         skill: 'feature-implementation',
         progress: 55,
@@ -152,12 +161,12 @@ class EventBus extends EventEmitter {
       },
       {
         id: 'TASK-7',
-        key: 'FEATURE-101',
+        key: `${devAgent.badge || 'DEV'}-101`,
         title: 'Domain Provider: Business Logic Rules Engine',
         description: 'Implement domain feature provider orchestrating repository results and rule logic',
         assignedTo: devId,
         delegatedBy: leadId,
-        delegatedByRole: 'Technical Lead',
+        delegatedByRole: leadRole,
         column: 'assigned',
         skill: 'feature-implementation',
         progress: 0,
@@ -165,12 +174,12 @@ class EventBus extends EventEmitter {
       },
       {
         id: 'TASK-8',
-        key: 'FEATURE-101',
+        key: `${devAgent.badge || 'DEV'}-101`,
         title: 'Author 100% of Specified AAA Unit Tests',
         description: 'Implement unit test specs defined in architecture plan following AAA convention',
         assignedTo: devId,
         delegatedBy: leadId,
-        delegatedByRole: 'Technical Lead',
+        delegatedByRole: leadRole,
         column: 'assigned',
         skill: 'unit-tests',
         progress: 0,
@@ -180,12 +189,12 @@ class EventBus extends EventEmitter {
       // 4. Code & Architecture Review (Developer -> Technical Lead)
       {
         id: 'TASK-9',
-        key: 'FEATURE-101',
+        key: 'REV-101',
         title: '10-Point Architectural Quality Gate Audit',
         description: 'Audit immutability, test coverage, and boundary compliance before handing to QA',
         assignedTo: leadId,
         delegatedBy: devId,
-        delegatedByRole: 'Developer',
+        delegatedByRole: devRole,
         column: 'review',
         skill: 'code-review',
         progress: 25,
@@ -195,12 +204,12 @@ class EventBus extends EventEmitter {
       // 5. Test Suite Verification (Technical Lead -> QA Tester)
       {
         id: 'TASK-10',
-        key: 'FEATURE-101',
+        key: `${testerAgent.badge || 'QA'}-101`,
         title: 'Execute Automated Test Suite & Regression Audit',
         description: 'Run unit test suite, verify 100% tests pass, and audit regression integrity',
         assignedTo: testerId,
         delegatedBy: leadId,
-        delegatedByRole: 'Technical Lead',
+        delegatedByRole: leadRole,
         column: 'testing',
         skill: 'test-automation',
         progress: 0,
@@ -210,12 +219,12 @@ class EventBus extends EventEmitter {
       // 6. Stakeholder Delivery & Sign-Off (QA Tester -> Project Manager)
       {
         id: 'TASK-11',
-        key: 'FEATURE-101',
+        key: 'REL-101',
         title: 'Compile Delivery Sign-Off Report',
         description: 'Broadcast final delivery sign-off report with artifact diffs and SLA summary',
         assignedTo: pmId,
         delegatedBy: testerId,
-        delegatedByRole: 'QA Tester',
+        delegatedByRole: testerRole,
         column: 'backlog',
         skill: 'pm-reporting',
         progress: 0,
@@ -666,6 +675,36 @@ class EventBus extends EventEmitter {
         if (payload.assignedTo) task.assignedTo = payload.assignedTo;
         if (payload.task) task.title = payload.task;
         task.updatedAt = new Date().toISOString();
+      }
+    }
+
+    // 6. Feature Delivery & Completion Auto-Resolution:
+    // When the Project Manager or workflow transitions to 'Delivered', or announces delivery/signoff,
+    // or when type === 'task_completed', automatically complete ALL open tasks on the board!
+    const isFeatureDelivered =
+      this.currentPhase === 'Delivered' ||
+      type === 'task_completed' ||
+      (payload.phase && /deliver/i.test(payload.phase)) ||
+      (payload.milestone && /deliver|sign-?off|all tasks complete|feature delivered|shipped/i.test(payload.milestone));
+
+    if (isFeatureDelivered) {
+      for (const [id, task] of this.tasks.entries()) {
+        if (task.column !== 'done') {
+          task.column = 'done';
+          task.progress = 100;
+          task.updatedAt = new Date().toISOString();
+        }
+      }
+    }
+
+    // Auto-complete test and review tasks when test result is successful
+    if (type === 'test_result' && (!payload.testsFailed || payload.testsFailed === 0)) {
+      for (const [id, task] of this.tasks.entries()) {
+        if (task.column === 'testing' || task.column === 'review' || id === 'DELIV-3' || id === 'DELIV-4') {
+          task.column = 'done';
+          task.progress = 100;
+          task.updatedAt = new Date().toISOString();
+        }
       }
     }
   }

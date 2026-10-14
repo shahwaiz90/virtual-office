@@ -8,14 +8,128 @@ const { getProjectRoot } = require('./agentDiscovery');
 const PROJECT_ROOT = getProjectRoot();
 
 /**
- * Resolves the best matching agent dynamically based on role or fallback index
+ * Validates whether a file path or directory strictly belongs to active PROJECT_ROOT
  */
+function isPathInProject(targetPath) {
+  if (!targetPath) return false;
+  if (!PROJECT_ROOT) return true;
+  try {
+    const normTarget = path.resolve(targetPath).toLowerCase();
+    const normRoot = path.resolve(PROJECT_ROOT).toLowerCase();
+    return (
+      normTarget === normRoot ||
+      normTarget.startsWith(normRoot + path.sep.toLowerCase()) ||
+      normTarget.startsWith(normRoot + '/')
+    );
+  } catch {
+    return false;
+  }
+}
+
+const conversationProjectMatch = new Map();
+
+/**
+ * Normalizes skill string/object into clean Title Case
+ */
+function formatSkillName(s) {
+  if (!s) return '';
+  const str = typeof s === 'string' ? s : (s.id || s.name || '');
+  const clean = str
+    .replace(/^\d+[-_]/, '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[-_]/g, ' ')
+    .trim();
+  return clean.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Extracts best matching skill title for an agent based on keywords
+ */
+function getAgentSkillTitle(agent, keywords = [], fallback = '') {
+  if (!agent) return fallback;
+  const skills = agent.skillIds || (Array.isArray(agent.skills) ? agent.skills.map((s) => (typeof s === 'string' ? s : (s.id || s.name || ''))) : []);
+  if (!skills || skills.length === 0) return fallback;
+
+  for (const kw of keywords) {
+    const match = skills.find((s) => s.toLowerCase().includes(kw.toLowerCase()));
+    if (match) return formatSkillName(match);
+  }
+  return formatSkillName(skills[0]) || fallback;
+}
+
+/**
+ * Dynamically resolves an upstream agent from agents.json that delegates to targetAgent
+ */
+function findDelegatorAgent(targetAgent, preferredDelegator, fallbackAgent) {
+  const agentList = Array.from(eventBus.agents.values());
+  if (!targetAgent) return fallbackAgent || preferredDelegator;
+
+  // 1. Check preferred delegator first
+  if (preferredDelegator && preferredDelegator.id !== targetAgent.id) {
+    const targets = preferredDelegator.delegationTargets || preferredDelegator.delegation_targets || [];
+    if (targets.some((t) => t.toLowerCase() === targetAgent.id.toLowerCase())) {
+      return preferredDelegator;
+    }
+  }
+
+  // 2. Check all other candidates in agentList
+  for (const candidate of agentList) {
+    if (candidate.id === targetAgent.id) continue;
+    const targets = candidate.delegationTargets || candidate.delegation_targets || [];
+    if (targets.some((t) => t.toLowerCase() === targetAgent.id.toLowerCase())) {
+      return candidate;
+    }
+  }
+  return preferredDelegator || fallbackAgent;
+}
+
 function getResolvedAgent(preferredRole, fallbackIndex = 0) {
   const agentList = Array.from(eventBus.agents.values());
   if (agentList.length === 0) {
     return { id: 'developer', name: 'Developer', role: 'Developer' };
   }
   const q = preferredRole.toLowerCase();
+
+  // Explicit priority mappings for standard software teams
+  if (q === 'pm' || q === 'manager') {
+    const pm = agentList.find(
+      (a) =>
+        a.id.toLowerCase() === 'project-manager' ||
+        a.id.toLowerCase() === 'pm' ||
+        a.id.toLowerCase().includes('pm') ||
+        a.id.toLowerCase().includes('manager')
+    );
+    if (pm) return pm;
+  } else if (q === 'lead' || q === 'architect') {
+    const lead = agentList.find(
+      (a) =>
+        a.id.toLowerCase().includes('tech-lead') ||
+        a.id.toLowerCase().includes('techlead') ||
+        a.id.toLowerCase().includes('architect') ||
+        (a.role && a.role.toLowerCase().includes('architect')) ||
+        (a.role && a.role.toLowerCase().includes('tech lead'))
+    );
+    if (lead) return lead;
+  } else if (q === 'dev' || q === 'developer') {
+    const dev = agentList.find(
+      (a) =>
+        a.id.toLowerCase().includes('dev') ||
+        a.id.toLowerCase().includes('author') ||
+        (a.role && a.role.toLowerCase().includes('developer')) ||
+        (a.role && a.role.toLowerCase().includes('engineer'))
+    );
+    if (dev) return dev;
+  } else if (q === 'test' || q === 'tester' || q === 'qa') {
+    const tester = agentList.find(
+      (a) =>
+        a.id.toLowerCase().includes('test') ||
+        a.id.toLowerCase().includes('qa') ||
+        (a.role && a.role.toLowerCase().includes('qa')) ||
+        (a.role && a.role.toLowerCase().includes('quality'))
+    );
+    if (tester) return tester;
+  }
+
   const match = agentList.find(
     (a) =>
       (a.id && a.id.toLowerCase().includes(q)) ||
@@ -23,6 +137,153 @@ function getResolvedAgent(preferredRole, fallbackIndex = 0) {
   );
   if (match) return match;
   return agentList[fallbackIndex % agentList.length] || agentList[0];
+}
+
+/**
+/**
+ * Combines skill title and action phrase cleanly without duplicating overlapping words
+ */
+function formatDeliverableTitle(skillTitle, defaultAction) {
+  if (!skillTitle) return defaultAction;
+  const lowerSkill = skillTitle.toLowerCase();
+  const actionWords = defaultAction.split(' ');
+  const filtered = actionWords.filter((w) => {
+    const lw = w.toLowerCase();
+    if (lw === '&' || lw === 'and') return true;
+    return !lowerSkill.includes(lw);
+  });
+  if (filtered.length === 0 || (filtered.length === 1 && (filtered[0] === '&' || filtered[0] === 'and'))) {
+    return skillTitle;
+  }
+  return `${skillTitle} ${filtered.join(' ')}`.replace(/\s+&\s*$/, '').trim();
+}
+
+/**
+ * Ensures clean, self-descriptive role-delegated deliverables exist on the Authoritative Task Board,
+ * dynamically built from the project's actual agents.json configuration.
+ */
+function ensureRoleDeliverables(featureTitle = '') {
+  const agentList = Array.from(eventBus.agents.values());
+  if (agentList.length === 0) return;
+
+  const pmAgent = getResolvedAgent('pm', 0);
+  const leadAgent = getResolvedAgent('lead', 1);
+  const devAgent = getResolvedAgent('dev', 2);
+  const testerAgent = getResolvedAgent('test', 3);
+
+  const cleanFeature = featureTitle ? ` (${featureTitle.slice(0, 30)})` : '';
+
+  // Dynamically resolve delegation chains directly from agents.json
+  const leadDelegator = findDelegatorAgent(leadAgent, pmAgent);
+  const devDelegator = findDelegatorAgent(devAgent, leadAgent);
+  const testerDelegator = findDelegatorAgent(testerAgent, leadAgent);
+
+  // Dynamically derive deliverable titles from agents.json skills, role, and name
+  const leadArchSkill = getAgentSkillTitle(leadAgent, ['architecture', 'impact', 'design', 'plan'], 'Feature Architecture');
+  const devFeatSkill = getAgentSkillTitle(devAgent, ['feature', 'compose', 'viewmodel', 'repository', 'implementation'], 'Core Feature');
+  const testerVerifySkill = getAgentSkillTitle(testerAgent, ['test', 'regression', 'unit', 'qa', 'automation'], 'Automated Unit & Regression');
+  const leadReviewSkill = getAgentSkillTitle(leadAgent, ['review', 'quality', 'audit', 'gate'], 'Architectural Quality Gate');
+  const pmDeliverySkill = getAgentSkillTitle(pmAgent, ['reporting', 'delivery', 'sprint', 'sign-off'], 'Delivery Verification & Release Sign-Off');
+
+  const archTitle = formatDeliverableTitle(leadArchSkill, 'Scope Analysis');
+  const devTitle = formatDeliverableTitle(devFeatSkill, 'Implementation & Refactoring') + cleanFeature;
+  const testTitle = formatDeliverableTitle(testerVerifySkill, 'Test Verification & Regression Analysis');
+  const revTitle = formatDeliverableTitle(leadReviewSkill, 'Architectural Quality Gate & Review');
+  const relTitle = formatDeliverableTitle(pmDeliverySkill, 'Delivery Verification & Release Sign-Off');
+
+  const deliverables = [
+    {
+      id: 'DELIV-1',
+      key: `${leadAgent.badge || 'ARCH'}-101`,
+      title: archTitle,
+      description: `Analyze component boundaries, data flow, and file dependencies according to ${leadAgent.role || leadAgent.name}`,
+      assignedTo: leadAgent.id,
+      delegatedBy: leadDelegator.id,
+      delegatedByRole: leadDelegator.role || leadDelegator.name,
+      column: 'in_progress',
+      skill: leadArchSkill,
+      progress: 40,
+    },
+    {
+      id: 'DELIV-2',
+      key: `${devAgent.badge || 'DEV'}-101`,
+      title: devTitle,
+      description: `Implement domain business logic, UI components, and state management according to ${devAgent.role || devAgent.name}`,
+      assignedTo: devAgent.id,
+      delegatedBy: devDelegator.id,
+      delegatedByRole: devDelegator.role || devDelegator.name,
+      column: 'assigned',
+      skill: devFeatSkill,
+      progress: 0,
+    },
+    {
+      id: 'DELIV-3',
+      key: `${testerAgent.badge || 'TEST'}-101`,
+      title: testTitle,
+      description: `Execute automated test suites to ensure 100% pass rate with zero regressions according to ${testerAgent.role || testerAgent.name}`,
+      assignedTo: testerAgent.id,
+      delegatedBy: testerDelegator.id,
+      delegatedByRole: testerDelegator.role || testerDelegator.name,
+      column: 'assigned',
+      skill: testerVerifySkill,
+      progress: 0,
+    },
+    {
+      id: 'DELIV-4',
+      key: 'REV-101',
+      title: revTitle,
+      description: `Verify boundary compliance, code quality standards, and immutability according to ${leadAgent.role || leadAgent.name}`,
+      assignedTo: leadAgent.id,
+      delegatedBy: devAgent.id,
+      delegatedByRole: devAgent.role || devAgent.name,
+      column: 'backlog',
+      skill: leadReviewSkill,
+      progress: 0,
+    },
+    {
+      id: 'DELIV-5',
+      key: 'REL-101',
+      title: relTitle,
+      description: `Validate acceptance criteria, collate delivery artifacts, and broadcast sign-off according to ${pmAgent.role || pmAgent.name}`,
+      assignedTo: pmAgent.id,
+      delegatedBy: testerAgent.id,
+      delegatedByRole: testerAgent.role || testerAgent.name,
+      column: 'backlog',
+      skill: pmDeliverySkill,
+      progress: 0,
+    },
+  ];
+
+  for (const d of deliverables) {
+    if (!eventBus.tasks.has(d.id)) {
+      eventBus.tasks.set(d.id, {
+        ...d,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  // Support arbitrary developer agent definitions (monorepos, specialized agents, etc.)
+  for (const agent of agentList) {
+    const customTaskId = `DELIV-${agent.id}`;
+    if (!eventBus.tasks.has(customTaskId) && !deliverables.some((d) => d.assignedTo === agent.id)) {
+      const delegator = findDelegatorAgent(agent, pmAgent);
+      const skill = getAgentSkillTitle(agent, [], agent.role || agent.name);
+      eventBus.tasks.set(customTaskId, {
+        id: customTaskId,
+        key: `${agent.badge || 'AGENT'}-101`,
+        title: `${skill} - ${agent.name}`,
+        description: agent.description || `Deliverable for ${agent.role || agent.name}`,
+        assignedTo: agent.id,
+        delegatedBy: delegator.id,
+        delegatedByRole: delegator.role || delegator.name,
+        column: 'backlog',
+        skill,
+        progress: 0,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
 }
 
 /**
@@ -189,6 +450,9 @@ function setupWorkspaceWatcher() {
       },
     });
 
+    workspaceWatcher.on('error', (err) => {
+      console.warn('[Watchers] Workspace watcher non-fatal error:', err.message);
+    });
     workspaceWatcher.on('add', (filePath) => scheduleWorkspaceChange(filePath, 'created'));
     workspaceWatcher.on('change', (filePath) => scheduleWorkspaceChange(filePath, 'modified'));
     console.log(`[Watchers] Workspace file monitor active on ${PROJECT_ROOT}`);
@@ -268,55 +532,55 @@ function handleWorkspaceFileChange(filePath, action) {
     ext === '.yml' ||
     ext === '.toml';
 
+  ensureRoleDeliverables();
+
   let assignedAgent = devAgent;
-  let taskTitle = `Coding ${fileName}`;
-  let tool = action === 'created' ? 'write_to_file' : 'replace_file_content';
-  let eventType = 'file_modified';
+  let taskId = 'DELIV-2';
   let column = 'in_progress';
   let phase = 'Implementation';
+  let progress = 65;
 
   if (isTest) {
     assignedAgent = testerAgent;
-    taskTitle = `Test Suite: ${fileName}`;
-    tool = 'test_runner';
-    eventType = 'file_modified';
+    taskId = 'DELIV-3';
     column = 'testing';
     phase = 'Verification';
-  } else if (isDocOrPlan) {
-    const isPmDoc =
-      fileName.toLowerCase().includes('prd') ||
-      fileName.toLowerCase().includes('requirement') ||
-      fileName.toLowerCase().includes('pm');
-    assignedAgent = isPmDoc ? pmAgent : leadAgent;
-    taskTitle = isPmDoc ? `Scoping Requirements: ${fileName}` : `Architecture Spec: ${fileName}`;
-    tool = 'write_to_file';
-    eventType = 'file_modified';
-    column = 'in_progress';
-    phase = 'Architecture & Planning';
-  } else if (isConfig) {
+    progress = 70;
+    const testTask = eventBus.tasks.get('DELIV-3');
+    if (testTask) testTask.description = `Authoring and executing test suites around ${fileName}`;
+  } else if (isDocOrPlan || isConfig) {
     assignedAgent = leadAgent;
-    taskTitle = `Config & Build: ${fileName}`;
-    tool = 'config_editor';
-    eventType = 'file_modified';
+    taskId = 'DELIV-1';
     column = 'in_progress';
     phase = 'Architecture & Planning';
+    progress = 50;
+    const archTask = eventBus.tasks.get('DELIV-1');
+    if (archTask) archTask.description = `Refining architectural boundaries and specs in ${fileName}`;
+  } else {
+    // Normal code edit
+    const devTask = eventBus.tasks.get('DELIV-2');
+    if (devTask) devTask.description = `Implementing and refactoring changes in ${fileName}`;
+    const archTask = eventBus.tasks.get('DELIV-1');
+    if (archTask && archTask.column !== 'done') {
+      archTask.column = 'done';
+      archTask.progress = 100;
+    }
   }
 
-  const fileHash = Buffer.from(relPath).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 6).toUpperCase() || 'FILE1';
-  const taskId = `TASK-${fileHash}`;
-  const key = isTest ? `TEST-${fileHash.substring(0, 3)}` : `CODE-${fileHash.substring(0, 3)}`;
+  const activeTask = eventBus.tasks.get(taskId);
 
   eventBus.emitEvent({
     agentId: assignedAgent.id,
-    type: eventType,
+    type: 'file_modified',
     payload: {
       taskId,
-      key,
-      task: taskTitle,
-      tool,
+      key: activeTask ? activeTask.key : 'DEV-101',
+      task: activeTask ? activeTask.title : 'Core Feature Implementation & Refactoring',
+      tool: action === 'created' ? 'write_to_file' : 'replace_file_content',
       file: relPath,
       details: `${assignedAgent.name} ${action} ${relPath}`,
       column,
+      progress,
       phase,
       milestone: `${assignedAgent.name} updated ${fileName}`,
     },
@@ -341,6 +605,10 @@ function setupGitWatcher() {
     const gitWatcher = chokidar.watch(filesToWatch, {
       persistent: true,
       ignoreInitial: true,
+    });
+
+    gitWatcher.on('error', (err) => {
+      console.warn('[Watchers] Git watcher non-fatal error:', err.message);
     });
 
     gitWatcher.on('change', (changedPath) => {
@@ -441,7 +709,10 @@ function readNewOpenCodeLines(logPath) {
 
 function parseOpenCodeLogLine(line) {
   const cwdMatch = line.match(/cwd=([^\s]+)/);
-  const activeCwd = cwdMatch ? cwdMatch[1] : PROJECT_ROOT;
+  const activeCwd = cwdMatch ? cwdMatch[1].replace(/["']/g, '') : null;
+  if (activeCwd && !isPathInProject(activeCwd)) {
+    return; // Command belongs to a different project on this computer
+  }
 
   const devAgent = getResolvedAgent('dev', 2);
   const testerAgent = getResolvedAgent('test', 3);
@@ -453,19 +724,15 @@ function parseOpenCodeLogLine(line) {
     const toolName = toolMatch[1];
     const isTest = toolName.toLowerCase().includes('test');
     const assigned = isTest ? testerAgent : devAgent;
-    const taskId = `TASK-${Buffer.from(toolName).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 5).toUpperCase()}`;
 
+    // Emits tool execution for Live Terminal Logs and Avatar activity bubbles, without creating messy raw cards!
     eventBus.emitEvent({
       agentId: assigned.id,
       type: 'tool_executing',
       payload: {
-        taskId,
-        key: 'OPENCODE',
         tool: toolName,
         task: `Executing ${toolName}`,
         details: `OpenCode invoking tool: ${toolName}`,
-        column: isTest ? 'testing' : 'in_progress',
-        phase: 'Implementation',
       },
     });
     return;
@@ -492,22 +759,41 @@ function parseOpenCodeLogLine(line) {
 
     const isTest = fullCmd.includes('test') || fullCmd.includes('pytest') || fullCmd.includes('jest') || fullCmd.includes('gradle');
     const assigned = isTest ? testerAgent : devAgent;
-    const taskId = `TASK-${Buffer.from(baseCmd).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 5).toUpperCase()}`;
 
-    eventBus.emitEvent({
-      agentId: assigned.id,
-      type: 'command_executing',
-      payload: {
-        taskId,
-        key: 'OPENCODE',
-        tool: 'run_command',
-        command: fullCmd.substring(0, 100),
-        task: `Running: ${baseCmd}`,
-        details: `Command: ${fullCmd.substring(0, 80)}`,
-        column: isTest ? 'testing' : 'in_progress',
-        phase: isTest ? 'Verification' : 'Implementation',
-      },
-    });
+    if (isTest) {
+      ensureRoleDeliverables();
+      const testTask = eventBus.tasks.get('DELIV-3');
+      if (testTask) {
+        testTask.column = 'testing';
+        testTask.progress = 75;
+      }
+      eventBus.emitEvent({
+        agentId: assigned.id,
+        type: 'command_executing',
+        payload: {
+          taskId: 'DELIV-3',
+          key: 'TEST-101',
+          task: testTask ? testTask.title : 'Automated Unit & Regression Test Verification',
+          tool: 'run_command',
+          command: fullCmd.substring(0, 100),
+          details: `Executing test suite: ${baseCmd}`,
+          column: 'testing',
+          phase: 'Verification',
+        },
+      });
+    } else {
+      // Normal terminal command -> Emits to Live Logs and avatar speech bubble without creating a task card!
+      eventBus.emitEvent({
+        agentId: assigned.id,
+        type: 'command_executing',
+        payload: {
+          tool: 'run_command',
+          command: fullCmd.substring(0, 100),
+          task: `Terminal Command`,
+          details: `Running: ${fullCmd.substring(0, 80)}`,
+        },
+      });
+    }
   }
 }
 
@@ -526,6 +812,9 @@ function setupScratchWatcher() {
       depth: 4,
     });
 
+    scratchWatcher.on('error', (err) => {
+      console.warn('[Watchers] Scratch watcher non-fatal error:', err.message);
+    });
     scratchWatcher.on('add', (filePath) => handleScratchFileChange(filePath, 'created'));
     scratchWatcher.on('change', (filePath) => handleScratchFileChange(filePath, 'updated'));
   } catch (err) {
@@ -642,6 +931,10 @@ function setupTranscriptTailer() {
         ignoreInitial: true,
       });
 
+      brainWatcher.on('error', (err) => {
+        console.warn('[Watchers] Brain watcher non-fatal error:', err.message);
+      });
+
       brainWatcher.on('all', (event, targetPath) => {
         if (targetPath.endsWith('transcript.jsonl')) {
           attachTranscriptTail(targetPath);
@@ -717,8 +1010,15 @@ function attachTranscriptTail(filePath) {
   try {
     const stats = fs.statSync(filePath);
     // Start tailing from recent bytes to catch active turns (last 20KB)
+    const parentDir = path.dirname(filePath);
+    const grandParent = path.dirname(parentDir);
+    const convId = grandParent.includes('.system_generated')
+      ? path.basename(path.dirname(grandParent))
+      : path.basename(parentDir);
+
     const state = {
       filePath,
+      convId,
       offset: Math.max(0, stats.size - 20000),
     };
     activeTranscriptWatchers.set(filePath, state);
@@ -733,12 +1033,6 @@ function attachTranscriptTail(filePath) {
       }
     });
 
-    const parentDir = path.dirname(filePath);
-    const grandParent = path.dirname(parentDir);
-    const convId = grandParent.includes('.system_generated')
-      ? path.basename(path.dirname(grandParent))
-      : path.basename(parentDir);
-
     console.log(`[Watchers] Attached transcript monitor to conversation: ${convId}`);
   } catch (err) {
     console.error(`[Watchers] Error attaching transcript tail for ${filePath}:`, err.message);
@@ -746,7 +1040,7 @@ function attachTranscriptTail(filePath) {
 }
 
 function readTranscriptChunk(state) {
-  const { filePath } = state;
+  const { filePath, convId } = state;
   if (!fs.existsSync(filePath)) return;
 
   try {
@@ -770,7 +1064,7 @@ function readTranscriptChunk(state) {
       if (!line.trim()) continue;
       try {
         const step = JSON.parse(line);
-        parseTranscriptStep(step);
+        parseTranscriptStep(step, convId);
       } catch (e) {
         // partial line
       }
@@ -785,7 +1079,7 @@ function cleanStringVal(val) {
   return val.replace(/^["']|["']$/g, '').replace(/\\"/g, '"').trim();
 }
 
-function parseTranscriptStep(step) {
+function parseTranscriptStep(step, convId = '') {
   const content = typeof step.content === 'string' ? step.content : '';
   const toolCalls = step.tool_calls || [];
 
@@ -794,8 +1088,40 @@ function parseTranscriptStep(step) {
   const leadAgent = getResolvedAgent('lead', 1);
   const pmAgent = getResolvedAgent('pm', 0);
 
-  // 1. User Input Prompt -> PM creates card & announces assignment
+  // If conversation was confirmed to belong to a DIFFERENT project, drop it completely!
+  if (convId && conversationProjectMatch.get(convId) === false) {
+    return;
+  }
+
+  // 1. Check tool calls for target project affiliation
+  for (const call of toolCalls) {
+    const args = call.args || call.arguments || (call.function ? call.function.arguments : {});
+    let parsedArgs = args;
+    if (typeof args === 'string') {
+      try { parsedArgs = JSON.parse(args); } catch (e) {}
+    }
+    const target = cleanStringVal(parsedArgs.AbsolutePath || parsedArgs.TargetFile || parsedArgs.target_file || parsedArgs.path || '');
+    const cwd = cleanStringVal(parsedArgs.Cwd || parsedArgs.cwd || '');
+
+    if (target && path.isAbsolute(target)) {
+      const match = isPathInProject(target);
+      if (convId) conversationProjectMatch.set(convId, match);
+      if (!match) return; // Belongs to a different workspace on this machine
+    } else if (cwd && path.isAbsolute(cwd)) {
+      const match = isPathInProject(cwd);
+      if (convId) conversationProjectMatch.set(convId, match);
+      if (!match) return; // Command runs in another workspace
+    }
+  }
+
+  // 2. User Input Prompt -> PM creates card ONLY if conversation belongs to this project
   if (step.type === 'USER_INPUT' || step.source === 'USER_EXPLICIT') {
+    const projBase = path.basename(PROJECT_ROOT).toLowerCase();
+    const isAffiliated = (convId && conversationProjectMatch.get(convId) === true) || content.toLowerCase().includes(projBase);
+    if (!isAffiliated) {
+      return; // Filter out prompts from unrelated windows/projects
+    }
+
     const promptText = content.trim();
     if (promptText && !promptText.startsWith('<') && promptText.length > 2) {
       const displayTitle = promptText.length > 55 ? promptText.slice(0, 52) + '...' : promptText;
@@ -819,9 +1145,43 @@ function parseTranscriptStep(step) {
     return;
   }
 
-  // 2. Detect role header in content: 🎭 **Active Role**: **<Role Name>** (`<role-id>`)
+  // 3. Detect model completion / delivery announcements
+  if (step.type === 'PLANNER_RESPONSE' && content && toolCalls.length === 0) {
+    const isDelivery = /deliver|sign-?off|ready for stakeholder|production ready/i.test(content);
+    const isFixed = /fixed the issue|successfully resolved|all tests passed|tests are green|changes have been verified/i.test(content);
+
+    if (isDelivery) {
+      eventBus.emitEvent({
+        agentId: pmAgent.id,
+        type: 'task_completed',
+        payload: {
+          phase: 'Delivered',
+          column: 'done',
+          milestone: `🎉 Feature Delivered: ${content.substring(0, 65).replace(/\n/g, ' ')}...`,
+          milestoneAgentId: pmAgent.id,
+          details: content.substring(0, 150),
+        },
+      });
+    } else if (isFixed) {
+      eventBus.emitEvent({
+        agentId: testerAgent.id,
+        type: 'test_result',
+        payload: {
+          testsPassed: 1,
+          testsFailed: 0,
+          column: 'done',
+          milestone: `Verification passed: ${content.substring(0, 65).replace(/\n/g, ' ')}...`,
+          milestoneAgentId: testerAgent.id,
+          details: content.substring(0, 150),
+        },
+      });
+    }
+  }
+
+  // 3. Detect role header in content: 🎭 **Active Role**: **<Role Name>** (`<role-id>`)
   const roleMatch = content.match(/🎭 \*\*Active Role\*\*:\s*\*\*([^*]+)\*\*\s*\(`([^`]+)`\)/);
   if (roleMatch) {
+    if (convId && conversationProjectMatch.get(convId) === false) return;
     const agentId = roleMatch[2];
     eventBus.emitEvent({
       agentId,
@@ -833,8 +1193,9 @@ function parseTranscriptStep(step) {
     });
   }
 
-  // 3. Detect [AGENT HANDOFF]
+  // 4. Detect [AGENT HANDOFF]
   if (content.includes('[AGENT HANDOFF]')) {
+    if (convId && conversationProjectMatch.get(convId) === false) return;
     const fromMatch = content.match(/FROM:\s*([^|\n]+)/);
     const toMatch = content.match(/TO:\s*([^|\n]+)/);
     const taskMatch = content.match(/ACTIVE_TASK:\s*([^\n]+)/);
@@ -860,7 +1221,7 @@ function parseTranscriptStep(step) {
     }
   }
 
-  // 4. Detect tool calls & generate live Kanban tasks
+  // 5. Detect tool calls & generate live Kanban tasks
   for (const call of toolCalls) {
     const name = call.name || call.toolName || (call.function ? call.function.name : '');
     let args = call.args || call.arguments || (call.function ? call.function.arguments : {});
@@ -870,37 +1231,60 @@ function parseTranscriptStep(step) {
 
     if (name === 'view_file' || name === 'read_resource') {
       const targetPath = cleanStringVal(args.AbsolutePath || args.path || args.Uri || '');
+      if (targetPath && path.isAbsolute(targetPath) && !isPathInProject(targetPath)) {
+        continue; // Strictly ignore files from other projects
+      }
       const fileName = path.basename(targetPath) || targetPath || 'source file';
-      const safeKey = fileName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 10);
-      const taskId = `TASK-VIEW-${safeKey}`;
+
+      ensureRoleDeliverables();
+      const archTask = eventBus.tasks.get('DELIV-1');
+      if (archTask && archTask.column !== 'done') {
+        archTask.column = 'in_progress';
+        archTask.progress = 50;
+        archTask.description = `Analyzing ${fileName} for architectural dependencies`;
+      }
 
       eventBus.emitEvent({
         agentId: leadAgent.id,
         type: 'tool_executing',
         payload: {
-          taskId,
-          key: `ARCH-${safeKey.slice(0, 4).toUpperCase()}`,
-          task: `Analyze & Inspect ${fileName}`,
+          taskId: 'DELIV-1',
+          key: archTask ? archTask.key : `${leadAgent.badge || 'ARCH'}-101`,
+          task: archTask ? archTask.title : 'Feature Architecture & Scope Analysis',
           tool: 'view_file',
           file: targetPath,
           column: 'in_progress',
           details: `Inspecting ${fileName} for architectural analysis`,
-          phase: 'Investigation & Architecture',
+          phase: 'Architecture & Scoping',
         },
       });
     } else if (name === 'write_to_file' || name === 'replace_file_content') {
       const targetFile = cleanStringVal(args.TargetFile || args.target_file || args.AbsolutePath || '');
+      if (targetFile && path.isAbsolute(targetFile) && !isPathInProject(targetFile)) {
+        continue; // Strictly ignore files from other projects
+      }
       const fileName = path.basename(targetFile) || targetFile || 'codebase';
-      const safeKey = fileName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 10);
-      const taskId = `TASK-CODE-${safeKey}`;
+
+      ensureRoleDeliverables();
+      const archTask = eventBus.tasks.get('DELIV-1');
+      if (archTask && archTask.column !== 'done') {
+        archTask.column = 'done';
+        archTask.progress = 100;
+      }
+      const devTask = eventBus.tasks.get('DELIV-2');
+      if (devTask) {
+        devTask.column = 'in_progress';
+        devTask.progress = 65;
+        devTask.description = `Refactoring and implementing changes in ${fileName}`;
+      }
 
       eventBus.emitEvent({
         agentId: devAgent.id,
         type: 'file_modified',
         payload: {
-          taskId,
-          key: `DEV-${safeKey.slice(0, 4).toUpperCase()}`,
-          task: `Implement & Fix ${fileName}`,
+          taskId: 'DELIV-2',
+          key: devTask ? devTask.key : `${devAgent.badge || 'DEV'}-101`,
+          task: devTask ? devTask.title : 'Core Feature Implementation & Refactoring',
           tool: name,
           file: targetFile,
           column: 'in_progress',
@@ -909,25 +1293,55 @@ function parseTranscriptStep(step) {
         },
       });
     } else if (name === 'run_command') {
+      const cwd = cleanStringVal(args.Cwd || args.cwd || '');
+      if (cwd && path.isAbsolute(cwd) && !isPathInProject(cwd)) {
+        continue; // Strictly ignore commands executed in other directories
+      }
       const cmd = cleanStringVal(typeof args === 'string' ? args : (args.CommandLine || args.cmd || ''));
       const isTest = cmd.includes('test') || cmd.includes('gradlew test') || cmd.includes('pytest') || cmd.includes('jest');
       const assigned = isTest ? testerAgent : devAgent;
-      const taskId = `TASK-CMD-${Date.now().toString().slice(-4)}`;
 
-      eventBus.emitEvent({
-        agentId: assigned.id,
-        type: 'command_executing',
-        payload: {
-          taskId,
-          key: isTest ? 'QA-TEST' : 'DEV-CLI',
-          task: isTest ? `Execute Test Suite: ${cmd.slice(0, 24)}` : `Terminal Command: ${cmd.slice(0, 24)}`,
-          tool: 'run_command',
-          command: cmd,
-          column: isTest ? 'testing' : 'in_progress',
-          details: `Running: ${cmd}`,
-          phase: isTest ? 'Verification' : 'Execution',
-        },
-      });
+      if (isTest) {
+        ensureRoleDeliverables();
+        const devTask = eventBus.tasks.get('DELIV-2');
+        if (devTask && devTask.column === 'in_progress') {
+          devTask.column = 'review';
+          devTask.progress = 90;
+        }
+        const testTask = eventBus.tasks.get('DELIV-3');
+        if (testTask) {
+          testTask.column = 'testing';
+          testTask.progress = 75;
+          testTask.description = `Executing automated test suite across target components`;
+        }
+
+        eventBus.emitEvent({
+          agentId: assigned.id,
+          type: 'command_executing',
+          payload: {
+            taskId: 'DELIV-3',
+            key: testTask ? testTask.key : `${testerAgent.badge || 'TEST'}-101`,
+            task: testTask ? testTask.title : 'Automated Unit & Regression Test Verification',
+            tool: 'run_command',
+            command: cmd,
+            column: 'testing',
+            details: `Running: ${cmd}`,
+            phase: 'Verification',
+          },
+        });
+      } else {
+        // Normal terminal command -> Emits to Live Logs and avatar speech bubble without creating a task card!
+        eventBus.emitEvent({
+          agentId: assigned.id,
+          type: 'command_executing',
+          payload: {
+            tool: 'run_command',
+            command: cmd,
+            task: `Terminal Command`,
+            details: `Running: ${cmd}`,
+          },
+        });
+      }
     } else if (name === 'search_web' || name === 'read_url_content') {
       const q = cleanStringVal(args.query || args.Url || 'Research');
       eventBus.emitEvent({
@@ -959,4 +1373,7 @@ module.exports = {
   handleScratchFileChange,
   handleWorkspaceFileChange,
   parseTranscriptStep,
+  ensureRoleDeliverables,
+  getResolvedAgent,
 };
+
