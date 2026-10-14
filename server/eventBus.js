@@ -13,32 +13,25 @@ class EventBus extends EventEmitter {
     this.projectName = path.basename(root) || 'Active Project';
     this.workflowId = `WORKFLOW-${this.projectName.toUpperCase().replace(/[^A-Z0-9]/g, '-') || 'MAIN'}`;
     this.workflowTitle = `${this.projectName} Engineering Delivery`;
-    this.currentPhase = 'Intake & Planning';
-    this.latestMilestone = 'Virtual Office initialized. Agents seated at workstations.';
+    this.currentPhase = 'Standby & Listening';
+    this.latestMilestone = 'Virtual Office initialized. Agents seated at workstations, listening for commands.';
     this.latestMilestoneAgentId = 'project-manager';
 
     // Initialize agents
     this.agents = new Map();
     this.initAgents();
 
-    // Initialize Kanban tasks
+    // Clean initial Kanban state (awaits active agent tasks or demo trigger)
     this.tasks = new Map();
-    this.initTasks();
 
     // Active handoff in progress (for animation synchronization)
     this.activeHandoff = null;
 
-    // Granular Tool Usage Analytics: key = `${agentId}::${toolName}`
+    // Clean Analytics Maps (populated dynamically as tools/skills are invoked)
     this.toolUsageMap = new Map();
-    this.initDefaultToolAnalytics();
-
-    // Granular Skill Usage Analytics: key = skillId
     this.skillUsageMap = new Map();
-    this.initDefaultSkillAnalytics();
-
-    // Granular Role Invocation Analytics: key = agentId
     this.roleInvocationMap = new Map();
-    this.initDefaultRoleAnalytics();
+    this.initStandbyRoleAnalytics();
   }
 
   initAgents() {
@@ -48,7 +41,23 @@ class EventBus extends EventEmitter {
     }
   }
 
-  initTasks() {
+  initStandbyRoleAnalytics() {
+    this.roleInvocationMap = new Map();
+    for (const [agentId, agent] of this.agents.entries()) {
+      this.roleInvocationMap.set(agentId, {
+        agentId,
+        agentName: agent.name,
+        role: agent.role,
+        invocations: 0,
+        activeTimeSec: 0,
+        completedTasks: 0,
+        slaAdherenceRate: 100,
+        status: 'available',
+      });
+    }
+  }
+
+  loadDemoTasks() {
     const agentList = Array.from(this.agents.values());
     if (agentList.length === 0) return;
 
@@ -613,33 +622,51 @@ class EventBus extends EventEmitter {
       agent.updatedAt = new Date().toISOString();
     }
 
-    // 5. Update Kanban tasks if relevant
-    if (payload.taskId && this.tasks.has(payload.taskId)) {
-      const task = this.tasks.get(payload.taskId);
-      if (payload.column) {
-        task.column = payload.column;
-        // Trigger celebration on assigned agent when a task transitions to 'done'
-        if (payload.column === 'done' && agent && agent.status !== 'error') {
-          agent.status = 'celebrating';
-          agent.activityMessage = `🎉 Done: ${task.title}`;
-          agent.taskCompletedAt = new Date().toISOString();
-          if (agent.taskStartedAt) {
-            const dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
-            agent.taskDurationSec = dur;
-            agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
-          }
-          setTimeout(() => {
-            if (agent.status === 'celebrating') {
-              agent.status = 'available';
-              agent.activityMessage = 'Ready at workstation';
-              this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
-            }
-          }, 5000);
-        }
+    // 5. Update or auto-create Kanban tasks
+    if (payload.taskId) {
+      if (!this.tasks.has(payload.taskId)) {
+        this.tasks.set(payload.taskId, {
+          id: payload.taskId,
+          key: payload.key || 'TASK-1',
+          title: payload.task || 'Active Task',
+          description: payload.details || 'Task executing in workspace',
+          assignedTo: agentId,
+          delegatedBy: 'orchestrator',
+          delegatedByRole: 'AI Agent',
+          column: payload.column || 'in_progress',
+          skill: payload.tool || 'coding',
+          progress: payload.progress || 25,
+          updatedAt: new Date().toISOString(),
+        });
       }
-      if (payload.progress !== undefined) task.progress = payload.progress;
-      if (payload.assignedTo) task.assignedTo = payload.assignedTo;
-      task.updatedAt = new Date().toISOString();
+      const task = this.tasks.get(payload.taskId);
+      if (task) {
+        if (payload.column) {
+          task.column = payload.column;
+          // Trigger celebration on assigned agent when a task transitions to 'done'
+          if (payload.column === 'done' && agent && agent.status !== 'error') {
+            agent.status = 'celebrating';
+            agent.activityMessage = `🎉 Done: ${task.title}`;
+            agent.taskCompletedAt = new Date().toISOString();
+            if (agent.taskStartedAt) {
+              const dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
+              agent.taskDurationSec = dur;
+              agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
+            }
+            setTimeout(() => {
+              if (agent.status === 'celebrating') {
+                agent.status = 'available';
+                agent.activityMessage = 'Ready at workstation';
+                this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+              }
+            }, 5000);
+          }
+        }
+        if (payload.progress !== undefined) task.progress = payload.progress;
+        if (payload.assignedTo) task.assignedTo = payload.assignedTo;
+        if (payload.task) task.title = payload.task;
+        task.updatedAt = new Date().toISOString();
+      }
     }
   }
 
@@ -681,14 +708,14 @@ class EventBus extends EventEmitter {
     };
   }
 
-  resetWorkflow(workflowTitle = 'Unified Mobile Engineering Workflow') {
+  loadDemoWorkflow(workflowTitle = 'DEMO: FEATURE-101 (User Authentication Service)') {
     this.workflowStartTime = Date.now();
     this.workflowTitle = workflowTitle;
     this.currentPhase = 'Intake & Planning';
-    this.latestMilestone = 'Workflow restarted.';
+    this.latestMilestone = '⚠️ SIMULATION DEMO STARTED: Ingesting FEATURE-101.';
     this.latestMilestoneAgentId = 'project-manager';
     this.initAgents();
-    this.initTasks();
+    this.loadDemoTasks();
     this.toolUsageMap = new Map();
     this.initDefaultToolAnalytics();
     this.skillUsageMap = new Map();
@@ -700,6 +727,10 @@ class EventBus extends EventEmitter {
       type: 'SYNC_STATE',
       data: this.getStateSnapshot(),
     });
+  }
+
+  resetWorkflow(workflowTitle) {
+    return this.loadDemoWorkflow(workflowTitle);
   }
 }
 

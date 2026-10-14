@@ -40,6 +40,26 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, agents }) => {
         </div>
       </div>
 
+      {tasks.length === 0 && (
+        <div className="mb-4 p-4 rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-slate-50 to-indigo-50/50 flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <div>
+              <span className="font-extrabold text-slate-900">Virtual Office Listening</span>
+              <span className="text-slate-500 ml-2">
+                Ask Claude, OpenCode, or Cursor to edit code or run tests — tasks and avatars will update live.
+              </span>
+            </div>
+          </div>
+          <span className="text-[11px] font-bold text-indigo-700 bg-white px-3 py-1 rounded-lg border border-indigo-200/80 shadow-xs shrink-0">
+            Click "Presentation Demo" to preview a full delivery simulation
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3.5">
         {COLUMNS.map((col) => {
           const colTasks = tasks.filter((t) => t.column === col.id);
