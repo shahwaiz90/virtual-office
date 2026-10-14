@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const chokidar = require('chokidar');
 const { eventBus } = require('./eventBus');
 const { getProjectRoot } = require('./agentDiscovery');
@@ -49,31 +50,29 @@ function resolveTranscriptPath() {
     return process.env.TRANSCRIPT_PATH;
   }
 
-  // 1. Check Antigravity / Gemini Brain in home directory
-  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-  if (homeDir) {
-    const brainDir = path.join(homeDir, '.gemini/antigravity/brain');
-    if (fs.existsSync(brainDir)) {
-      try {
-        const subdirs = fs
-          .readdirSync(brainDir, { withFileTypes: true })
-          .filter((d) => d.isDirectory())
-          .map((d) => {
-            const dirPath = path.join(brainDir, d.name);
-            return {
-              path: dirPath,
-              mtime: fs.statSync(dirPath).mtimeMs,
-            };
-          })
-          .sort((a, b) => b.mtime - a.mtime);
+  // 1. Check Antigravity / Gemini Brain across platforms
+  const homeDir = os.homedir();
+  const brainDir = path.join(homeDir, '.gemini/antigravity/brain');
+  if (fs.existsSync(brainDir)) {
+    try {
+      const subdirs = fs
+        .readdirSync(brainDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => {
+          const dirPath = path.join(brainDir, d.name);
+          return {
+            path: dirPath,
+            mtime: fs.statSync(dirPath).mtimeMs,
+          };
+        })
+        .sort((a, b) => b.mtime - a.mtime);
 
-        for (const sub of subdirs) {
-          const candidate = path.join(sub.path, '.system_generated/logs/transcript.jsonl');
-          if (fs.existsSync(candidate)) return candidate;
-        }
-      } catch (e) {
-        // ignore scan errors
+      for (const sub of subdirs) {
+        const candidate = path.join(sub.path, '.system_generated/logs/transcript.jsonl');
+        if (fs.existsSync(candidate)) return candidate;
       }
+    } catch (e) {
+      // ignore scan errors
     }
   }
 
@@ -82,6 +81,7 @@ function resolveTranscriptPath() {
     path.join(PROJECT_ROOT, '.agents/transcript.jsonl'),
     path.join(PROJECT_ROOT, '.system_generated/logs/transcript.jsonl'),
     path.join(PROJECT_ROOT, '.opencode/transcript.jsonl'),
+    path.join(PROJECT_ROOT, '.claude/transcripts/transcript.jsonl'),
   ];
   for (const candidate of localCandidates) {
     if (fs.existsSync(candidate)) return candidate;
@@ -91,18 +91,26 @@ function resolveTranscriptPath() {
 }
 
 /**
- * Resolves OpenCode log path
+ * Resolves OpenCode log path universally across macOS, Linux, and Windows
  */
 function resolveOpenCodeLogPath() {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-  if (!homeDir) return null;
+  const homeDir = os.homedir();
+  const candidates = [
+    // Standard Linux & macOS path
+    path.join(homeDir, '.local/share/opencode/log/opencode.log'),
+    // macOS Library Application Support
+    path.join(homeDir, 'Library/Application Support/opencode/log/opencode.log'),
+    // Windows LOCALAPPDATA / APPDATA
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'opencode/log/opencode.log') : null,
+    process.env.APPDATA ? path.join(process.env.APPDATA, 'opencode/log/opencode.log') : null,
+    // Project-level opencode log
+    path.join(PROJECT_ROOT, '.opencode/opencode.log'),
+    path.join(PROJECT_ROOT, '.opencode/logs/opencode.log'),
+  ].filter(Boolean);
 
-  const candidate = path.join(homeDir, '.local/share/opencode/log/opencode.log');
-  if (fs.existsSync(candidate)) return candidate;
-
-  // Also check project-level opencode log
-  const projectLog = path.join(PROJECT_ROOT, '.opencode/opencode.log');
-  if (fs.existsSync(projectLog)) return projectLog;
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
 
   return null;
 }
@@ -651,6 +659,7 @@ function setupTranscriptTailer() {
 }
 
 function scanAndWatchTranscripts(brainDir) {
+  const homeDir = os.homedir();
   const candidates = [];
 
   // Local workspace transcripts
@@ -658,28 +667,37 @@ function scanAndWatchTranscripts(brainDir) {
     path.join(PROJECT_ROOT, '.agents/transcript.jsonl'),
     path.join(PROJECT_ROOT, '.system_generated/logs/transcript.jsonl'),
     path.join(PROJECT_ROOT, '.opencode/transcript.jsonl'),
+    path.join(PROJECT_ROOT, '.claude/transcripts/transcript.jsonl'),
   ];
   for (const c of localCandidates) {
     if (fs.existsSync(c)) candidates.push(c);
   }
 
-  // Antigravity Brain conversations
-  if (brainDir && fs.existsSync(brainDir)) {
-    try {
-      const entries = fs.readdirSync(brainDir, { withFileTypes: true });
-      const now = Date.now();
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        const candidate = path.join(brainDir, entry.name, '.system_generated/logs/transcript.jsonl');
-        if (fs.existsSync(candidate)) {
-          const stats = fs.statSync(candidate);
-          // Tail conversations touched within the last 12 hours
-          if (now - stats.mtimeMs < 12 * 60 * 60 * 1000) {
-            candidates.push(candidate);
+  // Antigravity Brain conversations across all operating systems
+  const possibleBrainDirs = [
+    brainDir,
+    path.join(homeDir, '.gemini/antigravity/brain'),
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'gemini/antigravity/brain') : null,
+  ].filter(Boolean);
+
+  for (const bDir of possibleBrainDirs) {
+    if (fs.existsSync(bDir)) {
+      try {
+        const entries = fs.readdirSync(bDir, { withFileTypes: true });
+        const now = Date.now();
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const candidate = path.join(bDir, entry.name, '.system_generated/logs/transcript.jsonl');
+          if (fs.existsSync(candidate)) {
+            const stats = fs.statSync(candidate);
+            // Tail conversations touched within the last 12 hours
+            if (now - stats.mtimeMs < 12 * 60 * 60 * 1000) {
+              candidates.push(candidate);
+            }
           }
         }
-      }
-    } catch (e) {}
+      } catch (e) {}
+    }
   }
 
   // Environment override
@@ -715,7 +733,12 @@ function attachTranscriptTail(filePath) {
       }
     });
 
-    const convId = path.basename(path.dirname(path.dirname(filePath)));
+    const parentDir = path.dirname(filePath);
+    const grandParent = path.dirname(parentDir);
+    const convId = grandParent.includes('.system_generated')
+      ? path.basename(path.dirname(grandParent))
+      : path.basename(parentDir);
+
     console.log(`[Watchers] Attached transcript monitor to conversation: ${convId}`);
   } catch (err) {
     console.error(`[Watchers] Error attaching transcript tail for ${filePath}:`, err.message);
