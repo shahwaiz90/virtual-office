@@ -1,6 +1,6 @@
 {
   "name": "agent-virtual-office",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Real-time AI Agent Virtual Office visualizer with animated characters, floor plans, live Kanban boards, and delivery intelligence analytics for any software project (iOS, Android, Web, Backend).",
   "main": "server/index.js",
   "bin": {
