@@ -4,8 +4,8 @@
   "description": "Real-time AI Agent Virtual Office visualizer with animated characters, floor plans, live Kanban boards, and delivery intelligence analytics for any software project (iOS, Android, Web, Backend).",
   "main": "server/index.js",
   "bin": {
-    "agent-virtual-office": "./bin/cli.js",
-    "agent-office": "./bin/cli.js"
+    "agent-virtual-office": "bin/cli.js",
+    "agent-office": "bin/cli.js"
   },
   "files": [
     "bin",
