@@ -433,10 +433,8 @@ function readNewOpenCodeLines(logPath) {
 }
 
 function parseOpenCodeLogLine(line) {
-  // Check if this log entry relates to current project
-  if (line.includes('cwd=') && !line.includes(`cwd=${PROJECT_ROOT}`)) {
-    return;
-  }
+  const cwdMatch = line.match(/cwd=([^\s]+)/);
+  const activeCwd = cwdMatch ? cwdMatch[1] : PROJECT_ROOT;
 
   const devAgent = getResolvedAgent('dev', 2);
   const testerAgent = getResolvedAgent('test', 3);
@@ -448,15 +446,19 @@ function parseOpenCodeLogLine(line) {
     const toolName = toolMatch[1];
     const isTest = toolName.toLowerCase().includes('test');
     const assigned = isTest ? testerAgent : devAgent;
+    const taskId = `TASK-${Buffer.from(toolName).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 5).toUpperCase()}`;
 
     eventBus.emitEvent({
       agentId: assigned.id,
       type: 'tool_executing',
       payload: {
+        taskId,
+        key: 'OPENCODE',
         tool: toolName,
         task: `Executing ${toolName}`,
         details: `OpenCode invoking tool: ${toolName}`,
         column: isTest ? 'testing' : 'in_progress',
+        phase: 'Implementation',
       },
     });
     return;
@@ -477,22 +479,26 @@ function parseOpenCodeLogLine(line) {
     }
 
     // Filter out internal snapshot/git query polling
-    if (fullCmd.includes('diff-files') || fullCmd.includes('ls-files') || fullCmd.includes('check-ignore')) {
+    if (fullCmd.includes('diff-files') || fullCmd.includes('ls-files') || fullCmd.includes('check-ignore') || fullCmd.includes('git status --porcelain')) {
       return;
     }
 
     const isTest = fullCmd.includes('test') || fullCmd.includes('pytest') || fullCmd.includes('jest') || fullCmd.includes('gradle');
     const assigned = isTest ? testerAgent : devAgent;
+    const taskId = `TASK-${Buffer.from(baseCmd).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 5).toUpperCase()}`;
 
     eventBus.emitEvent({
       agentId: assigned.id,
       type: 'command_executing',
       payload: {
+        taskId,
+        key: 'OPENCODE',
         tool: 'run_command',
         command: fullCmd.substring(0, 100),
         task: `Running: ${baseCmd}`,
         details: `Command: ${fullCmd.substring(0, 80)}`,
         column: isTest ? 'testing' : 'in_progress',
+        phase: isTest ? 'Verification' : 'Implementation',
       },
     });
   }
