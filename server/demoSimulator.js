@@ -5,23 +5,42 @@ class DemoSimulator {
     this.timer = null;
     this.isRunning = false;
     this.stepIndex = 0;
+    this.timeouts = [];
   }
 
   start() {
     if (this.isRunning) return;
     this.isRunning = true;
     this.stepIndex = 0;
-    eventBus.resetWorkflow('DEMO: DXDT-25243 (eSIM Activation Defect Fix)');
+
+    // Dynamically resolve agents or fall back cleanly
+    const agentList = Array.from(eventBus.agents.values());
+    const findAgent = (query, fallback) => {
+      const q = query.toLowerCase();
+      const match = agentList.find(
+        (a) =>
+          (a.id && a.id.toLowerCase().includes(q)) ||
+          (a.role && a.role.toLowerCase().includes(q))
+      );
+      return match ? match.id : fallback;
+    };
+
+    const pmId = findAgent('pm') || findAgent('manager') || agentList[0]?.id || 'project-manager';
+    const leadId = findAgent('lead') || findAgent('arch') || agentList[1]?.id || 'tech-lead';
+    const devId = findAgent('dev') || findAgent('engineer') || agentList[2]?.id || 'developer';
+    const testerId = findAgent('test') || findAgent('qa') || agentList[3]?.id || 'tester';
+
+    eventBus.resetWorkflow('DEMO: FEATURE-101 (User Authentication Service)');
 
     console.log('[DemoSimulator] Starting realistic multi-agent presentation simulation...');
 
     // Announce demo simulation mode
     eventBus.emitEvent({
-      agentId: 'project-manager',
+      agentId: pmId,
       type: 'milestone_update',
       payload: {
         phase: 'Intake & Triage',
-        milestone: '⚠️ SIMULATION DEMO STARTED: Ingesting DXDT-25243 (eSIM Activation Defect).',
+        milestone: '⚠️ SIMULATION DEMO STARTED: Ingesting FEATURE-101 (User Authentication Service).',
         details: 'Simulated multi-agent workflow started for management presentation.',
       },
     });
@@ -32,13 +51,13 @@ class DemoSimulator {
         delay: 2000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'project-manager',
+            agentId: pmId,
             type: 'tool_executing',
             payload: {
-              task: 'Jira Auto-Ingestion',
-              tool: 'read_jira.py',
-              command: 'python3 android-ai-playbook/scripts/read_jira.py "DXDT-25243" -o .agents/scratch/DXDT-25243.md',
-              details: 'Auto-ingested ticket DXDT-25243 without manual copy-pasting',
+              task: 'Backlog Auto-Ingestion',
+              tool: 'issue_parser',
+              command: 'node scripts/ingest_issue.js --id "FEATURE-101" -o scratch/task/FEATURE-101/specs.md',
+              details: 'Auto-ingested ticket FEATURE-101 and parsed acceptance criteria',
               taskId: 'TASK-1',
               column: 'in_progress',
             },
@@ -50,12 +69,12 @@ class DemoSimulator {
         delay: 4000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'project-manager',
+            agentId: pmId,
             type: 'task_started',
             payload: {
               task: 'Sizing in Minutes',
               tool: 'write_to_file',
-              file: 'scratch/task/DXDT-25243/pm/estimation.md',
+              file: 'scratch/task/FEATURE-101/pm/estimation.md',
               details: 'Sized under 10-Minute SLA: Lead: 1.5m, Dev: 4m, QA: 1.5m (Total: 7 mins)',
               taskId: 'TASK-1',
               column: 'done',
@@ -70,12 +89,12 @@ class DemoSimulator {
         delay: 6000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'project-manager',
+            agentId: pmId,
             type: 'agent_handoff',
             payload: {
-              fromAgent: 'project-manager',
-              toAgent: 'android-tech-lead',
-              task: '5-Tier Architecture Scoping & Test Specs',
+              fromAgent: pmId,
+              toAgent: leadId,
+              task: 'Architecture Scoping & Test Specs',
               allowedSkill: 'tech-lead-planning',
               taskId: 'TASK-2',
               column: 'in_progress',
@@ -90,12 +109,12 @@ class DemoSimulator {
         delay: 10000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'android-tech-lead',
+            agentId: leadId,
             type: 'planning_started',
             payload: {
-              task: 'Architecture Planning & Pre-Mapping',
+              task: 'Architecture Planning & Interface Design',
               tool: 'impact-analysis',
-              details: 'Pre-mapped Group A targets, Group B wiring, and identified business rules',
+              details: 'Mapped service contracts, data models, and domain boundaries',
               taskId: 'TASK-2',
               progress: 80,
             },
@@ -107,13 +126,13 @@ class DemoSimulator {
         delay: 13000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'android-tech-lead',
+            agentId: leadId,
             type: 'file_modified',
             payload: {
               task: 'Architecture Plan Persisted',
               tool: 'write_to_file',
-              file: 'scratch/task/DXDT-25243/lead/architecture-plan.md',
-              details: 'Persisted 5-tier plan and 3 required unit test cases to scratch',
+              file: 'scratch/task/FEATURE-101/lead/architecture-plan.md',
+              details: 'Persisted component architecture plan and required unit test specifications',
               taskId: 'TASK-2',
               column: 'done',
               phase: 'Architecture Locked',
@@ -122,38 +141,38 @@ class DemoSimulator {
           });
         },
       },
-      // Step 6: Handoff Tech Lead -> Android Developer
+      // Step 6: Handoff Tech Lead -> Developer
       {
         delay: 16000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'android-tech-lead',
+            agentId: leadId,
             type: 'agent_handoff',
             payload: {
-              fromAgent: 'android-tech-lead',
-              toAgent: 'android-dev',
+              fromAgent: leadId,
+              toAgent: devId,
               task: 'Implement Feature & Unit Tests',
-              allowedSkill: '08-unit-tests',
+              allowedSkill: 'code-implementation',
               taskId: 'TASK-3',
               column: 'in_progress',
               phase: 'Implementation',
-              details: 'Tech Lead handed layer implementation and required unit test specs to Developer',
+              details: 'Tech Lead handed component contracts and unit test specs to Developer',
             },
           });
         },
       },
-      // Step 7: Developer modifies Kotlin files
+      // Step 7: Developer modifies source file
       {
         delay: 20000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'android-dev',
+            agentId: devId,
             type: 'file_modified',
             payload: {
-              task: 'Coding Domain Provider',
+              task: 'Coding Authentication Service',
               tool: 'replace_file_content',
-              file: 'coredata/src/main/java/com/app/coredata/provider/AuthProvider.kt',
-              details: 'Implemented state persistence and error handling with strict val immutability',
+              file: 'src/services/auth-service.ts',
+              details: 'Implemented token verification and session persistence with strict immutability',
               taskId: 'TASK-3',
               progress: 50,
             },
@@ -165,32 +184,32 @@ class DemoSimulator {
         delay: 24000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'android-dev',
+            agentId: devId,
             type: 'file_modified',
             payload: {
               task: 'Authoring AAA Unit Tests',
               tool: 'write_to_file',
-              file: 'coredata/src/test/java/com/app/coredata/provider/AuthProviderTest.kt',
-              details: 'Authored 100% of unit test scenarios specified by Tech Lead using MockK',
+              file: 'tests/auth-service.test.ts',
+              details: 'Authored 100% of unit test scenarios specified by Tech Lead',
               taskId: 'TASK-3',
               progress: 85,
             },
           });
         },
       },
-      // Step 9: Developer compiles Kotlin
+      // Step 9: Developer compiles / builds code
       {
         delay: 27000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'android-dev',
+            agentId: devId,
             type: 'command_executing',
             payload: {
-              task: 'Compiling Kotlin Sources',
+              task: 'Building & Type Checking',
               tool: 'run_command',
-              command: './gradlew compileDevDebugSources',
-              output: 'BUILD SUCCESSFUL in 4s (24 actionable tasks: 2 executed, 22 up-to-date)',
-              details: 'Clean Kotlin compilation; zero syntax or type errors',
+              command: 'npm run build',
+              output: 'vite build: 12 modules transformed.\ndist/index.html   0.45 kB\ndist/assets/index.js   142.12 kB\n✓ built in 190ms',
+              details: 'Clean TypeScript compilation; zero syntax or type errors',
               taskId: 'TASK-3',
               column: 'review',
               progress: 100,
@@ -203,17 +222,17 @@ class DemoSimulator {
         delay: 30000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'android-dev',
+            agentId: devId,
             type: 'agent_handoff',
             payload: {
-              fromAgent: 'android-dev',
-              toAgent: 'android-tech-lead',
-              task: '10-Point Senior Code Review',
-              allowedSkill: '10-code-review',
+              fromAgent: devId,
+              toAgent: leadId,
+              task: 'Senior Code Review Audit',
+              allowedSkill: 'code-review',
               taskId: 'TASK-4',
               column: 'in_progress',
               phase: 'Code Review',
-              details: 'Developer submitted code diff and unit tests for 10-point audit',
+              details: 'Developer submitted code diff and unit tests for architectural review',
             },
           });
         },
@@ -223,16 +242,16 @@ class DemoSimulator {
         delay: 34000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'android-tech-lead',
+            agentId: leadId,
             type: 'tool_executing',
             payload: {
-              task: '10-Point Checklist Audit',
+              task: 'Quality & Standards Audit',
               tool: 'git diff',
               details: 'Checklist: SOLID ✅, Immutability ✅, Boundaries ✅, 100% Unit Tests verified ✅',
               taskId: 'TASK-4',
               column: 'done',
               phase: 'Review Approved',
-              milestone: 'Code review approved: zero mutable var, 100% unit tests verified.',
+              milestone: 'Code review approved: zero mutable state leaks, 100% unit tests verified.',
             },
           });
         },
@@ -242,33 +261,33 @@ class DemoSimulator {
         delay: 37000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'android-tech-lead',
+            agentId: leadId,
             type: 'agent_handoff',
             payload: {
-              fromAgent: 'android-tech-lead',
-              toAgent: 'android-tester',
-              task: 'Execute Unit Tests & Regression Audit',
-              allowedSkill: 'execution',
+              fromAgent: leadId,
+              toAgent: testerId,
+              task: 'Execute Automated Test Suite & Regression Audit',
+              allowedSkill: 'test-execution',
               taskId: 'TASK-5',
               column: 'in_progress',
               phase: 'Verification',
-              details: 'Approved code dispatched to QA Tester for automated Gradle execution',
+              details: 'Approved code dispatched to QA Tester for automated test execution',
             },
           });
         },
       },
-      // Step 13: Tester executes Gradle test suite
+      // Step 13: Tester executes test suite
       {
         delay: 41000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'android-tester',
+            agentId: testerId,
             type: 'command_executing',
             payload: {
-              task: 'Running Gradle Test Suite',
+              task: 'Running Test Suite',
               tool: 'run_command',
-              command: './gradlew testDebugUnitTest',
-              output: 'Executing testDebugUnitTest...\n> Task :coredata:testDebugUnitTest\nEsimProviderTest > activateEsim_success PASSED\nEsimProviderTest > activateEsim_failure PASSED\nEsimProviderTest > activateEsim_boundaryCheck PASSED\nBUILD SUCCESSFUL in 8s',
+              command: 'npm test',
+              output: 'PASS tests/auth-service.test.ts\n  ✓ validates user session token (4ms)\n  ✓ rejects invalid signature (2ms)\n  ✓ handles token expiration gracefully (3ms)\n\nTest Suites: 1 passed, 1 total\nTests: 18 passed, 18 total\nSnapshots: 0 total\nTime: 1.42s',
               details: 'Running unit test verification in sandbox environment',
             },
           });
@@ -279,17 +298,17 @@ class DemoSimulator {
         delay: 45000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'android-tester',
+            agentId: testerId,
             type: 'test_result',
             payload: {
               task: 'Unit Tests Passed',
               tool: 'run_command',
-              command: './gradlew testDebugUnitTest',
+              command: 'npm test',
               testsPassed: 18,
               testsFailed: 0,
               taskId: 'TASK-5',
               column: 'done',
-              file: 'scratch/task/DXDT-25243/tester/unit-test-report.md',
+              file: 'scratch/task/FEATURE-101/tester/test-results.md',
               details: '18 / 18 unit tests passed cleanly with zero regressions',
               milestone: 'All 18 unit tests passed green. Zero regressions found.',
             },
@@ -301,11 +320,11 @@ class DemoSimulator {
         delay: 48000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'android-tester',
+            agentId: testerId,
             type: 'agent_handoff',
             payload: {
-              fromAgent: 'android-tester',
-              toAgent: 'project-manager',
+              fromAgent: testerId,
+              toAgent: pmId,
               task: 'Final Delivery & Sign-Off Report',
               allowedSkill: 'pm-reporting',
               taskId: 'TASK-6',
@@ -321,12 +340,12 @@ class DemoSimulator {
         delay: 52000,
         run: () => {
           eventBus.emitEvent({
-            agentId: 'project-manager',
+            agentId: pmId,
             type: 'task_completed',
             payload: {
               task: 'Feature Delivery Sign-off',
               tool: 'write_to_file',
-              file: 'scratch/task/DXDT-25243/pm/delivery-report.md',
+              file: 'scratch/task/FEATURE-101/pm/delivery-report.md',
               taskId: 'TASK-6',
               column: 'done',
               phase: 'Delivered',

@@ -53,57 +53,57 @@ class EventBus extends EventEmitter {
     if (agentList.length === 0) return;
 
     const pmId = agentList[0]?.id || 'project-manager';
-    const leadId = agentList[1]?.id || 'android-tech-lead';
-    const devId = agentList[2]?.id || 'android-dev';
-    const testerId = agentList[3]?.id || 'android-tester';
+    const leadId = agentList[1]?.id || 'tech-lead';
+    const devId = agentList[2]?.id || 'developer';
+    const testerId = agentList[3]?.id || 'tester';
 
     const initialTasks = [
-      // 1. Intake & Sizing (Broken down by User Intake -> PM)
+      // 1. Intake & Sizing (Broken down by Stakeholder Intake -> PM)
       {
         id: 'TASK-1',
-        key: 'DXDT-25243',
-        title: 'Ingest Ticket & PRD Scoping',
-        description: 'Auto-ingest Jira ticket via read_jira.py and produce production-grade PRD',
+        key: 'FEATURE-101',
+        title: 'Ingest Ticket & Scope Requirements',
+        description: 'Auto-ingest backlog issue, analyze constraints, and produce engineering specification',
         assignedTo: pmId,
-        delegatedBy: 'user-intake',
+        delegatedBy: 'stakeholder-intake',
         delegatedByRole: 'Stakeholder Intake',
         column: 'done',
-        skill: '00-requirement-analysis',
+        skill: 'requirement-analysis',
         progress: 100,
         updatedAt: new Date().toISOString(),
       },
       {
         id: 'TASK-2',
-        key: 'DXDT-25243',
+        key: 'FEATURE-101',
         title: 'Sprint Minute Estimation (<10m SLA)',
         description: 'Calculate granular minute estimations for Lead, Dev, and QA under 10m SLA',
         assignedTo: pmId,
         delegatedBy: pmId,
         delegatedByRole: 'Project Manager',
         column: 'done',
-        skill: 'pm-reporting',
+        skill: 'sprint-planning',
         progress: 100,
         updatedAt: new Date().toISOString(),
       },
 
-      // 2. Technical Architecture & Pre-Mapping (Broken down by PM -> Android Tech Lead)
+      // 2. Technical Architecture & Component Scoping (PM -> Technical Lead)
       {
         id: 'TASK-3',
-        key: 'DXDT-25243',
-        title: 'Architecture Boundaries & Module Scoping',
-        description: 'Establish clean data layer contracts, DTO immutability, and boundary interfaces',
+        key: 'FEATURE-101',
+        title: 'Architecture Boundaries & Interface Contracts',
+        description: 'Establish clean data layer contracts, state immutability, and boundary interfaces',
         assignedTo: leadId,
         delegatedBy: pmId,
         delegatedByRole: 'Project Manager',
         column: 'done',
-        skill: '00-architecture',
+        skill: 'architecture',
         progress: 100,
         updatedAt: new Date().toISOString(),
       },
       {
         id: 'TASK-4',
-        key: 'DXDT-25243',
-        title: 'Pre-map Impacted Classes & Direct File Paths',
+        key: 'FEATURE-101',
+        title: 'Pre-map Impacted Modules & Direct File Paths',
         description: 'Analyze call graphs to pre-map files in architecture plan so Dev avoids repo searches',
         assignedTo: leadId,
         delegatedBy: pmId,
@@ -115,8 +115,8 @@ class EventBus extends EventEmitter {
       },
       {
         id: 'TASK-5',
-        key: 'DXDT-25243',
-        title: 'Identify Business Rules & Specify Unit Tests',
+        key: 'FEATURE-101',
+        title: 'Identify Business Rules & Author Unit Test Specs',
         description: 'Identify decision trees, edge cases, and define 100% required AAA unit test specs',
         assignedTo: leadId,
         delegatedBy: pmId,
@@ -127,86 +127,86 @@ class EventBus extends EventEmitter {
         updatedAt: new Date().toISOString(),
       },
 
-      // 3. Feature Implementation & Unit Test Authoring (Broken down by Tech Lead -> Android Developer)
+      // 3. Feature Implementation & Unit Test Authoring (Technical Lead -> Developer)
       {
         id: 'TASK-6',
-        key: 'DXDT-25243',
-        title: 'Data Layer: Immutability DTOs & Repository',
-        description: 'Implement Retrofit DTOs with val immutability and ApiExecuterV2 repository caching',
+        key: 'FEATURE-101',
+        title: 'Data Layer: Immutability DTOs & Service Client',
+        description: 'Implement core domain DTOs with state immutability and repository caching',
         assignedTo: devId,
         delegatedBy: leadId,
-        delegatedByRole: 'Android Technical Lead',
+        delegatedByRole: 'Technical Lead',
         column: 'in_progress',
-        skill: '04-repository',
+        skill: 'feature-implementation',
         progress: 55,
         updatedAt: new Date().toISOString(),
       },
       {
         id: 'TASK-7',
-        key: 'DXDT-25243',
+        key: 'FEATURE-101',
         title: 'Domain Provider: Business Logic Rules Engine',
         description: 'Implement domain feature provider orchestrating repository results and rule logic',
         assignedTo: devId,
         delegatedBy: leadId,
-        delegatedByRole: 'Android Technical Lead',
+        delegatedByRole: 'Technical Lead',
         column: 'assigned',
-        skill: '03a-provider',
+        skill: 'feature-implementation',
         progress: 0,
         updatedAt: new Date().toISOString(),
       },
       {
         id: 'TASK-8',
-        key: 'DXDT-25243',
-        title: 'Author 100% of Specified JUnit & MockK Tests',
+        key: 'FEATURE-101',
+        title: 'Author 100% of Specified AAA Unit Tests',
         description: 'Implement unit test specs defined in architecture plan following AAA convention',
         assignedTo: devId,
         delegatedBy: leadId,
-        delegatedByRole: 'Android Technical Lead',
+        delegatedByRole: 'Technical Lead',
         column: 'assigned',
-        skill: '08-unit-tests',
+        skill: 'unit-tests',
         progress: 0,
         updatedAt: new Date().toISOString(),
       },
 
-      // 4. Code & Architecture Review (Broken down by Dev -> Android Tech Lead)
+      // 4. Code & Architecture Review (Developer -> Technical Lead)
       {
         id: 'TASK-9',
-        key: 'DXDT-25243',
+        key: 'FEATURE-101',
         title: '10-Point Architectural Quality Gate Audit',
         description: 'Audit immutability, test coverage, and boundary compliance before handing to QA',
         assignedTo: leadId,
         delegatedBy: devId,
-        delegatedByRole: 'Android Developer',
+        delegatedByRole: 'Developer',
         column: 'review',
-        skill: '10-code-review',
+        skill: 'code-review',
         progress: 25,
         updatedAt: new Date().toISOString(),
       },
 
-      // 5. Test Suite Verification (Broken down by Tech Lead -> Tester / QA)
+      // 5. Test Suite Verification (Technical Lead -> QA Tester)
       {
         id: 'TASK-10',
-        key: 'DXDT-25243',
-        title: 'Execute ./gradlew testDebugUnitTest',
+        key: 'FEATURE-101',
+        title: 'Execute Automated Test Suite & Regression Audit',
         description: 'Run unit test suite, verify 100% tests pass, and audit regression integrity',
         assignedTo: testerId,
         delegatedBy: leadId,
-        delegatedByRole: 'Android Technical Lead',
+        delegatedByRole: 'Technical Lead',
         column: 'testing',
-        skill: 'test-execution',
+        skill: 'test-automation',
         progress: 0,
         updatedAt: new Date().toISOString(),
       },
 
-      // 6. Stakeholder Delivery & Sign-Off (Broken down by Tester -> Project Manager)
+      // 6. Stakeholder Delivery & Sign-Off (QA Tester -> Project Manager)
       {
         id: 'TASK-11',
-        key: 'DXDT-25243',
+        key: 'FEATURE-101',
         title: 'Compile Delivery Sign-Off Report',
         description: 'Broadcast final delivery sign-off report with artifact diffs and SLA summary',
         assignedTo: pmId,
         delegatedBy: testerId,
-        delegatedByRole: 'Android QA Engineer',
+        delegatedByRole: 'QA Tester',
         column: 'backlog',
         skill: 'pm-reporting',
         progress: 0,
