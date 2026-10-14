@@ -108,8 +108,7 @@ function resolveOpenCodeLogPath() {
 }
 
 const SCRATCH_TASK_DIR = resolveScratchTaskDir();
-let transcriptPath = resolveTranscriptPath();
-let transcriptByteOffset = 0;
+const activeTranscriptWatchers = new Map();
 let opencodeByteOffset = 0;
 const debouncedFiles = new Map();
 
@@ -617,55 +616,128 @@ function handleScratchFileChange(filePath, action) {
 }
 
 /**
- * Antigravity / AI Agent Transcript Tailer
+ * Dynamic Multi-Conversation Antigravity Transcript Tailer
  */
 function setupTranscriptTailer() {
-  if (!transcriptPath || !fs.existsSync(transcriptPath)) {
-    const pollInterval = setInterval(() => {
-      transcriptPath = resolveTranscriptPath();
-      if (transcriptPath && fs.existsSync(transcriptPath)) {
-        clearInterval(pollInterval);
-        startTranscriptTail();
-      }
-    }, 4000);
-    return;
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+  const brainDir = homeDir ? path.join(homeDir, '.gemini/antigravity/brain') : null;
+
+  // 1. Initial scan of all active conversations
+  scanAndWatchTranscripts(brainDir);
+
+  // 2. Watch brain directory with chokidar for new conversation folders
+  if (brainDir && fs.existsSync(brainDir)) {
+    try {
+      const brainWatcher = chokidar.watch(brainDir, {
+        depth: 3,
+        persistent: true,
+        ignoreInitial: true,
+      });
+
+      brainWatcher.on('all', (event, targetPath) => {
+        if (targetPath.endsWith('transcript.jsonl')) {
+          attachTranscriptTail(targetPath);
+        }
+      });
+    } catch (e) {
+      console.warn('[Watchers] Chokidar brain watcher warning:', e.message);
+    }
   }
-  startTranscriptTail();
+
+  // Periodic rescan every 4 seconds to discover newly started conversations
+  setInterval(() => {
+    scanAndWatchTranscripts(brainDir);
+  }, 4000);
 }
 
-function startTranscriptTail() {
-  if (!transcriptPath || !fs.existsSync(transcriptPath)) return;
+function scanAndWatchTranscripts(brainDir) {
+  const candidates = [];
+
+  // Local workspace transcripts
+  const localCandidates = [
+    path.join(PROJECT_ROOT, '.agents/transcript.jsonl'),
+    path.join(PROJECT_ROOT, '.system_generated/logs/transcript.jsonl'),
+    path.join(PROJECT_ROOT, '.opencode/transcript.jsonl'),
+  ];
+  for (const c of localCandidates) {
+    if (fs.existsSync(c)) candidates.push(c);
+  }
+
+  // Antigravity Brain conversations
+  if (brainDir && fs.existsSync(brainDir)) {
+    try {
+      const entries = fs.readdirSync(brainDir, { withFileTypes: true });
+      const now = Date.now();
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const candidate = path.join(brainDir, entry.name, '.system_generated/logs/transcript.jsonl');
+        if (fs.existsSync(candidate)) {
+          const stats = fs.statSync(candidate);
+          // Tail conversations touched within the last 12 hours
+          if (now - stats.mtimeMs < 12 * 60 * 60 * 1000) {
+            candidates.push(candidate);
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Environment override
+  if (process.env.TRANSCRIPT_PATH && fs.existsSync(process.env.TRANSCRIPT_PATH)) {
+    candidates.push(process.env.TRANSCRIPT_PATH);
+  }
+
+  for (const c of candidates) {
+    attachTranscriptTail(c);
+  }
+}
+
+function attachTranscriptTail(filePath) {
+  if (activeTranscriptWatchers.has(filePath)) return;
+  if (!fs.existsSync(filePath)) return;
+
   try {
-    const stats = fs.statSync(transcriptPath);
-    transcriptByteOffset = Math.max(0, stats.size - 50000); // Read last 50KB to catch active turns
+    const stats = fs.statSync(filePath);
+    // Start tailing from recent bytes to catch active turns (last 20KB)
+    const state = {
+      filePath,
+      offset: Math.max(0, stats.size - 20000),
+    };
+    activeTranscriptWatchers.set(filePath, state);
 
-    readNewTranscriptLines();
+    // Initial read
+    readTranscriptChunk(state);
 
-    fs.watchFile(transcriptPath, { interval: 500 }, (curr, prev) => {
+    // Watch for new appends
+    fs.watchFile(filePath, { interval: 350 }, (curr, prev) => {
       if (curr.size > prev.size) {
-        readNewTranscriptLines();
+        readTranscriptChunk(state);
       }
     });
-    console.log(`[Watchers] Tailing transcript from ${transcriptPath}`);
+
+    const convId = path.basename(path.dirname(path.dirname(filePath)));
+    console.log(`[Watchers] Attached transcript monitor to conversation: ${convId}`);
   } catch (err) {
-    console.error('[Watchers] Error starting transcript tail:', err);
+    console.error(`[Watchers] Error attaching transcript tail for ${filePath}:`, err.message);
   }
 }
 
-function readNewTranscriptLines() {
-  if (!transcriptPath || !fs.existsSync(transcriptPath)) return;
+function readTranscriptChunk(state) {
+  const { filePath } = state;
+  if (!fs.existsSync(filePath)) return;
+
   try {
-    const fd = fs.openSync(transcriptPath, 'r');
+    const fd = fs.openSync(filePath, 'r');
     const stats = fs.fstatSync(fd);
-    if (stats.size <= transcriptByteOffset) {
+    if (stats.size <= state.offset) {
       fs.closeSync(fd);
       return;
     }
 
-    const bufferSize = stats.size - transcriptByteOffset;
+    const bufferSize = stats.size - state.offset;
     const buffer = Buffer.alloc(bufferSize);
-    fs.readSync(fd, buffer, 0, bufferSize, transcriptByteOffset);
-    transcriptByteOffset = stats.size;
+    fs.readSync(fd, buffer, 0, bufferSize, state.offset);
+    state.offset = stats.size;
     fs.closeSync(fd);
 
     const chunk = buffer.toString('utf8');
@@ -677,23 +749,54 @@ function readNewTranscriptLines() {
         const step = JSON.parse(line);
         parseTranscriptStep(step);
       } catch (e) {
-        // Line might be partial
+        // partial line
       }
     }
   } catch (err) {
-    console.error('[Watchers] Error reading transcript chunk:', err);
+    // Read error
   }
 }
 
+function cleanStringVal(val) {
+  if (typeof val !== 'string') return val || '';
+  return val.replace(/^["']|["']$/g, '').replace(/\\"/g, '"').trim();
+}
+
 function parseTranscriptStep(step) {
-  const content = step.content || '';
+  const content = typeof step.content === 'string' ? step.content : '';
   const toolCalls = step.tool_calls || [];
 
   const devAgent = getResolvedAgent('dev', 2);
   const testerAgent = getResolvedAgent('test', 3);
   const leadAgent = getResolvedAgent('lead', 1);
+  const pmAgent = getResolvedAgent('pm', 0);
 
-  // 1. Detect role header in content: 🎭 **Active Role**: **<Role Name>** (`<role-id>`)
+  // 1. User Input Prompt -> PM creates card & announces assignment
+  if (step.type === 'USER_INPUT' || step.source === 'USER_EXPLICIT') {
+    const promptText = content.trim();
+    if (promptText && !promptText.startsWith('<') && promptText.length > 2) {
+      const displayTitle = promptText.length > 55 ? promptText.slice(0, 52) + '...' : promptText;
+      const taskId = `TASK-REQ-${Date.now().toString().slice(-4)}`;
+
+      eventBus.emitEvent({
+        agentId: pmAgent.id,
+        type: 'agent_active',
+        payload: {
+          taskId,
+          key: 'REQ-101',
+          task: `User Request: ${displayTitle}`,
+          column: 'assigned',
+          details: promptText,
+          phase: 'Intake & Planning',
+          milestone: `New task delegated: "${displayTitle}"`,
+          milestoneAgentId: pmAgent.id,
+        },
+      });
+    }
+    return;
+  }
+
+  // 2. Detect role header in content: 🎭 **Active Role**: **<Role Name>** (`<role-id>`)
   const roleMatch = content.match(/🎭 \*\*Active Role\*\*:\s*\*\*([^*]+)\*\*\s*\(`([^`]+)`\)/);
   if (roleMatch) {
     const agentId = roleMatch[2];
@@ -707,7 +810,7 @@ function parseTranscriptStep(step) {
     });
   }
 
-  // 2. Detect [AGENT HANDOFF]
+  // 3. Detect [AGENT HANDOFF]
   if (content.includes('[AGENT HANDOFF]')) {
     const fromMatch = content.match(/FROM:\s*([^|\n]+)/);
     const toMatch = content.match(/TO:\s*([^|\n]+)/);
@@ -734,44 +837,94 @@ function parseTranscriptStep(step) {
     }
   }
 
-  // 3. Detect tool calls
+  // 4. Detect tool calls & generate live Kanban tasks
   for (const call of toolCalls) {
     const name = call.name || call.toolName || (call.function ? call.function.name : '');
-    const args = call.args || call.arguments || (call.function ? call.function.arguments : {});
+    let args = call.args || call.arguments || (call.function ? call.function.arguments : {});
+    if (typeof args === 'string') {
+      try { args = JSON.parse(args); } catch (e) {}
+    }
 
-    if (name === 'run_command') {
-      const cmd = typeof args === 'string' ? args : args.CommandLine || '';
-      const isTest = cmd.includes('test');
-      const assigned = isTest ? testerAgent : devAgent;
-      eventBus.emitEvent({
-        agentId: assigned.id,
-        type: 'command_executing',
-        payload: {
-          tool: 'run_command',
-          command: cmd,
-          details: `Running: ${cmd}`,
-        },
-      });
-    } else if (name === 'write_to_file' || name === 'replace_file_content') {
-      const targetFile = args.TargetFile || args.target_file || '';
-      eventBus.emitEvent({
-        agentId: devAgent.id,
-        type: 'file_modified',
-        payload: {
-          tool: name,
-          file: targetFile,
-          details: `${name === 'write_to_file' ? 'Created' : 'Edited'} ${path.basename(targetFile)}`,
-        },
-      });
-    } else if (name === 'view_file') {
-      const targetPath = args.AbsolutePath || args.path || '';
+    if (name === 'view_file' || name === 'read_resource') {
+      const targetPath = cleanStringVal(args.AbsolutePath || args.path || args.Uri || '');
+      const fileName = path.basename(targetPath) || targetPath || 'source file';
+      const safeKey = fileName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 10);
+      const taskId = `TASK-VIEW-${safeKey}`;
+
       eventBus.emitEvent({
         agentId: leadAgent.id,
         type: 'tool_executing',
         payload: {
+          taskId,
+          key: `ARCH-${safeKey.slice(0, 4).toUpperCase()}`,
+          task: `Analyze & Inspect ${fileName}`,
           tool: 'view_file',
           file: targetPath,
-          details: `Inspecting ${path.basename(targetPath)}`,
+          column: 'in_progress',
+          details: `Inspecting ${fileName} for architectural analysis`,
+          phase: 'Investigation & Architecture',
+        },
+      });
+    } else if (name === 'write_to_file' || name === 'replace_file_content') {
+      const targetFile = cleanStringVal(args.TargetFile || args.target_file || args.AbsolutePath || '');
+      const fileName = path.basename(targetFile) || targetFile || 'codebase';
+      const safeKey = fileName.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 10);
+      const taskId = `TASK-CODE-${safeKey}`;
+
+      eventBus.emitEvent({
+        agentId: devAgent.id,
+        type: 'file_modified',
+        payload: {
+          taskId,
+          key: `DEV-${safeKey.slice(0, 4).toUpperCase()}`,
+          task: `Implement & Fix ${fileName}`,
+          tool: name,
+          file: targetFile,
+          column: 'in_progress',
+          details: `${name === 'write_to_file' ? 'Created' : 'Edited'} ${fileName}`,
+          phase: 'Implementation',
+        },
+      });
+    } else if (name === 'run_command') {
+      const cmd = cleanStringVal(typeof args === 'string' ? args : (args.CommandLine || args.cmd || ''));
+      const isTest = cmd.includes('test') || cmd.includes('gradlew test') || cmd.includes('pytest') || cmd.includes('jest');
+      const assigned = isTest ? testerAgent : devAgent;
+      const taskId = `TASK-CMD-${Date.now().toString().slice(-4)}`;
+
+      eventBus.emitEvent({
+        agentId: assigned.id,
+        type: 'command_executing',
+        payload: {
+          taskId,
+          key: isTest ? 'QA-TEST' : 'DEV-CLI',
+          task: isTest ? `Execute Test Suite: ${cmd.slice(0, 24)}` : `Terminal Command: ${cmd.slice(0, 24)}`,
+          tool: 'run_command',
+          command: cmd,
+          column: isTest ? 'testing' : 'in_progress',
+          details: `Running: ${cmd}`,
+          phase: isTest ? 'Verification' : 'Execution',
+        },
+      });
+    } else if (name === 'search_web' || name === 'read_url_content') {
+      const q = cleanStringVal(args.query || args.Url || 'Research');
+      eventBus.emitEvent({
+        agentId: leadAgent.id,
+        type: 'tool_executing',
+        payload: {
+          tool: name,
+          task: `Researching: ${q.slice(0, 30)}`,
+          details: `Querying: ${q}`,
+          phase: 'Architecture & Research',
+        },
+      });
+    } else if (name) {
+      eventBus.emitEvent({
+        agentId: devAgent.id,
+        type: 'tool_executing',
+        payload: {
+          tool: name,
+          task: `Executing ${name}`,
+          details: `Invoked tool: ${name}`,
         },
       });
     }
