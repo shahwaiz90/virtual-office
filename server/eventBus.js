@@ -733,6 +733,35 @@ class EventBus extends EventEmitter {
   resetWorkflow(workflowTitle) {
     return this.loadDemoWorkflow(workflowTitle);
   }
+
+  clearState() {
+    this.events = [];
+    this.tasks = new Map();
+    this.toolUsageMap = new Map();
+    this.skillUsageMap = new Map();
+    this.activeHandoff = null;
+    this.workflowStartTime = Date.now();
+    this.currentPhase = 'Standby & Listening';
+    this.latestMilestone = 'Office state cleared. Standing by for new agent tasks.';
+    this.latestMilestoneAgentId = 'project-manager';
+
+    for (const [id, agent] of this.agents.entries()) {
+      agent.status = 'available';
+      agent.currentTask = null;
+      agent.currentFile = null;
+      agent.activityMessage = 'Ready at workstation';
+      agent.taskStartedAt = null;
+      agent.taskCompletedAt = null;
+      agent.taskDurationSec = null;
+    }
+
+    this.initStandbyRoleAnalytics();
+
+    this.broadcast({
+      type: 'SYNC_STATE',
+      data: this.getStateSnapshot(),
+    });
+  }
 }
 
 // Singleton event bus instance

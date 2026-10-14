@@ -66,6 +66,13 @@ app.post('/api/demo/stop', (req, res) => {
   res.json({ success: true, message: 'Demo simulation stopped' });
 });
 
+// Clear Office State & Reset to Standby
+app.post('/api/state/clear', (req, res) => {
+  demoSimulator.stop();
+  eventBus.clearState();
+  res.json({ success: true, message: 'Office state, tasks, and analytics cleared' });
+});
+
 // 6. API: Health Check
 app.get('/api/health', (req, res) => {
   res.json({
@@ -125,6 +132,9 @@ wss.on('connection', (ws, req) => {
         demoSimulator.start();
       } else if (data.type === 'STOP_DEMO') {
         demoSimulator.stop();
+      } else if (data.type === 'CLEAR_STATE') {
+        demoSimulator.stop();
+        eventBus.clearState();
       }
     } catch (e) {
       // non-json message

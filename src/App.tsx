@@ -103,6 +103,16 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleClearState = async () => {
+    try {
+      await fetch('/api/state/clear', { method: 'POST' });
+      setIsDemo(false);
+      setEvents([]);
+    } catch (e) {
+      console.error('Error clearing state:', e);
+    }
+  };
+
   const agents = state ? state.agents : [];
   const tasks = state ? state.tasks : [];
   const activeHandoff = state ? state.activeHandoff : null;
@@ -115,6 +125,7 @@ export const App: React.FC = () => {
         connected={connected}
         isDemo={isDemo}
         onToggleDemo={handleToggleDemo}
+        onClearState={handleClearState}
       />
 
       {/* Main Workplace Dashboard */}
