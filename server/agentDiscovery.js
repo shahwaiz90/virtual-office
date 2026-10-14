@@ -517,12 +517,323 @@ function deriveAvatarUrl(agentId, agentName, role, index) {
 }
 
 /**
- * Discovers and formats all configured agents dynamically from .agents/agents.json
- * Plug-and-play across any project codebase (iOS, Android, Web, Backend, etc.).
+ * Robust extractor for agent definitions written in Markdown with frontmatter,
+ * Markdown bullet points, or YAML files.
  */
+function parseFrontmatterAndMarkdown(content, fallbackId) {
+  if (!content) return null;
+
+  const result = {
+    id: fallbackId,
+    name: '',
+    role: '',
+    description: '',
+    skills: [],
+    delegation_targets: [],
+    allowed_tools: [],
+    prohibited_actions: [],
+  };
+
+  // 1. Check for YAML frontmatter (between --- and ---)
+  const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const yamlContent = fmMatch ? fmMatch[1] : '';
+  const bodyContent = fmMatch ? content.slice(fmMatch[0].length).trim() : content.trim();
+
+  const textToParse = yamlContent || content;
+  const lines = textToParse.split(/\r?\n/);
+  let currentArrayKey = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+
+    if (!trimmed) continue;
+
+    if (trimmed.startsWith('#')) {
+      const heading = trimmed.replace(/^#+\s*/, '').toLowerCase().replace(/[\-_]/g, ' ').trim();
+      if (heading.startsWith('skill')) {
+        currentArrayKey = 'skills';
+      } else if (heading.includes('delegat')) {
+        currentArrayKey = 'delegation_targets';
+      } else if (heading.includes('tool')) {
+        currentArrayKey = 'allowed_tools';
+      } else if (heading.includes('prohibit')) {
+        currentArrayKey = 'prohibited_actions';
+      } else if (!result.name && trimmed.startsWith('# ')) {
+        result.name = trimmed.replace(/^#\s+/, '').trim();
+      }
+      continue;
+    }
+
+    // Array item: - item
+    if (trimmed.startsWith('- ') && currentArrayKey) {
+      const val = trimmed.replace(/^-\s+/, '').replace(/^["']|["']$/g, '').trim();
+      if (val) {
+        if (!Array.isArray(result[currentArrayKey])) {
+          result[currentArrayKey] = [];
+        }
+        result[currentArrayKey].push(val);
+      }
+      continue;
+    }
+
+    // Key-value pair: key: value or **Key**: value
+    const kvMatch = trimmed.match(/^(\*{0,2})([a-zA-Z0-9_\-]+)\1\s*:\s*(.*)$/);
+    if (kvMatch) {
+      const rawKey = kvMatch[2].toLowerCase().replace(/[\-_]/g, '_');
+      const val = kvMatch[3].replace(/^["']|["']$/g, '').trim();
+
+      if (rawKey === 'id') {
+        if (val) result.id = val;
+        currentArrayKey = null;
+      } else if (rawKey === 'name') {
+        if (val) result.name = val;
+        currentArrayKey = null;
+      } else if (rawKey === 'role' || rawKey === 'title' || rawKey === 'active_role') {
+        if (val) result.role = val;
+        currentArrayKey = null;
+      } else if (rawKey === 'description' || rawKey === 'desc' || rawKey === 'summary') {
+        if (val) result.description = val;
+        currentArrayKey = null;
+      } else if (rawKey === 'skills' || rawKey === 'skill_ids' || rawKey === 'skill') {
+        currentArrayKey = 'skills';
+        if (val) {
+          const items = val.replace(/^\[|\]$/g, '').split(',').map((s) => s.replace(/^["']|["']$/g, '').trim()).filter(Boolean);
+          if (items.length > 0) result.skills = items;
+        }
+      } else if (rawKey === 'delegation_targets' || rawKey === 'delegationtargets' || rawKey === 'delegates_to' || rawKey === 'delegates') {
+        currentArrayKey = 'delegation_targets';
+        if (val) {
+          const items = val.replace(/^\[|\]$/g, '').split(',').map((s) => s.replace(/^["']|["']$/g, '').trim()).filter(Boolean);
+          if (items.length > 0) result.delegation_targets = items;
+        }
+      } else if (rawKey === 'allowed_tools' || rawKey === 'tools') {
+        currentArrayKey = 'allowed_tools';
+        if (val) {
+          const items = val.replace(/^\[|\]$/g, '').split(',').map((s) => s.replace(/^["']|["']$/g, '').trim()).filter(Boolean);
+          if (items.length > 0) result.allowed_tools = items;
+        }
+      } else if (rawKey === 'prohibited_actions') {
+        currentArrayKey = 'prohibited_actions';
+        if (val) {
+          const items = val.replace(/^\[|\]$/g, '').split(',').map((s) => s.replace(/^["']|["']$/g, '').trim()).filter(Boolean);
+          if (items.length > 0) result.prohibited_actions = items;
+        }
+      } else if (rawKey === 'badge') {
+        if (val) result.badge = val;
+        currentArrayKey = null;
+      } else {
+        currentArrayKey = null;
+      }
+    }
+  }
+
+  // If description was not in frontmatter, extract the first paragraph of body
+  if (!result.description && bodyContent) {
+    const bodyLines = bodyContent.split(/\r?\n/);
+    for (const line of bodyLines) {
+      const tr = line.trim();
+      if (tr && !tr.startsWith('#') && !tr.startsWith('-') && !tr.startsWith('```') && !tr.startsWith('>')) {
+        result.description = tr;
+        break;
+      }
+    }
+  }
+
+  if (!result.name) {
+    result.name = fallbackId.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  if (!result.role) {
+    result.role = result.name;
+  }
+
+  return result;
+}
+
+/**
+ * Parses individual agent JSON files (supports single agent object, { agent: {...} }, or { agents: [...] })
+ */
+function parseAgentJsonFile(filePath, fallbackId) {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!parsed) return [];
+
+    if (Array.isArray(parsed.agents)) {
+      return parsed.agents.filter((a) => a && (a.id || a.name || a.role));
+    }
+    if (Array.isArray(parsed)) {
+      return parsed.filter((a) => a && (a.id || a.name || a.role));
+    }
+    if (parsed.agent && typeof parsed.agent === 'object') {
+      const a = parsed.agent;
+      if (!a.id) a.id = fallbackId;
+      return [a];
+    }
+    if (parsed.id || parsed.role || parsed.name) {
+      if (!parsed.id) parsed.id = fallbackId;
+      return [parsed];
+    }
+    return [];
+  } catch (err) {
+    return [];
+  }
+}
+
+/**
+ * Scans candidate agent directories looking for individual agent files (.json, .yaml, .yml, .md)
+ * or subdirectories when no single agents.json exists, or to discover additional agents in folders.
+ */
+function discoverAgentsFromFolders(customRoot) {
+  const root = customRoot || getProjectRoot();
+  const candidateDirNames = [
+    '.agents',
+    'agents',
+    '.opencode/agents',
+    'opencode/agents',
+    '.claude/agents',
+    'config/agents',
+    '.cursor/agents',
+  ];
+
+  const candidateDirs = new Set();
+  for (const c of candidateDirNames) {
+    const full = path.join(root, c);
+    if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
+      candidateDirs.add(full);
+    }
+  }
+
+  // Also check candidate directories in current working directory if different
+  if (process.cwd() !== root) {
+    for (const c of candidateDirNames) {
+      const full = path.join(process.cwd(), c);
+      if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
+        candidateDirs.add(full);
+      }
+    }
+  }
+
+  // Search for any nested directory named "agents" or ".agents" (maxDepth 3)
+  const queue = [[root, 0]];
+  while (queue.length > 0) {
+    const [dir, depth] = queue.shift();
+    if (depth >= 3) continue;
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && !IGNORED_SCAN_DIRS.has(entry.name) && !entry.name.startsWith('.git')) {
+          const lower = entry.name.toLowerCase();
+          const fullPath = path.join(dir, entry.name);
+          if (lower === 'agents' || lower === '.agents') {
+            candidateDirs.add(fullPath);
+          } else {
+            queue.push([fullPath, depth + 1]);
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  const discoveredAgents = [];
+  const seenIds = new Set();
+
+  for (const dir of candidateDirs) {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        const baseName = path.parse(entry.name).name;
+        const lowerName = entry.name.toLowerCase();
+
+        // Skip non-agent directories or special internal folders
+        if (entry.name.startsWith('.') || lowerName === 'skills' || lowerName === 'scratch' || lowerName === 'node_modules') {
+          continue;
+        }
+
+        // Case 1: Individual file directly in agents folder
+        if (entry.isFile()) {
+          // If it is agents.json, it is handled by config file scanner
+          if (lowerName === 'agents.json' || lowerName === 'agents_config.json' || lowerName === 'opencode_agents.json') {
+            continue;
+          }
+
+          if (lowerName.endsWith('.json')) {
+            const parsedList = parseAgentJsonFile(fullPath, baseName);
+            for (const a of parsedList) {
+              const id = a.id || baseName;
+              if (!seenIds.has(id)) {
+                seenIds.add(id);
+                a.id = id;
+                a._originConfig = path.relative(root, fullPath) || path.basename(fullPath);
+                discoveredAgents.push(a);
+              }
+            }
+          } else if (lowerName.endsWith('.yaml') || lowerName.endsWith('.yml') || lowerName.endsWith('.md')) {
+            if (lowerName === 'readme.md' && !entry.name.toLowerCase().includes('agent')) continue;
+            try {
+              const content = fs.readFileSync(fullPath, 'utf8');
+              const agentObj = parseFrontmatterAndMarkdown(content, baseName);
+              if (agentObj && (agentObj.role || agentObj.skills.length > 0 || agentObj.delegation_targets.length > 0)) {
+                const id = agentObj.id || baseName;
+                if (!seenIds.has(id)) {
+                  seenIds.add(id);
+                  agentObj._originConfig = path.relative(root, fullPath) || path.basename(fullPath);
+                  discoveredAgents.push(agentObj);
+                }
+              }
+            } catch (e) {}
+          }
+        }
+
+        // Case 2: Subdirectory representing an individual agent (e.g. .agents/project-manager/agent.json or agent.md)
+        if (entry.isDirectory()) {
+          try {
+            const subEntries = fs.readdirSync(fullPath, { withFileTypes: true });
+            for (const sub of subEntries) {
+              if (!sub.isFile()) continue;
+              const subLower = sub.name.toLowerCase();
+              const subFilePath = path.join(fullPath, sub.name);
+
+              if (subLower.endsWith('.json')) {
+                const parsedList = parseAgentJsonFile(subFilePath, baseName);
+                for (const a of parsedList) {
+                  const id = a.id || baseName;
+                  if (!seenIds.has(id)) {
+                    seenIds.add(id);
+                    a.id = id;
+                    a._originConfig = path.relative(root, subFilePath) || path.basename(subFilePath);
+                    discoveredAgents.push(a);
+                  }
+                }
+              } else if (subLower.endsWith('.yaml') || subLower.endsWith('.yml') || subLower.endsWith('.md')) {
+                try {
+                  const content = fs.readFileSync(subFilePath, 'utf8');
+                  const agentObj = parseFrontmatterAndMarkdown(content, baseName);
+                  if (agentObj && (agentObj.role || agentObj.skills.length > 0 || agentObj.delegation_targets.length > 0)) {
+                    const id = agentObj.id || baseName;
+                    if (!seenIds.has(id)) {
+                      seenIds.add(id);
+                      agentObj._originConfig = path.relative(root, subFilePath) || path.basename(subFilePath);
+                      discoveredAgents.push(agentObj);
+                    }
+                  }
+                } catch (e) {}
+              }
+            }
+          } catch (e) {}
+        }
+      }
+    } catch (err) {}
+  }
+
+  return discoveredAgents;
+}
+
 /**
  * Discovers and formats all configured agents dynamically from all found agents.json configs
- * (supports single config, explicit --config path, or merging multi-project/monorepo configs).
+ * or individual agent files defined in .agents/ or agents/ folders.
  */
 function discoverAgents(customProjectDir, explicitConfigPath) {
   const root = customProjectDir || getProjectRoot();
@@ -532,6 +843,7 @@ function discoverAgents(customProjectDir, explicitConfigPath) {
   const seenAgentIds = new Set();
   const configSummaries = [];
 
+  // 1. Discover agents from single/monorepo agents.json configs
   if (configPaths.length > 0) {
     for (const configPath of configPaths) {
       try {
@@ -568,6 +880,22 @@ function discoverAgents(customProjectDir, explicitConfigPath) {
       console.info(`✅ Merged ${rawAgents.length} total unique agents into Virtual Office.`);
       console.info(`=======================================================\n`);
     }
+  }
+
+  // 2. Discover agents from agents/ or .agents/ folders (individual .json, .yaml, .md, or subdirectories)
+  const folderAgents = discoverAgentsFromFolders(root);
+  let folderAddedCount = 0;
+  for (const agent of folderAgents) {
+    if (!agent || !agent.id) continue;
+    if (!seenAgentIds.has(agent.id)) {
+      seenAgentIds.add(agent.id);
+      rawAgents.push(agent);
+      folderAddedCount++;
+    }
+  }
+
+  if (folderAddedCount > 0) {
+    console.info(`[AgentDiscovery] Discovered ${folderAddedCount} agents from agents folder(s).`);
   }
 
   if (rawAgents.length === 0) {
@@ -641,6 +969,8 @@ function discoverAgents(customProjectDir, explicitConfigPath) {
 
 module.exports = {
   discoverAgents,
+  discoverAgentsFromFolders,
+  parseFrontmatterAndMarkdown,
   readSkillMetadata,
   findAgentsConfigFile,
   findAllAgentsConfigFiles,
