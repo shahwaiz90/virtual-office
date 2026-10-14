@@ -125,7 +125,7 @@ function setupWatchers() {
   console.log(`[Watchers] Target Project Root: ${PROJECT_ROOT}`);
 
   // 1. Universal Workspace Watcher
-  setupWorkspaceWatcher();
+  const workspaceWatcher = setupWorkspaceWatcher();
 
   // 2. Git Activity Watcher
   setupGitWatcher();
@@ -138,6 +138,8 @@ function setupWatchers() {
 
   // 5. Transcript Tailer
   setupTranscriptTailer();
+
+  return { workspaceWatcher };
 }
 
 /**
@@ -183,8 +185,10 @@ function setupWorkspaceWatcher() {
     workspaceWatcher.on('add', (filePath) => scheduleWorkspaceChange(filePath, 'created'));
     workspaceWatcher.on('change', (filePath) => scheduleWorkspaceChange(filePath, 'modified'));
     console.log(`[Watchers] Workspace file monitor active on ${PROJECT_ROOT}`);
+    return workspaceWatcher;
   } catch (err) {
     console.warn('[Watchers] Workspace watcher initialization failed:', err.message);
+    return null;
   }
 }
 
@@ -291,10 +295,16 @@ function handleWorkspaceFileChange(filePath, action) {
     phase = 'Architecture & Planning';
   }
 
+  const fileHash = Buffer.from(relPath).toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 6).toUpperCase() || 'FILE1';
+  const taskId = `TASK-${fileHash}`;
+  const key = isTest ? `TEST-${fileHash.substring(0, 3)}` : `CODE-${fileHash.substring(0, 3)}`;
+
   eventBus.emitEvent({
     agentId: assignedAgent.id,
     type: eventType,
     payload: {
+      taskId,
+      key,
       task: taskTitle,
       tool,
       file: relPath,

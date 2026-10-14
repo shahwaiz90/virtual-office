@@ -715,6 +715,7 @@ class EventBus extends EventEmitter {
     this.latestMilestone = '⚠️ SIMULATION DEMO STARTED: Ingesting FEATURE-101.';
     this.latestMilestoneAgentId = 'project-manager';
     this.initAgents();
+    this.tasks = new Map();
     this.loadDemoTasks();
     this.toolUsageMap = new Map();
     this.initDefaultToolAnalytics();
