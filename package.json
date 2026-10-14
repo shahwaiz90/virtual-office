@@ -37,6 +37,14 @@
   ],
   "author": "Syed Ahmad Shahwaiz",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shahwaiz90/virtual-office.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shahwaiz90/virtual-office/issues"
+  },
+  "homepage": "https://github.com/shahwaiz90/virtual-office#readme",
   "engines": {
     "node": ">=18.0.0"
   },
