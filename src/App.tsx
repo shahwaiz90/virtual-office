@@ -145,11 +145,12 @@ export const App: React.FC = () => {
           <KanbanBoard tasks={tasks} agents={agents} />
         </section>
 
-        {/* Comprehensive Analytics Section: Tools, Skills, and Role Invocations */}
+        {/* Comprehensive Analytics Section: Tools, Skills, Roles, and File Changes */}
         <ToolAnalyticsSection
           toolStats={state?.toolUsageAnalytics || []}
           skillStats={state?.skillUsageAnalytics || []}
           roleStats={state?.roleInvocationAnalytics || []}
+          fileChanges={state?.fileChanges || []}
           agents={agents}
         />
 

@@ -154,6 +154,22 @@ export interface RoleInvocationStat {
   status: string;
 }
 
+export interface FileChangeRecord {
+  id: string;
+  filePath: string;
+  fileName: string;
+  action: 'created' | 'modified' | 'refactored';
+  agentId: string;
+  agentName: string;
+  agentRole: string;
+  timestamp: string;
+  summary?: string;
+  instruction?: string;
+  contentPreview?: string;
+  previousContent?: string;
+  linesAdded?: number;
+}
+
 export interface OfficeState {
   workflow: {
     id: string;
@@ -178,6 +194,7 @@ export interface OfficeState {
   toolUsageAnalytics?: ToolUsageStat[];
   skillUsageAnalytics?: SkillUsageStat[];
   roleInvocationAnalytics?: RoleInvocationStat[];
+  fileChanges?: FileChangeRecord[];
   activeHandoff: ActiveHandoff | null;
   connectedViewers: number;
 }

@@ -31,7 +31,9 @@ class EventBus extends EventEmitter {
     this.toolUsageMap = new Map();
     this.skillUsageMap = new Map();
     this.roleInvocationMap = new Map();
+    this.fileChanges = [];
     this.initStandbyRoleAnalytics();
+    this.initDefaultFileChanges();
   }
 
   initAgents() {
@@ -381,6 +383,208 @@ class EventBus extends EventEmitter {
     this.roleInvocationMap.set(agentId, existing);
   }
 
+  initDefaultFileChanges() {
+    this.fileChanges = [];
+    const agentList = Array.from(this.agents.values());
+    const findAgent = (q, fallbackIdx) => {
+      const match = agentList.find(
+        (a) =>
+          (a.id && a.id.toLowerCase().includes(q)) ||
+          (a.role && a.role.toLowerCase().includes(q))
+      );
+      return match || agentList[fallbackIdx % (agentList.length || 1)] || { id: 'developer', name: 'Developer', role: 'Software Engineer' };
+    };
+
+    const dev = findAgent('dev', 2);
+    const lead = findAgent('lead', 1);
+    const tester = findAgent('test', 3);
+
+    const now = Date.now();
+    const records = [
+      {
+        id: 'fc-1',
+        filePath: 'app/src/main/java/com/stc/business/ui/screens/CompanyProfileScreen.kt',
+        fileName: 'CompanyProfileScreen.kt',
+        action: 'modified',
+        agentId: dev.id,
+        agentName: dev.name,
+        agentRole: dev.role,
+        timestamp: new Date(now - 120000).toISOString(),
+        summary: 'Added reactive company data state binding and walkthrough overlay anchor point',
+        instruction: 'Bind ViewModel StateFlow to Compose UI and inject WalkthroughTooltip anchor',
+        linesAdded: 38,
+        contentPreview: `@Composable
+fun CompanyProfileScreen(
+    viewModel: CompanyProfileViewModel = hiltViewModel(),
+    onNavigateBack: () -> Unit
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val scaffoldState = rememberScaffoldState()
+
+    Scaffold(
+        scaffoldState = scaffoldState,
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.company_profile_title)) },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            when (val state = uiState) {
+                is CompanyUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
+                is CompanyUiState.Success -> {
+                    CompanyContent(
+                        company = state.company,
+                        modifier = Modifier.walkthroughAnchor("company_card_step")
+                    )
+                }
+                is CompanyUiState.Error -> ErrorBanner(message = state.message)
+            }
+        }
+    }
+}`,
+      },
+      {
+        id: 'fc-2',
+        filePath: 'app/src/main/java/com/stc/business/ui/components/WalkThroughOverlay.kt',
+        fileName: 'WalkThroughOverlay.kt',
+        action: 'created',
+        agentId: dev.id,
+        agentName: dev.name,
+        agentRole: dev.role,
+        timestamp: new Date(now - 240000).toISOString(),
+        summary: 'Created full-screen walkthrough spotlight mask with smooth alpha transitions',
+        instruction: 'Implement WalkThroughOverlay with canvas clip path and pulse animation',
+        linesAdded: 45,
+        contentPreview: `@Composable
+fun WalkThroughOverlay(
+    activeStep: WalkThroughStep?,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (activeStep == null) return
+
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseScale"
+    )
+
+    Canvas(modifier = modifier.fillMaxSize().clickable { onDismiss() }) {
+        val targetRect = activeStep.bounds ?: return@Canvas
+        drawRect(color = Color.Black.copy(alpha = 0.65f))
+        drawCircle(
+            color = Color.Transparent,
+            radius = (targetRect.maxDimension / 2f + 16.dp.toPx()) * pulseScale,
+            center = targetRect.center,
+            blendMode = BlendMode.Clear
+        )
+    }
+}`,
+      },
+      {
+        id: 'fc-3',
+        filePath: 'app/src/test/java/com/stc/business/ui/screens/CompanyProfileViewModelTest.kt',
+        fileName: 'CompanyProfileViewModelTest.kt',
+        action: 'created',
+        agentId: tester.id,
+        agentName: tester.name,
+        agentRole: tester.role,
+        timestamp: new Date(now - 360000).toISOString(),
+        summary: 'Authored AAA unit tests for ViewModel StateFlow emission and error recovery',
+        instruction: 'Add unit tests ensuring CompanyUiState emits Success and handles network exceptions',
+        linesAdded: 32,
+        contentPreview: `@OptIn(ExperimentalCoroutinesApi::class)
+class CompanyProfileViewModelTest {
+    @get:Rule val mainDispatcherRule = MainDispatcherRule()
+    private val repository = mockk<CompanyRepository>()
+
+    @Test
+    fun \`when repository succeeds uiState emits Success with company data\`() = runTest {
+        val fakeCompany = Company(id = "comp_99", name = "STC Business Solutions")
+        coEvery { repository.fetchCompanyDetails("comp_99") } returns Result.success(fakeCompany)
+
+        val viewModel = CompanyProfileViewModel(repository)
+        viewModel.loadCompany("comp_99")
+
+        viewModel.uiState.test {
+            assertEquals(CompanyUiState.Loading, awaitItem())
+            val success = awaitItem() as CompanyUiState.Success
+            assertEquals("STC Business Solutions", success.company.name)
+        }
+    }
+}`,
+      },
+      {
+        id: 'fc-4',
+        filePath: 'docs/architecture/walkthrough-component-spec.md',
+        fileName: 'walkthrough-component-spec.md',
+        action: 'modified',
+        agentId: lead.id,
+        agentName: lead.name,
+        agentRole: lead.role,
+        timestamp: new Date(now - 480000).toISOString(),
+        summary: 'Pre-mapped UI anchor coordinates, boundary contracts, and unit test specifications',
+        instruction: 'Define interface contract for WalkThroughCoordinator and state machine',
+        linesAdded: 25,
+        contentPreview: `### Walkthrough Component Architecture Specification
+- **Coordinator**: \`WalkThroughCoordinator\` observes global user progression.
+- **State Machine**: Unidirectional flow: \`Idle\` -> \`Active(step)\` -> \`Transitioning\` -> \`Completed\`.
+- **Spotlight Bounds**: Screen-relative \`Rect\` measured via \`onGloballyPositioned\` modifier.
+- **Testing Contract**: 100% coverage on state transitions and back-press dismissal.`,
+      },
+    ];
+
+    for (const rec of records) {
+      this.recordFileChange(rec);
+    }
+  }
+
+  recordFileChange(change) {
+    if (!change || !change.filePath) return;
+    const fName = change.fileName || path.basename(change.filePath);
+    const content = change.contentPreview || change.codeContent || change.replacementContent || '';
+    const record = {
+      id: change.id || `fc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      filePath: change.filePath,
+      fileName: fName,
+      action: change.action || 'modified',
+      agentId: change.agentId || 'developer',
+      agentName: change.agentName || 'Developer',
+      agentRole: change.agentRole || 'Developer',
+      timestamp: change.timestamp || new Date().toISOString(),
+      summary: change.summary || change.details || `Updated ${fName}`,
+      instruction: change.instruction || '',
+      contentPreview: content,
+      previousContent: change.previousContent || change.targetContent || '',
+      linesAdded: change.linesAdded || (content ? content.split('\n').length : 1),
+    };
+
+    // Avoid duplicate rapid recordings of the exact same content within the file
+    const existingIdx = this.fileChanges.findIndex(
+      (f) => f.filePath === record.filePath && f.contentPreview === record.contentPreview
+    );
+    if (existingIdx !== -1) {
+      this.fileChanges[existingIdx] = record;
+    } else {
+      this.fileChanges.unshift(record);
+      if (this.fileChanges.length > 200) {
+        this.fileChanges.pop();
+      }
+    }
+    return record;
+  }
+
   registerWsClient(ws) {
     this.wsClients.add(ws);
     // Send initial snapshot on connection
@@ -631,7 +835,26 @@ class EventBus extends EventEmitter {
       agent.updatedAt = new Date().toISOString();
     }
 
-    // 5. Update or auto-create Kanban tasks
+    // 5. Universal File Change Recording (captures both recognized agents and dynamic subagents)
+    if (type === 'file_modified' && payload && payload.file) {
+      const fName = payload.fileName || path.basename(payload.file);
+      this.recordFileChange({
+        filePath: payload.file,
+        fileName: fName,
+        action: payload.action || (payload.tool === 'write_to_file' ? 'created' : 'modified'),
+        agentId,
+        agentName: agent ? agent.name : (agentId || 'Developer'),
+        agentRole: agent ? agent.role : 'Developer',
+        timestamp: event.timestamp || new Date().toISOString(),
+        summary: payload.details || payload.instruction || `Updated ${fName}`,
+        instruction: payload.instruction || '',
+        contentPreview: payload.contentPreview || payload.codeContent || payload.replacementContent || '',
+        previousContent: payload.previousContent || payload.targetContent || '',
+        linesAdded: payload.linesAdded || (payload.contentPreview ? payload.contentPreview.split('\n').length : undefined),
+      });
+    }
+
+    // 6. Update or auto-create Kanban tasks
     if (payload.taskId) {
       if (!this.tasks.has(payload.taskId)) {
         this.tasks.set(payload.taskId, {
@@ -742,6 +965,7 @@ class EventBus extends EventEmitter {
       toolUsageAnalytics: Array.from(this.toolUsageMap.values()).sort((a, b) => b.totalDurationSec - a.totalDurationSec),
       skillUsageAnalytics: Array.from(this.skillUsageMap.values()).sort((a, b) => b.count - a.count),
       roleInvocationAnalytics: Array.from(this.roleInvocationMap.values()).sort((a, b) => b.invocations - a.invocations),
+      fileChanges: this.fileChanges,
       activeHandoff: this.activeHandoff,
       connectedViewers: this.wsClients.size,
     };
@@ -762,6 +986,7 @@ class EventBus extends EventEmitter {
     this.initDefaultSkillAnalytics();
     this.roleInvocationMap = new Map();
     this.initDefaultRoleAnalytics();
+    this.initDefaultFileChanges();
     this.activeHandoff = null;
     this.broadcast({
       type: 'SYNC_STATE',
@@ -778,6 +1003,7 @@ class EventBus extends EventEmitter {
     this.tasks = new Map();
     this.toolUsageMap = new Map();
     this.skillUsageMap = new Map();
+    this.fileChanges = [];
     this.activeHandoff = null;
     this.workflowStartTime = Date.now();
     this.currentPhase = 'Standby & Listening';

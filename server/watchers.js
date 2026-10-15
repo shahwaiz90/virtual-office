@@ -569,6 +569,15 @@ function handleWorkspaceFileChange(filePath, action) {
 
   const activeTask = eventBus.tasks.get(taskId);
 
+  let contentPreview = '';
+  try {
+    if (fs.existsSync(filePath) && fs.statSync(filePath).size < 300000) {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const lines = raw.split('\n');
+      contentPreview = lines.slice(0, 60).join('\n');
+    }
+  } catch (e) {}
+
   eventBus.emitEvent({
     agentId: assignedAgent.id,
     type: 'file_modified',
@@ -578,6 +587,10 @@ function handleWorkspaceFileChange(filePath, action) {
       task: activeTask ? activeTask.title : 'Core Feature Implementation & Refactoring',
       tool: action === 'created' ? 'write_to_file' : 'replace_file_content',
       file: relPath,
+      fileName,
+      action,
+      contentPreview,
+      linesAdded: contentPreview ? contentPreview.split('\n').length : undefined,
       details: `${assignedAgent.name} ${action} ${relPath}`,
       column,
       progress,
@@ -1264,6 +1277,13 @@ function parseTranscriptStep(step, convId = '') {
         continue; // Strictly ignore files from other projects
       }
       const fileName = path.basename(targetFile) || targetFile || 'codebase';
+      const codeContent = cleanStringVal(args.CodeContent || args.code_content || '');
+      const replacementContent = cleanStringVal(args.ReplacementContent || args.replacement_content || '');
+      const targetContent = cleanStringVal(args.TargetContent || args.target_content || '');
+      const instruction = cleanStringVal(args.Instruction || args.Description || args.instruction || args.description || '');
+
+      const contentPreview = codeContent || replacementContent || '';
+      const action = name === 'write_to_file' ? (args.Overwrite ? 'modified' : 'created') : 'modified';
 
       ensureRoleDeliverables();
       const archTask = eventBus.tasks.get('DELIV-1');
@@ -1287,8 +1307,14 @@ function parseTranscriptStep(step, convId = '') {
           task: devTask ? devTask.title : 'Core Feature Implementation & Refactoring',
           tool: name,
           file: targetFile,
+          fileName,
+          action,
+          contentPreview,
+          previousContent: targetContent,
+          instruction,
+          linesAdded: contentPreview ? contentPreview.split('\n').length : undefined,
           column: 'in_progress',
-          details: `${name === 'write_to_file' ? 'Created' : 'Edited'} ${fileName}`,
+          details: `${action === 'created' ? 'Created' : 'Edited'} ${fileName}: ${instruction || 'Updated file content'}`,
           phase: 'Implementation',
         },
       });
