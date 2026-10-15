@@ -862,11 +862,11 @@ class CompanyProfileViewModelTest {
           key: payload.key || 'TASK-1',
           title: payload.task || 'Active Task',
           description: payload.details || 'Task executing in workspace',
-          assignedTo: agentId,
-          delegatedBy: 'orchestrator',
-          delegatedByRole: 'AI Agent',
+          assignedTo: payload.assignedTo || agentId,
+          delegatedBy: payload.delegatedBy || 'orchestrator',
+          delegatedByRole: payload.delegatedByRole || 'AI Agent',
           column: payload.column || 'in_progress',
-          skill: payload.tool || 'coding',
+          skill: payload.allowedSkill || payload.skill || payload.tool || 'coding',
           progress: payload.progress || 25,
           updatedAt: new Date().toISOString(),
         });
@@ -896,7 +896,11 @@ class CompanyProfileViewModelTest {
         }
         if (payload.progress !== undefined) task.progress = payload.progress;
         if (payload.assignedTo) task.assignedTo = payload.assignedTo;
+        if (payload.delegatedBy) task.delegatedBy = payload.delegatedBy;
+        if (payload.delegatedByRole) task.delegatedByRole = payload.delegatedByRole;
         if (payload.task) task.title = payload.task;
+        if (payload.details) task.description = payload.details;
+        if (payload.allowedSkill || payload.skill) task.skill = payload.allowedSkill || payload.skill;
         task.updatedAt = new Date().toISOString();
       }
     }

@@ -1220,15 +1220,30 @@ function parseTranscriptStep(step, convId = '') {
       const task = taskMatch ? taskMatch[1].trim() : 'Task Delegation';
       const skill = skillMatch ? skillMatch[1].trim() : 'Active Skill';
 
+      const agentList = Array.from(eventBus.agents.values());
+      const fromAg = agentList.find((a) => a.id.toLowerCase() === fromAgent.toLowerCase()) || { id: fromAgent, name: fromAgent, role: 'Agent' };
+      const toAg = agentList.find((a) => a.id.toLowerCase() === toAgent.toLowerCase()) || { id: toAgent, name: toAgent, role: 'Agent' };
+
+      const taskId = `TASK-HO-${Date.now().toString().slice(-4)}`;
+      const taskKey = `${toAg.badge || 'TASK'}-${Math.floor(Math.random() * 899 + 100)}`;
+
       eventBus.emitEvent({
         agentId: fromAgent,
         type: 'agent_handoff',
         payload: {
+          taskId,
+          key: taskKey,
           fromAgent,
           toAgent,
+          assignedTo: toAgent,
+          delegatedBy: fromAgent,
+          delegatedByRole: fromAg.role || fromAg.name,
           task,
           allowedSkill: skill,
-          details: `Handoff from ${fromAgent} to ${toAgent}: ${task}`,
+          column: 'in_progress',
+          details: `Original task delegated from ${fromAg.name} to ${toAg.name}: ${task}`,
+          phase: 'In Progress',
+          milestone: `${fromAg.name} handed off "${task}" to ${toAg.name}`,
         },
       });
     }
@@ -1380,6 +1395,88 @@ function parseTranscriptStep(step, convId = '') {
           phase: 'Architecture & Research',
         },
       });
+    } else if (name === 'invoke_subagent') {
+      const subagents = Array.isArray(args.Subagents) ? args.Subagents : [args];
+      for (const sub of subagents) {
+        if (!sub) continue;
+        const prompt = cleanStringVal(sub.Prompt || sub.prompt || '');
+        const roleName = cleanStringVal(sub.Role || sub.role || sub.TypeName || sub.type || 'Subagent');
+        const typeName = cleanStringVal(sub.TypeName || sub.type || '');
+
+        // Resolve target agent from configured agents or dynamic mapping
+        const agentList = Array.from(eventBus.agents.values());
+        const targetAgent = agentList.find(
+          (a) =>
+            a.id.toLowerCase() === typeName.toLowerCase() ||
+            a.id.toLowerCase() === roleName.toLowerCase() ||
+            (a.role && a.role.toLowerCase().includes(roleName.toLowerCase())) ||
+            (a.name && a.name.toLowerCase().includes(roleName.toLowerCase()))
+        ) || devAgent;
+
+        const callerAgent = pmAgent;
+
+        // Extract a clean high-level task title from the first sentence of the prompt
+        let taskTitle = prompt.split('\n')[0].replace(/^[#\-*\d.]+\s*/, '').trim();
+        if (taskTitle.length > 65) {
+          taskTitle = taskTitle.slice(0, 62) + '...';
+        }
+        if (!taskTitle) {
+          taskTitle = `Delegate to ${targetAgent.name}: ${roleName}`;
+        }
+
+        const taskId = `TASK-SUB-${Date.now().toString().slice(-4)}`;
+        const taskKey = `${targetAgent.badge || 'SUB'}-${Math.floor(Math.random() * 899 + 100)}`;
+
+        eventBus.emitEvent({
+          agentId: callerAgent.id,
+          type: 'agent_handoff',
+          payload: {
+            taskId,
+            key: taskKey,
+            task: taskTitle,
+            details: prompt,
+            fromAgent: callerAgent.id,
+            toAgent: targetAgent.id,
+            assignedTo: targetAgent.id,
+            delegatedBy: callerAgent.id,
+            delegatedByRole: callerAgent.role || callerAgent.name,
+            column: 'in_progress',
+            allowedSkill: typeName || 'subagent-delegation',
+            phase: 'Delegation & Execution',
+            milestone: `${callerAgent.name} delegated "${taskTitle}" to ${targetAgent.name}`,
+          },
+        });
+      }
+    } else if (name === 'send_message') {
+      const recipient = cleanStringVal(args.Recipient || args.recipient || '');
+      const message = cleanStringVal(args.Message || args.message || '');
+      if (message) {
+        let taskTitle = message.split('\n')[0].replace(/^[#\-*\d.]+\s*/, '').trim();
+        if (taskTitle.length > 65) {
+          taskTitle = taskTitle.slice(0, 62) + '...';
+        }
+        const taskId = `TASK-MSG-${Date.now().toString().slice(-4)}`;
+
+        eventBus.emitEvent({
+          agentId: leadAgent.id,
+          type: 'agent_handoff',
+          payload: {
+            taskId,
+            key: 'TASK-MSG',
+            task: taskTitle,
+            details: message,
+            fromAgent: leadAgent.id,
+            toAgent: devAgent.id,
+            assignedTo: devAgent.id,
+            delegatedBy: leadAgent.id,
+            delegatedByRole: leadAgent.role || leadAgent.name,
+            column: 'in_progress',
+            allowedSkill: 'agent-messaging',
+            phase: 'Delegation & Communication',
+            milestone: `Task instruction dispatched: "${taskTitle}"`,
+          },
+        });
+      }
     } else if (name) {
       eventBus.emitEvent({
         agentId: devAgent.id,
