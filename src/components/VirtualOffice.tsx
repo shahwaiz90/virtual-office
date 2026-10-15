@@ -6,6 +6,7 @@ interface VirtualOfficeProps {
   activeHandoff: ActiveHandoff | null;
   selectedAgentId: string | null;
   onSelectAgent: (agent: Agent) => void;
+  onCanvasReady?: (canvas: HTMLCanvasElement) => void;
 }
 
 interface RoomWorkingState {
@@ -51,11 +52,18 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   activeHandoff,
   selectedAgentId,
   onSelectAgent,
+  onCanvasReady,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
   const [, setImagesLoadedVersion] = useState<number>(0);
   const crispAvatarsRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+
+  useEffect(() => {
+    if (canvasRef.current && onCanvasReady) {
+      onCanvasReady(canvasRef.current);
+    }
+  }, [onCanvasReady]);
 
   // Logical coordinate space for high-DPI canvas (Dynamically scales to fit 1 to 12+ agents)
   const LOGICAL_WIDTH = 1200;

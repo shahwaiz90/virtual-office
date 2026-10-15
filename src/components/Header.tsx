@@ -8,9 +8,17 @@ interface HeaderProps {
   isDemo: boolean;
   onToggleDemo: () => void;
   onClearState?: () => void;
+  recorderSlot?: React.ReactNode;
 }
 
-export const Header: React.FC<HeaderProps> = ({ state, connected, isDemo, onToggleDemo, onClearState }) => {
+export const Header: React.FC<HeaderProps> = ({
+  state,
+  connected,
+  isDemo,
+  onToggleDemo,
+  onClearState,
+  recorderSlot,
+}) => {
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -106,6 +114,8 @@ export const Header: React.FC<HeaderProps> = ({ state, connected, isDemo, onTogg
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2.5">
+          {recorderSlot}
+
           {onClearState && (
             <button
               onClick={onClearState}

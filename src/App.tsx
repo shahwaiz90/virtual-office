@@ -6,6 +6,7 @@ import { KanbanBoard } from './components/KanbanBoard';
 import { LiveLogs } from './components/LiveLogs';
 import { AgentDrawer } from './components/AgentDrawer';
 import { ToolAnalyticsSection } from './components/ToolAnalyticsSection';
+import { WorkflowRecorder } from './components/WorkflowRecorder';
 
 export const App: React.FC = () => {
   const [state, setState] = useState<OfficeState | null>(null);
@@ -13,6 +14,7 @@ export const App: React.FC = () => {
   const [connected, setConnected] = useState<boolean>(false);
   const [isDemo, setIsDemo] = useState<boolean>(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<any>(null);
@@ -126,6 +128,7 @@ export const App: React.FC = () => {
         isDemo={isDemo}
         onToggleDemo={handleToggleDemo}
         onClearState={handleClearState}
+        recorderSlot={<WorkflowRecorder canvasElement={canvasElement} />}
       />
 
       {/* Main Workplace Dashboard */}
@@ -137,6 +140,7 @@ export const App: React.FC = () => {
             activeHandoff={activeHandoff}
             selectedAgentId={selectedAgent?.id || null}
             onSelectAgent={(agent) => setSelectedAgent(agent)}
+            onCanvasReady={(canvas) => setCanvasElement(canvas)}
           />
         </section>
 
