@@ -397,7 +397,9 @@ End of instructions.
   const validateJsonOut = execSync(`node "${CLI_PATH}" validate --json`, { encoding: 'utf8', cwd: PROJECT_ROOT });
   const validateJson = JSON.parse(validateJsonOut);
   assertStrictEqualTest(validateJson.valid, true, 'CLI validate --json output parsed valid: true');
-  assertStrictEqualTest(validateJson.stats.agentsCount, 4, 'CLI validate --json stats 4 agents');
+  const canonicalRegistry = loadRegistry(PROJECT_ROOT);
+  const expectedTeamCount = canonicalRegistry.agents.length;
+  assertStrictEqualTest(validateJson.stats.agentsCount, expectedTeamCount, `CLI validate --json stats ${expectedTeamCount} agents`);
 
   // 3.4 node bin/agents.js sync --dry-run
   const syncDryRunOut = execSync(`node "${CLI_PATH}" sync --dry-run`, { encoding: 'utf8', cwd: PROJECT_ROOT });
@@ -421,14 +423,14 @@ End of instructions.
   const listJsonOut = execSync(`node "${CLI_PATH}" list --json`, { encoding: 'utf8', cwd: PROJECT_ROOT });
   const listJson = JSON.parse(listJsonOut);
   assertTest(Array.isArray(listJson), 'CLI list --json returns array');
-  assertStrictEqualTest(listJson.length, 4, 'CLI list --json returns 4 agents');
+  assertStrictEqualTest(listJson.length, expectedTeamCount, `CLI list --json returns ${expectedTeamCount} agents`);
+  const expectedTeamIds = canonicalRegistry.agents.map((a) => a.id);
   const listedIds = listJson.map((a) => a.id);
-  assertDeepStrictEqualTest(listedIds, ['tech-pm', 'android-tech-lead', 'android-dev', 'android-tester'], 'Agent list matches canonical IDs');
+  assertDeepStrictEqualTest(listedIds, expectedTeamIds, 'Agent list matches canonical IDs');
 
   // 3.8 node bin/agents.js skills
   const skillsOut = execSync(`node "${CLI_PATH}" skills`, { encoding: 'utf8', cwd: PROJECT_ROOT });
   assertTest(skillsOut.includes('task-decomposition'), 'CLI skills output contains task-decomposition');
-  assertTest(skillsOut.includes('android-testing'), 'CLI skills output contains android-testing');
   assertTest(/Total skills inspected: \d+/.test(skillsOut), 'CLI skills inspected all skills');
 
   // 3.9 node bin/agents.js skills --json
@@ -472,7 +474,6 @@ End of instructions.
   console.log('▶ Suite 4: Multi-Provider Artifact Content & Structural Integrity...');
 
   // Ensure fresh sync of all frameworks
-  const canonicalRegistry = loadRegistry(PROJECT_ROOT);
   await syncAll(canonicalRegistry, PROJECT_ROOT, { framework: 'all' });
 
   // 4.1 OpenCode: AGENTS.md
@@ -484,9 +485,9 @@ End of instructions.
   assertTest(agentsMd.includes('tech-pm["👑 Scrum Master'), 'AGENTS.md Mermaid diagram includes primary orchestrator');
   assertTest(agentsMd.includes('| Agent ID | Hierarchy | Name | Role | Allowed Tools | Delegation Targets | Subagent Tools |'), 'AGENTS.md contains Active Team Roster table');
   assertTest(agentsMd.includes('**`tech-pm`**'), 'AGENTS.md roster includes tech-pm');
-  assertTest(agentsMd.includes('**`android-tech-lead`**'), 'AGENTS.md roster includes android-tech-lead');
-  assertTest(agentsMd.includes('**`android-dev`**'), 'AGENTS.md roster includes android-dev');
-  assertTest(agentsMd.includes('**`android-tester`**'), 'AGENTS.md roster includes android-tester');
+  expectedTeamIds.slice(1).forEach((id) => {
+    assertTest(agentsMd.includes(`**\`${id}\`**`), `AGENTS.md roster includes ${id}`);
+  });
   assertTest(agentsMd.includes('## Antigravity Subagent Registration Guide'), 'AGENTS.md includes Antigravity registration guide');
 
   // 4.2 OpenCode: .agents/rules/team-orchestration.md
@@ -504,9 +505,9 @@ End of instructions.
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   assertTest(typeof manifest.registeredAt === 'string', 'Runtime manifest has registeredAt timestamp');
   assertStrictEqualTest(manifest.orchestratorAgentId, 'tech-pm', 'Runtime manifest orchestratorAgentId');
-  assertStrictEqualTest(manifest.totalAgents, 4, 'Runtime manifest totalAgents is 4');
+  assertStrictEqualTest(manifest.totalAgents, expectedTeamCount, `Runtime manifest totalAgents is ${expectedTeamCount}`);
   assertTest(Array.isArray(manifest.agents), 'Runtime manifest agents is an array');
-  assertStrictEqualTest(manifest.agents.length, 4, 'Runtime manifest defines 4 compiled agents');
+  assertStrictEqualTest(manifest.agents.length, expectedTeamCount, `Runtime manifest defines ${expectedTeamCount} compiled agents`);
   manifest.agents.forEach((ag) => {
     assertTest(typeof ag.id === 'string' && ag.id.length > 0, `Manifest agent ${ag.id} has ID`);
     assertTest(typeof ag.name === 'string' && ag.name.length > 0, `Manifest agent ${ag.id} has Name`);
@@ -520,7 +521,7 @@ End of instructions.
   assertTest(fs.existsSync(legacyJsonPath), '.agents/agents.json must exist');
   const legacyJson = JSON.parse(fs.readFileSync(legacyJsonPath, 'utf8'));
   assertStrictEqualTest(legacyJson.version, '1.0.0', 'Legacy agents.json version');
-  assertStrictEqualTest(legacyJson.agents.length, 4, 'Legacy agents.json contains 4 agents');
+  assertStrictEqualTest(legacyJson.agents.length, expectedTeamCount, `Legacy agents.json contains ${expectedTeamCount} agents`);
   const legacyPm = legacyJson.agents.find((a) => a.id === 'tech-pm');
   assertStrictEqualTest(legacyPm.id, 'tech-pm', 'Legacy pm has id tech-pm');
   assertTest(legacyPm.enable_subagent_tools === true, 'Legacy pm enable_subagent_tools true');
@@ -542,7 +543,7 @@ End of instructions.
   assertStrictEqualTest(claudeConfig.version, '2.0.0', 'Claude config version');
   assertStrictEqualTest(claudeConfig.orchestrator, 'tech-pm', 'Claude config orchestrator');
   assertTest(claudeConfig.team && Array.isArray(claudeConfig.team.agents), 'Claude config team.agents array');
-  assertStrictEqualTest(claudeConfig.team.agents.length, 4, 'Claude config covers all 4 agents');
+  assertStrictEqualTest(claudeConfig.team.agents.length, expectedTeamCount, `Claude config covers all ${expectedTeamCount} agents`);
   const claudePm = claudeConfig.team.agents.find((a) => a.id === 'tech-pm');
   assertStrictEqualTest(claudePm.primary, true, 'Claude config marks tech-pm primary');
   assertTest(claudeConfig.preferences.strictOrchestratorRouting === true, 'Claude config strictOrchestratorRouting');
@@ -553,14 +554,13 @@ End of instructions.
   const codexInstr = fs.readFileSync(codexInstrPath, 'utf8');
   assertTest(codexInstr.includes('Primary Orchestrator: `tech-pm`'), 'Codex instructions identifies primary orchestrator');
   assertTest(codexInstr.includes('## Agent Roster & Guardrails'), 'Codex instructions agent roster');
-  assertTest(codexInstr.includes('🚫 No modifying production code'), 'Codex instructions preserves prohibited actions');
+  assertTest(codexInstr.includes('🚫 No direct application code modifications'), 'Codex instructions preserves prohibited actions');
 
   const codexPromptsPath = path.join(PROJECT_ROOT, '.codex', 'system-prompts.md');
   assertTest(fs.existsSync(codexPromptsPath), '.codex/system-prompts.md must exist');
   const codexPrompts = fs.readFileSync(codexPromptsPath, 'utf8');
   assertTest(codexPrompts.includes('# OpenAI Codex System Prompts & Tool Specifications'), 'Codex system prompts header');
-  assertTest(codexPrompts.includes("## Agent Prompt: `tech-pm`"), 'Codex system prompt for tech-pm');
-  assertTest(codexPrompts.includes("## Agent Prompt: `android-tester`"), 'Codex system prompt for android-tester');
+  assertTest(codexPrompts.includes(`## Agent Prompt: \`${expectedTeamIds[expectedTeamIds.length - 1]}\``), `Codex system prompt for ${expectedTeamIds[expectedTeamIds.length - 1]}`);
 
   // 4.7 Gemini CLI: GEMINI.md
   const geminiMdPath = path.join(PROJECT_ROOT, 'GEMINI.md');

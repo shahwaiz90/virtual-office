@@ -1,0 +1,21 @@
+{
+  "sprintId": "sprint-3",
+  "version": "1.0.0",
+  "updatedAt": "2026-10-16T19:32:05.873Z",
+  "tasks": [
+    {
+      "id": "TASK-CC-686521725",
+      "key": "CC-686521725",
+      "title": "can you update the design system of the portal?",
+      "description": "can you update the design system of the portal?",
+      "assignedTo": "web-dev",
+      "delegatedBy": "tech-pm",
+      "delegatedByRole": "Tech Scrum Master",
+      "column": "done",
+      "skill": "task-decomposition",
+      "progress": 100,
+      "createdAt": "2026-10-16T19:26:20.411Z",
+      "updatedAt": "2026-10-16T19:32:05.872Z"
+    }
+  ]
+}

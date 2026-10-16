@@ -7,12 +7,10 @@ agents:
   - id: tech-pm
     path: definitions/tech-pm.md
     primary: true
-  - id: android-tech-lead
-    path: definitions/android-tech-lead.md
-  - id: android-dev
-    path: definitions/android-dev.md
-  - id: android-tester
-    path: definitions/android-tester.md
+  - id: web-tech-lead
+    path: definitions/web-tech-lead.md
+  - id: web-dev
+    path: definitions/web-dev.md
 skills_dir: skills
 adapters:
   opencode:

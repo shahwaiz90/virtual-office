@@ -27,7 +27,7 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
     failedTasks: 0,
     totalTasks: tasks.length,
   };
-  const workflowTitle = state?.workflow?.title || 'Virtual Office Workspace';
+  const workflowTitle = state?.workflow?.title || 'Agent Command Center Workspace';
   const workflowPhase = state?.workflow?.phase || 'Standby';
 
   // Helper to resolve specific role-based agents from the active configured team
@@ -204,7 +204,7 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
       const task = agent.currentTask || (agent.status === 'working' ? 'Executing deliverable' : 'Standing by at workstation');
       const tool = agent.lastTool || 'none';
       const badge = agent.theme?.badge || agent.badgeText || 'AGT';
-      const skills = (agent.skillIds || agent.skills || []).map((s) => (typeof s === 'string' ? s : s.name)).join(', ');
+      const skills = (agent.skillIds || (agent.skills as any[]) || []).map((s: any) => (typeof s === 'string' ? s : s?.name || s?.id || '')).join(', ');
 
       return {
         spokenText: `${agent.name} is currently ${agent.status}. Role: ${agent.role}. Current task: ${task}.`,

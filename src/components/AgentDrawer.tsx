@@ -71,7 +71,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
       const fromRole = fromAgent?.role || t.delegatedByRole || 'Delivery Lead';
       const fromBadge = fromAgent?.badgeText || fromAgent?.theme?.badge || (fromName.toLowerCase().includes('pm') ? 'PM' : 'LEAD');
       const fromAvatar = fromAgent?.avatarUrl;
-      const fromColor = fromAgent?.theme?.themeColor || '#6366f1';
+      const fromColor = fromAgent?.theme?.themeColor || '#0f766b';
 
       tasksReceived.push({
         id: t.id,
@@ -114,7 +114,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
           const fromRole = p.handoffFromRole || fromAgent?.role || p.delegatedByRole || 'Agent';
           const fromBadge = p.fromBadge || fromAgent?.badgeText || fromAgent?.theme?.badge || 'AGT';
           const fromAvatar = fromAgent?.avatarUrl;
-          const fromColor = fromAgent?.theme?.themeColor || '#6366f1';
+          const fromColor = fromAgent?.theme?.themeColor || '#0f766b';
           const taskTitle = p.taskTitle || p.task || p.details || 'Delegated Task Story';
           const taskKey = p.key || p.taskId || `HO-${evt.eventId.slice(-4)}`;
 
@@ -171,7 +171,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
         toAgentRole: toAgent?.role || 'Team Specialist',
         toBadge: toAgent?.badgeText || toAgent?.theme?.badge || 'AGT',
         toAvatar: toAgent?.avatarUrl,
-        toColor: toAgent?.theme?.themeColor || '#6366f1',
+        toColor: toAgent?.theme?.themeColor || '#0f766b',
         column: t.column,
         progress: t.progress ?? 0,
         skill: t.skill,
@@ -185,18 +185,18 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
       {/* Mobile backdrop overlay */}
       <div
         onClick={onClose}
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 transition-opacity"
+        className="fixed inset-0 bg-scrim/40 backdrop-blur-xs z-40 transition-opacity"
         aria-hidden="true"
       />
-      <div className="fixed inset-y-0 right-0 w-full sm:w-[480px] bg-white/95 border-l border-slate-200 shadow-2xl backdrop-blur-xl z-50 flex flex-col transform transition-transform duration-300">
+      <div className="fixed inset-y-0 right-0 w-full sm:w-[480px] bg-surface/95 border-l border-sand-200 shadow-2xl backdrop-blur-xl z-50 flex flex-col transform transition-transform duration-300">
       {/* Header */}
-      <div className="p-5 border-b border-slate-200 flex items-start justify-between">
+      <div className="p-5 border-b border-sand-200 flex items-start justify-between">
         <div className="flex items-center gap-3">
           {agent.avatarUrl ? (
             <img
               src={agent.avatarUrl}
               alt={agent.name}
-              className="w-11 h-11 rounded-xl object-cover shadow-xs border-2 bg-slate-50 shrink-0"
+              className="w-11 h-11 rounded-xl object-cover shadow-xs border-2 bg-sand-50 shrink-0"
               style={{ borderColor: agent.theme.themeColor }}
             />
           ) : (
@@ -212,18 +212,18 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
             </div>
           )}
           <div>
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">{agent.name}</h2>
-            <p className="text-xs text-slate-500">{agent.role}</p>
+            <h2 className="text-base font-bold text-sand-900 tracking-tight">{agent.name}</h2>
+            <p className="text-xs text-sand-500">{agent.role}</p>
             <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <span
                 className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border shadow-2xs"
                 style={{
                   backgroundColor:
-                    agent.status === 'working' ? '#ecfdf5' : agent.status === 'handoff' ? '#fffbeb' : '#f8fafc',
+                    agent.status === 'working' ? 'rgb(var(--c-emerald-50))' : agent.status === 'handoff' ? 'rgb(var(--c-amber-50))' : 'rgb(var(--c-sand-50))',
                   color:
-                    agent.status === 'working' ? '#047857' : agent.status === 'handoff' ? '#b45309' : '#475569',
+                    agent.status === 'working' ? 'rgb(var(--c-emerald-700))' : agent.status === 'handoff' ? 'rgb(var(--c-amber-700))' : 'rgb(var(--c-sand-600))',
                   borderColor:
-                    agent.status === 'working' ? '#a7f3d0' : agent.status === 'handoff' ? '#fde68a' : '#e2e8f0',
+                    agent.status === 'working' ? 'rgb(var(--c-emerald-200))' : agent.status === 'handoff' ? 'rgb(var(--c-amber-200))' : 'rgb(var(--c-sand-200))',
                 }}
               >
                 <span className="relative flex h-2 w-2">
@@ -237,7 +237,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                     className="relative inline-flex rounded-full h-2 w-2"
                     style={{
                       backgroundColor:
-                        agent.status === 'working' ? '#10b981' : agent.status === 'handoff' ? '#f59e0b' : '#94a3b8',
+                        agent.status === 'working' ? '#10b981' : agent.status === 'handoff' ? '#f59e0b' : 'rgb(var(--c-sand-400))',
                     }}
                   />
                 </span>
@@ -246,7 +246,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                 </span>
               </span>
               {agent.lastTool && (
-                <span className="text-[10px] font-mono px-2 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200">
+                <span className="text-[10px] font-mono px-2 py-0.5 bg-sand-100 text-sand-700 rounded border border-sand-200">
                   tool: {agent.lastTool}
                 </span>
               )}
@@ -258,7 +258,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
           {onEditAgent && (
             <button
               onClick={() => onEditAgent(agent)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 font-bold text-xs shadow-2xs transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-700 font-bold text-xs shadow-2xs transition-all active:scale-95 cursor-pointer"
               title="Edit Role, Skills & Permissions"
             >
               <Pencil className="w-3.5 h-3.5" />
@@ -268,7 +268,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-sand-400 hover:text-sand-700 hover:bg-sand-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -278,22 +278,22 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
       {/* Body Content (Scrollable) */}
       <div className="flex-1 overflow-y-auto p-5 space-y-5 text-left text-xs">
         {/* Current Assignment Card */}
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
-          <h3 className="text-[11px] uppercase tracking-wider font-bold text-slate-500 flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-indigo-600" /> Current Work Assignment
+        <div className="bg-sand-50 border border-sand-200 rounded-xl p-3.5 space-y-2">
+          <h3 className="text-[11px] uppercase tracking-wider font-bold text-sand-500 flex items-center gap-1.5">
+            <Clock className="w-3.5 h-3.5 text-brand-600" /> Current Work Assignment
           </h3>
-          <div className="text-sm font-semibold text-slate-800">
+          <div className="text-sm font-semibold text-sand-800">
             {agent.currentTask || 'Ready at workstation / Standing by for tasks'}
           </div>
           {agent.currentFile && (
-            <div className="flex items-center gap-1.5 text-slate-600">
+            <div className="flex items-center gap-1.5 text-sand-600">
               <FileCode className="w-3.5 h-3.5 text-teal-600" />
               <span>Current file: </span>
-              <span className="font-mono text-indigo-600 font-medium">{agent.currentFile.split('/').pop()}</span>
+              <span className="font-mono text-brand-600 font-medium">{agent.currentFile.split('/').pop()}</span>
             </div>
           )}
           {agent.lastTool && (
-            <div className="flex items-center gap-1.5 text-slate-600">
+            <div className="flex items-center gap-1.5 text-sand-600">
               <Wrench className="w-3.5 h-3.5 text-sky-600" />
               <span>Last tool executed: </span>
               <span className="font-mono text-sky-700 font-medium">{agent.lastTool}</span>
@@ -320,16 +320,16 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                 setIsSpeaking(true);
                 voiceService.speak(speech, roleKey as any, () => setIsSpeaking(false));
               }}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-gradient-to-r from-indigo-50 to-blue-50 hover:from-indigo-100 hover:to-blue-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition-all shadow-2xs active:scale-95 cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-gradient-to-r from-brand-50 to-blue-50 hover:from-brand-100 hover:to-blue-100 text-brand-700 font-bold text-xs border border-brand-200 transition-all shadow-2xs active:scale-95 cursor-pointer"
             >
               {isSpeaking ? (
                 <>
-                  <Volume2 className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+                  <Volume2 className="w-3.5 h-3.5 text-brand-600 animate-pulse" />
                   <span>Speaking Briefing...</span>
                 </>
               ) : (
                 <>
-                  <Mic className="w-3.5 h-3.5 text-indigo-600" />
+                  <Mic className="w-3.5 h-3.5 text-brand-600" />
                   <span>🎙️ Listen to Voice Briefing</span>
                 </>
               )}
@@ -337,11 +337,11 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
           </div>
           {/* Start / Finish Execution Timer Block */}
           {(agent.taskStartedAt || agent.taskCompletedAt) && (
-            <div className="mt-2 pt-2 border-t border-slate-200/80 grid grid-cols-2 gap-2 text-[11px]">
+            <div className="mt-2 pt-2 border-t border-sand-200/80 grid grid-cols-2 gap-2 text-[11px]">
               {agent.taskStartedAt && (
-                <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-xs">
-                  <div className="text-slate-400 uppercase font-bold text-[9px] tracking-wider">Started At</div>
-                  <div className="text-slate-700 font-mono font-semibold">
+                <div className="bg-surface p-2 rounded-lg border border-sand-200 shadow-xs">
+                  <div className="text-sand-400 uppercase font-bold text-[9px] tracking-wider">Started At</div>
+                  <div className="text-sand-700 font-mono font-semibold">
                     {new Date(agent.taskStartedAt).toLocaleTimeString()}
                   </div>
                 </div>
@@ -374,18 +374,18 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
         {/* Delegated Tasks & Handoffs (What tasks it took from which agent) */}
         <div className="space-y-2.5">
           <div className="flex items-center justify-between">
-            <h3 className="text-[11px] uppercase tracking-wider font-bold text-slate-500 flex items-center gap-1.5">
-              <ArrowDownLeft className="w-3.5 h-3.5 text-indigo-600" />
+            <h3 className="text-[11px] uppercase tracking-wider font-bold text-sand-500 flex items-center gap-1.5">
+              <ArrowDownLeft className="w-3.5 h-3.5 text-brand-600" />
               Tasks Taken & Handoffs
             </h3>
-            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+            <div className="flex items-center gap-1 bg-sand-100 p-0.5 rounded-lg border border-sand-200">
               <button
                 type="button"
                 onClick={() => setHandoffTab('received')}
                 className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
                   handoffTab === 'received'
-                    ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
-                    : 'text-slate-500 hover:text-slate-800'
+                    ? 'bg-surface text-brand-700 shadow-2xs font-extrabold'
+                    : 'text-sand-500 hover:text-sand-800'
                 }`}
               >
                 📥 Taken ({tasksReceived.length})
@@ -396,8 +396,8 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                   onClick={() => setHandoffTab('delegated')}
                   className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
                     handoffTab === 'delegated'
-                      ? 'bg-white text-indigo-700 shadow-2xs font-extrabold'
-                      : 'text-slate-500 hover:text-slate-800'
+                      ? 'bg-surface text-brand-700 shadow-2xs font-extrabold'
+                      : 'text-sand-500 hover:text-sand-800'
                   }`}
                 >
                   📤 Delegated ({tasksDelegated.length})
@@ -410,10 +410,10 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
           {handoffTab === 'received' && (
             <div className="space-y-2">
               {tasksReceived.length === 0 ? (
-                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 text-center space-y-1">
-                  <Inbox className="w-5 h-5 text-slate-400 mx-auto" />
-                  <div className="text-xs font-semibold text-slate-700">No Tasks Taken From Other Agents Yet</div>
-                  <div className="text-[11px] text-slate-500 leading-snug">
+                <div className="bg-sand-50 border border-sand-200/80 rounded-xl p-4 text-center space-y-1">
+                  <Inbox className="w-5 h-5 text-sand-400 mx-auto" />
+                  <div className="text-xs font-semibold text-sand-700">No Tasks Taken From Other Agents Yet</div>
+                  <div className="text-[11px] text-sand-500 leading-snug">
                     When a lead or teammate delegates work to {agent.name}, the task and source agent will be listed here.
                   </div>
                 </div>
@@ -421,15 +421,15 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                 tasksReceived.map((item) => (
                   <div
                     key={item.id}
-                    className="bg-white border border-slate-200/90 hover:border-indigo-300 rounded-xl p-3 shadow-2xs transition-all space-y-2"
+                    className="bg-surface border border-sand-200/90 hover:border-brand-300 rounded-xl p-3 shadow-2xs transition-all space-y-2"
                   >
                     {/* Top Row: Key, Title & Status */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="font-mono text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/80 shrink-0">
+                        <span className="font-mono text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-brand-50 text-brand-700 border border-brand-200/80 shrink-0">
                           {item.key}
                         </span>
-                        <h4 className="text-xs font-bold text-slate-900 truncate">
+                        <h4 className="text-xs font-bold text-sand-900 truncate">
                           {item.title}
                         </h4>
                       </div>
@@ -444,7 +444,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                             ? 'bg-amber-50 text-amber-700 border border-amber-200'
                             : item.column === 'in_progress'
                             ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                            : 'bg-sand-100 text-sand-700 border border-sand-200'
                         }`}
                       >
                         {item.column ? item.column.replace('_', ' ') : 'in progress'}
@@ -452,10 +452,10 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                     </div>
 
                     {/* TAKEN FROM ATTRIBUTION */}
-                    <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50/90 border border-slate-200/80 text-[11px]">
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-sand-50/90 border border-sand-200/80 text-[11px]">
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className="flex items-center gap-1 text-slate-500 font-semibold text-[10px] shrink-0">
-                          <ArrowDownLeft className="w-3.5 h-3.5 text-indigo-600" />
+                        <div className="flex items-center gap-1 text-sand-500 font-semibold text-[10px] shrink-0">
+                          <ArrowDownLeft className="w-3.5 h-3.5 text-brand-600" />
                           <span>Taken from:</span>
                         </div>
 
@@ -463,44 +463,44 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                           <img
                             src={item.fromAvatar}
                             alt={item.fromAgentName}
-                            className="w-5 h-5 rounded-full object-cover border border-slate-300 shrink-0"
+                            className="w-5 h-5 rounded-full object-cover border border-sand-300 shrink-0"
                           />
                         ) : (
                           <div
                             className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0 shadow-2xs"
-                            style={{ backgroundColor: item.fromColor || '#6366f1' }}
+                            style={{ backgroundColor: item.fromColor || '#0f766b' }}
                           >
                             {item.fromBadge?.slice(0, 2) || 'AG'}
                           </div>
                         )}
 
                         <div className="truncate">
-                          <span className="font-bold text-slate-800">{item.fromAgentName}</span>
-                          <span className="text-[10px] text-slate-400 ml-1">({item.fromAgentRole})</span>
+                          <span className="font-bold text-sand-800">{item.fromAgentName}</span>
+                          <span className="text-[10px] text-sand-400 ml-1">({item.fromAgentRole})</span>
                         </div>
                       </div>
 
                       {item.timestamp && (
-                        <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                        <span className="text-[10px] text-sand-400 font-mono shrink-0">
                           {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       )}
                     </div>
 
                     {/* Progress Bar & Skill Tag */}
-                    <div className="flex items-center justify-between gap-3 text-[10px] pt-1 border-t border-slate-100">
+                    <div className="flex items-center justify-between gap-3 text-[10px] pt-1 border-t border-sand-100">
                       <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div className="w-full bg-sand-100 rounded-full h-1.5 overflow-hidden">
                           <div
-                            className="bg-indigo-600 h-full rounded-full transition-all"
+                            className="bg-brand-600 h-full rounded-full transition-all"
                             style={{ width: `${item.progress}%` }}
                           />
                         </div>
-                        <span className="font-mono font-bold text-slate-600 shrink-0">{item.progress}%</span>
+                        <span className="font-mono font-bold text-sand-600 shrink-0">{item.progress}%</span>
                       </div>
 
                       {item.skill && (
-                        <span className="font-mono text-[9px] text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 shrink-0">
+                        <span className="font-mono text-[9px] text-brand-600 bg-brand-50 px-1.5 py-0.5 rounded border border-brand-100 shrink-0">
                           {item.skill}
                         </span>
                       )}
@@ -508,7 +508,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
 
                     {/* Description Preview */}
                     {item.description && (
-                      <p className="text-[11px] text-slate-600 leading-snug pt-1 border-t border-slate-100/80">
+                      <p className="text-[11px] text-sand-600 leading-snug pt-1 border-t border-sand-100/80">
                         {item.description}
                       </p>
                     )}
@@ -522,10 +522,10 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
           {handoffTab === 'delegated' && (
             <div className="space-y-2">
               {tasksDelegated.length === 0 ? (
-                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 text-center space-y-1">
-                  <Inbox className="w-5 h-5 text-slate-400 mx-auto" />
-                  <div className="text-xs font-semibold text-slate-700">No Tasks Delegated To Others</div>
-                  <div className="text-[11px] text-slate-500">
+                <div className="bg-sand-50 border border-sand-200/80 rounded-xl p-4 text-center space-y-1">
+                  <Inbox className="w-5 h-5 text-sand-400 mx-auto" />
+                  <div className="text-xs font-semibold text-sand-700">No Tasks Delegated To Others</div>
+                  <div className="text-[11px] text-sand-500">
                     Tasks handed off by {agent.name} to other teammates will be listed here.
                   </div>
                 </div>
@@ -533,14 +533,14 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                 tasksDelegated.map((item) => (
                   <div
                     key={item.id}
-                    className="bg-white border border-slate-200/90 hover:border-indigo-300 rounded-xl p-3 shadow-2xs transition-all space-y-2"
+                    className="bg-surface border border-sand-200/90 hover:border-brand-300 rounded-xl p-3 shadow-2xs transition-all space-y-2"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="font-mono text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/80 shrink-0">
+                        <span className="font-mono text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-brand-50 text-brand-700 border border-brand-200/80 shrink-0">
                           {item.key}
                         </span>
-                        <h4 className="text-xs font-bold text-slate-900 truncate">
+                        <h4 className="text-xs font-bold text-sand-900 truncate">
                           {item.title}
                         </h4>
                       </div>
@@ -556,10 +556,10 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50/90 border border-slate-200/80 text-[11px]">
+                    <div className="flex items-center justify-between p-2 rounded-lg bg-sand-50/90 border border-sand-200/80 text-[11px]">
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className="flex items-center gap-1 text-slate-500 font-semibold text-[10px] shrink-0">
-                          <ArrowUpRight className="w-3.5 h-3.5 text-indigo-600" />
+                        <div className="flex items-center gap-1 text-sand-500 font-semibold text-[10px] shrink-0">
+                          <ArrowUpRight className="w-3.5 h-3.5 text-brand-600" />
                           <span>Delegated to:</span>
                         </div>
 
@@ -567,25 +567,25 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                           <img
                             src={item.toAvatar}
                             alt={item.toAgentName}
-                            className="w-5 h-5 rounded-full object-cover border border-slate-300 shrink-0"
+                            className="w-5 h-5 rounded-full object-cover border border-sand-300 shrink-0"
                           />
                         ) : (
                           <div
                             className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0 shadow-2xs"
-                            style={{ backgroundColor: item.toColor || '#6366f1' }}
+                            style={{ backgroundColor: item.toColor || '#0f766b' }}
                           >
                             {item.toBadge?.slice(0, 2) || 'AG'}
                           </div>
                         )}
 
                         <div className="truncate">
-                          <span className="font-bold text-slate-800">{item.toAgentName}</span>
-                          <span className="text-[10px] text-slate-400 ml-1">({item.toAgentRole})</span>
+                          <span className="font-bold text-sand-800">{item.toAgentName}</span>
+                          <span className="text-[10px] text-sand-400 ml-1">({item.toAgentRole})</span>
                         </div>
                       </div>
 
                       {item.timestamp && (
-                        <span className="text-[10px] text-slate-400 font-mono shrink-0">
+                        <span className="text-[10px] text-sand-400 font-mono shrink-0">
                           {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       )}
@@ -600,14 +600,14 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
         {/* Assigned Skills Section */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-[11px] uppercase tracking-wider font-bold text-slate-500 flex items-center gap-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-indigo-600" /> Configured Skills ({agent.skills.length})
+            <h3 className="text-[11px] uppercase tracking-wider font-bold text-sand-500 flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-brand-600" /> Configured Skills ({agent.skills.length})
             </h3>
-            <span className="text-[10px] text-slate-400 font-medium">From .agents/skills/</span>
+            <span className="text-[10px] text-sand-400 font-medium">From .agents/skills/</span>
           </div>
 
           {/* Skill Selector Pills */}
-          <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1.5 bg-slate-50 rounded-xl border border-slate-200">
+          <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1.5 bg-sand-50 rounded-xl border border-sand-200">
             {agent.skills.map((skill) => {
               const isSelected = activeSkillObj?.id === skill.id;
               return (
@@ -616,8 +616,8 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
                   onClick={() => setSelectedSkillId(skill.id)}
                   className={`px-2 py-1 rounded-lg text-[11px] font-mono transition-all ${
                     isSelected
-                      ? 'bg-indigo-600 text-white font-bold shadow-sm'
-                      : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200'
+                      ? 'bg-brand-600 text-white font-bold shadow-sm'
+                      : 'bg-surface text-sand-600 hover:text-sand-900 hover:bg-sand-100 border border-sand-200'
                   }`}
                 >
                   {skill.id}
@@ -628,16 +628,16 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
 
           {/* Selected Skill Detailed Inspector */}
           {activeSkillObj && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-1.5">
+            <div className="bg-sand-50 border border-sand-200 rounded-xl p-3.5 space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="font-mono text-indigo-700 font-bold">{activeSkillObj.id}</span>
-                <span className="text-[10px] text-slate-400 font-mono truncate max-w-[150px]">
+                <span className="font-mono text-brand-700 font-bold">{activeSkillObj.id}</span>
+                <span className="text-[10px] text-sand-400 font-mono truncate max-w-[150px]">
                   {activeSkillObj.path.split('/').pop()}
                 </span>
               </div>
-              <p className="text-slate-700 text-xs leading-relaxed">{activeSkillObj.description}</p>
+              <p className="text-sand-700 text-xs leading-relaxed">{activeSkillObj.description}</p>
               {activeSkillObj.summary && (
-                <p className="text-slate-500 text-[11px] italic pt-1 border-t border-slate-200">
+                <p className="text-sand-500 text-[11px] italic pt-1 border-t border-sand-200">
                   {activeSkillObj.summary}
                 </p>
               )}
@@ -651,7 +651,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
             <h4 className="text-[10px] uppercase font-bold text-rose-700 flex items-center gap-1">
               <Shield className="w-3.5 h-3.5 text-rose-600" /> Enforced Guardrails & Prohibitions
             </h4>
-            <ul className="list-disc list-inside space-y-1 text-slate-700 text-[11px]">
+            <ul className="list-disc list-inside space-y-1 text-sand-700 text-[11px]">
               {agent.prohibitedActions.map((item, idx) => (
                 <li key={idx} className="leading-tight">
                   {item}
@@ -671,7 +671,7 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
             compactMode={true}
             activeAgent={agent}
             showStatusBanner={true}
-            title={`${agent.name}'s Real-Time OpenCode Logs`}
+            title={`${agent.name}'s Real-Time Agent Logs`}
             maxHeight="380px"
           />
         </div>

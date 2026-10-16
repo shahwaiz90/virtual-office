@@ -9,48 +9,50 @@
         "id": "tech-pm",
         "name": "Scrum Master",
         "role": "Tech Scrum Master",
-        "persona": "Strategic, organized technical scrum master focused on agile velocity, rigorous acceptance criteria, and smooth team orchestration without direct code implementation.",
-        "goal": "Receive stakeholder goals, deconstruct them into 4-stage sprint tasks, coordinate technical leads and developers, and ensure seamless delivery on the Authoritative Task Board.",
+        "persona": "",
+        "goal": "",
         "primary": true,
         "tools": [
           "view_file",
+          "run_command",
           "invoke_subagent",
           "send_message"
         ],
         "allowedTools": [
           "view_file",
+          "run_command",
           "invoke_subagent",
           "send_message"
         ],
         "reportsTo": "user",
         "handoffTo": [
-          "android-tech-lead"
+          "web-tech-lead"
         ],
         "delegationTargets": [
-          "android-tech-lead"
+          "web-tech-lead"
         ],
         "skills": [
-          "task-decomposition"
+          "kanban-handoff",
+          "task-decomposition",
+          "read-jira",
+          "read-confluence",
+          "requirement-analysis",
+          "sprint-planning",
+          "writing-guidelines"
         ],
-        "inputContract": "High-level user requests, feature goals, bug reports, and sprint priorities.",
-        "outputContract": "Structured sprint backlog tasks with acceptance criteria, delegated subagent execution prompts, and delivery milestone updates.",
-        "permissions": [
-          "sprint:plan",
-          "taskboard:create",
-          "subagent:invoke",
-          "subagent:message"
-        ],
+        "inputContract": "Reads the user's requirement. Registers it as a requirement card on the Kanban board before anything else.",
+        "outputContract": "Breaks the requirement into role-specific task cards (parentKey = requirement), each with a brief rephrased for its assignee, acceptance criteria and context. Delegates each by card key only, follows progress on the cards' threads, and closes the requirement card with a summary when all tasks are done.",
+        "permissions": [],
         "prohibitedActions": [
-          "No direct code implementation",
-          "No modifying production source files directly"
+          "No direct application code modifications"
         ]
       },
       {
-        "id": "android-tech-lead",
-        "name": "Android Lead",
+        "id": "web-tech-lead",
+        "name": "Web Lead",
         "role": "Tech Lead",
-        "persona": "Methodical, architecture-driven senior engineer who enforces SOLID principles, clean modularization, robust API contracts, and rigorous code reviews before delivery.",
-        "goal": "Architect scalable Android subsystems, establish technical implementation contracts, conduct rigorous code reviews, and coordinate development and QA execution.",
+        "persona": "",
+        "goal": "",
         "primary": false,
         "tools": [
           "view_file",
@@ -68,43 +70,33 @@
         ],
         "reportsTo": "tech-pm",
         "handoffTo": [
-          "android-dev",
-          "android-tester"
+          "web-dev"
         ],
         "delegationTargets": [
-          "android-dev",
-          "android-tester"
+          "web-dev"
         ],
         "skills": [
+          "kanban-handoff",
           "task-decomposition",
-          "android-architecture",
-          "android-cli",
-          "r8-analyzer",
-          "agp-9-upgrade",
-          "android-permissions-security",
-          "android-intent-security",
-          "glance-canonical-layouts"
+          "react-best-practices",
+          "composition-patterns",
+          "web-design-guidelines",
+          "vercel-optimize",
+          "modern-web-guidance"
         ],
-        "inputContract": "Sprint tasks, architecture spikes, PR reviews, and technical requirements delegated by the Scrum Master.",
-        "outputContract": "Architectural spikes, contract definitions, code review approvals, and delegated feature work packages with verification criteria.",
-        "permissions": [
-          "architecture:design",
-          "code:review",
-          "subagent:invoke",
-          "subagent:message",
-          "taskboard:transition",
-          "workspace:git_diff"
-        ],
+        "inputContract": "Reads its assigned card from the Kanban board (GET /api/tasks/<key>?format=md): brief, acceptance criteria, context, parent requirement and thread. Never relies on the delegation prompt for instructions.",
+        "outputContract": "Turns its card into technical implementation cards for the Developer (parentKey = its own card): files, API/data contracts, edge cases and verification steps in each brief. Delegates by card key only, answers questions and reviews results on the cards' threads, then records its own result and moves its card.",
+        "permissions": [],
         "prohibitedActions": [
-          "No direct implementation commits without review"
+          "No direct unreviewed code pushes to main"
         ]
       },
       {
-        "id": "android-dev",
-        "name": "Android Dev",
+        "id": "web-dev",
+        "name": "Web Dev",
         "role": "Developer",
-        "persona": "Disciplined Android software engineer focused on idiomatic Kotlin, Jetpack Compose, modular architecture, responsive UI, and robust state management.",
-        "goal": "Implement Android features, domain business logic, UI components, and state management according to technical specs and architectural boundaries.",
+        "persona": "",
+        "goal": "",
         "primary": false,
         "tools": [
           "view_file",
@@ -118,94 +110,28 @@
           "replace_file_content",
           "run_command"
         ],
-        "reportsTo": "android-tech-lead",
+        "reportsTo": "tech-pm",
         "handoffTo": [
-          "android-tech-lead"
+          "web-tech-lead"
         ],
         "delegationTargets": [
-          "android-tech-lead"
+          "web-tech-lead"
         ],
         "skills": [
+          "kanban-handoff",
           "task-decomposition",
-          "android-cli",
-          "android-architecture",
-          "gradle-build",
-          "edge-to-edge",
-          "adaptive",
-          "jetpack-compose-performance",
-          "styles",
-          "navigation-3",
-          "navigation-event",
-          "camerax",
-          "media3-cast-integration",
-          "appfunctions",
-          "litert-runtime",
-          "ml-kit-genai-prompt-api",
-          "restore-credentials",
-          "verified-email",
-          "migrate-xml-views-to-jetpack-compose",
-          "android-for-cars-parked-apps",
-          "leanback-to-compose-tv-migration",
-          "wear-compose-m3",
-          "wear-widgets",
-          "display-glasses-with-jetpack-compose-glimmer"
+          "react-best-practices",
+          "composition-patterns",
+          "react-view-transitions",
+          "feature-implementation",
+          "modern-web-guidance",
+          "deploy-to-vercel"
         ],
-        "inputContract": "Architectural contracts, task specifications, and implementation items assigned on the Task Board.",
-        "outputContract": "Clean Kotlin/Compose implementation code, passing unit builds, diffs, and tasks transitioned to Review.",
-        "permissions": [
-          "filesystem:read",
-          "filesystem:write",
-          "terminal:execute",
-          "taskboard:transition"
-        ],
+        "inputContract": "Reads its assigned card from the Kanban board (GET /api/tasks/<key>?format=md): the technical brief, acceptance criteria, context files and thread. Asks on the card's thread when anything is unclear.",
+        "outputContract": "Implements the card, posts progress and decisions to the card's thread, then records a result (what changed, files touched, how each acceptance criterion is met) and moves the card to review.",
+        "permissions": [],
         "prohibitedActions": [
-          "No altering architectural boundaries without lead approval"
-        ]
-      },
-      {
-        "id": "android-tester",
-        "name": "Mobile QA",
-        "role": "QA Engineer",
-        "persona": "Detail-obsessed quality engineer dedicated to zero-regression releases, comprehensive test coverage, edge-case probing, and automated CI verification.",
-        "goal": "Ensure 100% test pass rate across unit, integration, and UI verification suites, validating acceptance criteria before releasing tasks to Done.",
-        "primary": false,
-        "tools": [
-          "run_command",
-          "view_file",
-          "git_diff"
-        ],
-        "allowedTools": [
-          "run_command",
-          "view_file",
-          "git_diff"
-        ],
-        "reportsTo": "android-tech-lead",
-        "handoffTo": [
-          "android-dev",
-          "tech-pm"
-        ],
-        "delegationTargets": [
-          "android-dev",
-          "tech-pm"
-        ],
-        "skills": [
-          "task-decomposition",
-          "android-testing",
-          "testing-setup",
-          "android-profiler",
-          "android-cli",
-          "gradle-build"
-        ],
-        "inputContract": "Implementation branches, test specifications, acceptance criteria, and tasks moved to Testing column.",
-        "outputContract": "Automated test execution logs, regression audit reports, bug tickets, and verified tasks transitioned to Done.",
-        "permissions": [
-          "terminal:execute",
-          "filesystem:read",
-          "workspace:git_diff",
-          "taskboard:transition"
-        ],
-        "prohibitedActions": [
-          "No modifying production code"
+          "No breaking architectural contracts"
         ]
       }
     ]

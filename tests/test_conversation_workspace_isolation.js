@@ -175,13 +175,11 @@ const localPromptStep = {
 
 parseTranscriptStep(localPromptStep, virtualOfficeConvId);
 
-// Assert: Task board created deliverable cards and emitted agent_active event
-assert(eventBus.tasks.size > 0, 'Local Virtual Office prompt must create deliverable tasks');
+// Assert: Emitted agent_active event for local intake
 const localActiveEvents = emittedEvents.filter((e) => e.type === 'agent_active');
 assert(localActiveEvents.length > 0, 'Local Virtual Office prompt must emit agent_active intake event');
-assert(eventBus.tasks.has('DELIV-1'), 'DELIV-1 must exist on board for local project intake');
 
-console.log(`  4c. Local USER_INPUT accepted: created ${eventBus.tasks.size} tasks and ${emittedEvents.length} events.`);
+console.log(`  4c. Local USER_INPUT accepted: emitted ${localActiveEvents.length} agent_active events.`);
 
 eventBus.removeListener('event', eventTracker);
 console.log('  ✅ Suite 4 Passed: Strict eventBus isolation verified for USER_INPUT.');

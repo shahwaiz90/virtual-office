@@ -143,7 +143,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
   const getAgentTheme = (agentId: string) => {
     const ag = agents.find((a) => a.id === agentId);
-    return ag?.theme.themeColor || '#6366f1';
+    return ag?.theme.themeColor || '#0f766b';
   };
 
   const getAgentAvatar = (agentId: string) => {
@@ -152,34 +152,34 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
   };
 
   return (
-    <section className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-3.5 sm:p-5 md:p-6 space-y-4 sm:space-y-6">
+    <section className="bg-surface rounded-2xl border border-sand-200/90 shadow-sm p-3.5 sm:p-5 md:p-6 space-y-4 sm:space-y-6">
       {/* Header & View Switcher */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-slate-100">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-sand-100">
         <div className="flex items-center gap-2.5 sm:gap-3">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600 shadow-xs shrink-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-brand-50 border border-brand-200/60 flex items-center justify-center text-brand-600 shadow-xs shrink-0">
             <BarChart2 className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">Delivery Intelligence & Analytics</h2>
+              <h2 className="text-sm sm:text-base font-extrabold text-sand-900 tracking-tight">Delivery Intelligence & Analytics</h2>
               <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
                 Live Audit
               </span>
             </div>
-            <p className="text-[11px] sm:text-xs text-slate-500 truncate">
+            <p className="text-[11px] sm:text-xs text-sand-500 truncate">
               Audit tool utilization runtimes, role dispatches, top skills, and real-time code modifications.
             </p>
           </div>
         </div>
 
         {/* Tab Switcher (Horizontally scrollable on mobile) */}
-        <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold overflow-x-auto max-w-full shrink-0 shadow-2xs whitespace-nowrap">
+        <div className="flex items-center bg-sand-100 p-1 rounded-xl text-xs font-bold overflow-x-auto max-w-full shrink-0 shadow-2xs whitespace-nowrap">
           <button
             onClick={() => setActiveTab('tools')}
             className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
               activeTab === 'tools'
-                ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-surface text-brand-700 shadow-xs font-extrabold'
+                : 'text-sand-600 hover:text-sand-900'
             }`}
           >
             <Wrench className="w-3.5 h-3.5" />
@@ -189,8 +189,8 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
             onClick={() => setActiveTab('skills')}
             className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
               activeTab === 'skills'
-                ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-surface text-brand-700 shadow-xs font-extrabold'
+                : 'text-sand-600 hover:text-sand-900'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -200,8 +200,8 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
             onClick={() => setActiveTab('roles')}
             className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
               activeTab === 'roles'
-                ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-surface text-brand-700 shadow-xs font-extrabold'
+                : 'text-sand-600 hover:text-sand-900'
             }`}
           >
             <Users className="w-3.5 h-3.5" />
@@ -211,15 +211,15 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
             onClick={() => setActiveTab('files')}
             className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
               activeTab === 'files'
-                ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-surface text-brand-700 shadow-xs font-extrabold'
+                : 'text-sand-600 hover:text-sand-900'
             }`}
           >
             <FileCode className="w-3.5 h-3.5" />
             <span>File Changes</span>
             <span
               className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                activeTab === 'files' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-700'
+                activeTab === 'files' ? 'bg-brand-100 text-brand-700' : 'bg-sand-200 text-sand-700'
               }`}
             >
               {fileChanges.length}
@@ -229,15 +229,15 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
             onClick={() => setActiveTab('communications')}
             className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
               activeTab === 'communications'
-                ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-surface text-brand-700 shadow-xs font-extrabold'
+                : 'text-sand-600 hover:text-sand-900'
             }`}
           >
             <MessageSquare className="w-3.5 h-3.5" />
             <span>Agent Comms</span>
             <span
               className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                activeTab === 'communications' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-700'
+                activeTab === 'communications' ? 'bg-brand-100 text-brand-700' : 'bg-sand-200 text-sand-700'
               }`}
             >
               {communications.length}
@@ -248,12 +248,12 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
       {/* Standby State when no agents are configured */}
       {agents.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-8 bg-slate-50/60 rounded-xl border border-dashed border-slate-200 text-center my-2">
-          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-2.5">
+        <div className="flex flex-col items-center justify-center p-8 bg-sand-50/60 rounded-xl border border-dashed border-sand-200 text-center my-2">
+          <div className="w-10 h-10 rounded-full bg-sand-100 flex items-center justify-center text-sand-400 mb-2.5">
             <BarChart2 className="w-5 h-5" />
           </div>
-          <h4 className="text-sm font-semibold text-slate-700">Analytics On Standby</h4>
-          <p className="text-xs text-slate-500 max-w-sm mt-1">
+          <h4 className="text-sm font-semibold text-sand-700">Analytics On Standby</h4>
+          <p className="text-xs text-sand-500 max-w-sm mt-1">
             Telemetry metrics, tool executions, and file audits will populate once your agent team is initialized and active.
           </p>
         </div>
@@ -261,74 +261,74 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
         <>
           {/* KPI Summary Cards (2 cols on mobile, 5 cols on desktop) */}
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3.5">
-        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-indigo-100/60 flex items-center justify-center text-indigo-700 shrink-0">
+        <div className="bg-sand-50/70 border border-sand-200/80 rounded-xl p-3.5 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-brand-100/60 flex items-center justify-center text-brand-700 shrink-0">
             <Zap className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">Total Invocations</div>
-            <div className="text-lg font-black text-slate-900">{totalRoleInvocations} Dispatches</div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-sand-500 truncate">Total Invocations</div>
+            <div className="text-lg font-black text-sand-900">{totalRoleInvocations} Dispatches</div>
           </div>
         </div>
 
-        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex items-center gap-3">
+        <div className="bg-sand-50/70 border border-sand-200/80 rounded-xl p-3.5 flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-blue-100/60 flex items-center justify-center text-blue-700 shrink-0">
             <Activity className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">Tool Invocations</div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-sand-500 truncate">Tool Invocations</div>
             <div className="text-lg font-black text-blue-700">{totalExecutions} calls</div>
           </div>
         </div>
 
-        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex items-center gap-3">
+        <div className="bg-sand-50/70 border border-sand-200/80 rounded-xl p-3.5 flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-purple-100/60 flex items-center justify-center text-purple-700 shrink-0">
             <FileCode className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">Files Changed</div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-sand-500 truncate">Files Changed</div>
             <div className="text-lg font-black text-purple-700">{fileChanges.length} files</div>
           </div>
         </div>
 
-        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex items-center gap-3">
+        <div className="bg-sand-50/70 border border-sand-200/80 rounded-xl p-3.5 flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-emerald-100/60 flex items-center justify-center text-emerald-700 shrink-0">
             <MessageSquare className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">Agent Dialogues</div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-sand-500 truncate">Agent Dialogues</div>
             <div className="text-lg font-black text-emerald-700">{communications.length} messages</div>
           </div>
         </div>
 
-        <div className="col-span-2 sm:col-span-1 bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex items-center gap-3">
+        <div className="col-span-2 sm:col-span-1 bg-sand-50/70 border border-sand-200/80 rounded-xl p-3.5 flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-teal-100/60 flex items-center justify-center text-teal-700 shrink-0">
             <Clock className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">Cumulative Time</div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-sand-500 truncate">Cumulative Time</div>
             <div className="text-lg font-black text-teal-700 font-mono">{formatSec(totalExecutionSec)}</div>
           </div>
         </div>
       </div>
 
       {/* Dedicated Contextual Filter Toolbar (Permanent, Fixed Height, Stable Alignment) */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50/90 border border-slate-200 rounded-2xl p-3 sm:px-4 sm:py-2.5 text-xs shadow-2xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-sand-50/90 border border-sand-200 rounded-2xl p-3 sm:px-4 sm:py-2.5 text-xs shadow-2xs">
         {/* Left: Filter Controls */}
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
           {activeTab === 'roles' ? (
-            <div className="flex items-center gap-2 text-slate-600 font-semibold py-1">
-              <Users className="w-3.5 h-3.5 text-indigo-600" />
+            <div className="flex items-center gap-2 text-sand-600 font-semibold py-1">
+              <Users className="w-3.5 h-3.5 text-brand-600" />
               <span>Team Roles, Dispatch Frequencies & SLA Adherence Overview</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-2xs w-full sm:w-auto">
-              <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span className="text-[11px] font-semibold text-slate-500 shrink-0">Role:</span>
+            <div className="flex items-center gap-2 bg-surface border border-sand-200 rounded-xl px-3 py-1.5 shadow-2xs w-full sm:w-auto">
+              <Filter className="w-3.5 h-3.5 text-sand-400 shrink-0" />
+              <span className="text-[11px] font-semibold text-sand-500 shrink-0">Role:</span>
               <select
                 value={selectedAgentFilter}
                 onChange={(e) => setSelectedAgentFilter(e.target.value)}
-                className="bg-transparent font-bold text-slate-700 focus:outline-none cursor-pointer text-xs w-full sm:w-auto truncate"
+                className="bg-transparent font-bold text-sand-700 focus:outline-none cursor-pointer text-xs w-full sm:w-auto truncate"
               >
                 <option value="all">All Roles & Members</option>
                 {agents.map((ag) => (
@@ -342,12 +342,12 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
           {activeTab === 'files' && (
             <>
-              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-2xs">
-                <span className="text-[11px] font-semibold text-slate-500">Action:</span>
+              <div className="flex items-center gap-2 bg-surface border border-sand-200 rounded-xl px-3 py-1.5 shadow-2xs">
+                <span className="text-[11px] font-semibold text-sand-500">Action:</span>
                 <select
                   value={fileActionFilter}
                   onChange={(e) => setFileActionFilter(e.target.value as any)}
-                  className="bg-transparent font-bold text-slate-700 focus:outline-none cursor-pointer text-xs"
+                  className="bg-transparent font-bold text-sand-700 focus:outline-none cursor-pointer text-xs"
                 >
                   <option value="all">All Actions</option>
                   <option value="modified">Modified</option>
@@ -357,13 +357,13 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
               </div>
 
               <div className="relative flex items-center flex-1 sm:flex-initial w-full sm:w-auto">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 pointer-events-none" />
+                <Search className="w-3.5 h-3.5 text-sand-400 absolute left-3 pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Filter by filename or path..."
                   value={fileSearchQuery}
                   onChange={(e) => setFileSearchQuery(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full sm:w-56 shadow-2xs transition-all"
+                  className="bg-surface border border-sand-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-sand-700 focus:outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-56 shadow-2xs transition-all"
                 />
               </div>
             </>
@@ -371,34 +371,34 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
           {activeTab === 'communications' && (
             <div className="relative flex items-center flex-1 sm:flex-initial w-full sm:w-auto">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 pointer-events-none" />
+              <Search className="w-3.5 h-3.5 text-sand-400 absolute left-3 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Search dialogue, prompts, task instructions..."
                 value={commSearchQuery}
                 onChange={(e) => setCommSearchQuery(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full sm:w-72 shadow-2xs transition-all"
+                className="bg-surface border border-sand-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-sand-700 focus:outline-none focus:ring-1 focus:ring-brand-500 w-full sm:w-72 shadow-2xs transition-all"
               />
             </div>
           )}
         </div>
 
         {/* Right: Counter badge */}
-        <div className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5 self-end sm:self-auto">
+        <div className="text-[11px] font-semibold text-sand-500 flex items-center gap-1.5 self-end sm:self-auto">
           {activeTab === 'tools' && (
-            <span>Showing <strong className="text-slate-700">{filteredToolStats.length}</strong> of {toolStats.length} tools</span>
+            <span>Showing <strong className="text-sand-700">{filteredToolStats.length}</strong> of {toolStats.length} tools</span>
           )}
           {activeTab === 'skills' && (
-            <span>Showing <strong className="text-slate-700">{filteredSkillStats.length}</strong> of {skillStats.length} skills</span>
+            <span>Showing <strong className="text-sand-700">{filteredSkillStats.length}</strong> of {skillStats.length} skills</span>
           )}
           {activeTab === 'roles' && (
-            <span>Tracking <strong className="text-slate-700">{roleStats.length}</strong> active team roles</span>
+            <span>Tracking <strong className="text-sand-700">{roleStats.length}</strong> active team roles</span>
           )}
           {activeTab === 'files' && (
-            <span>Showing <strong className="text-slate-700">{filteredFileChanges.length}</strong> of {fileChanges.length} file changes</span>
+            <span>Showing <strong className="text-sand-700">{filteredFileChanges.length}</strong> of {fileChanges.length} file changes</span>
           )}
           {activeTab === 'communications' && (
-            <span>Showing <strong className="text-slate-700">{filteredCommunications.length}</strong> of {communications.length} dialogues</span>
+            <span>Showing <strong className="text-sand-700">{filteredCommunications.length}</strong> of {communications.length} dialogues</span>
           )}
         </div>
       </div>
@@ -407,10 +407,10 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
       <div className="overflow-y-auto max-h-[480px] pr-1 space-y-3">
         {/* TAB 1: TOOL USAGE BREAKDOWN */}
         {activeTab === 'tools' && (
-          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-            <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-600 uppercase tracking-wider sticky top-0 z-10">
+          <div className="border border-sand-200 rounded-xl overflow-hidden shadow-xs">
+            <div className="bg-sand-50 px-4 py-3 border-b border-sand-200 flex items-center justify-between text-xs font-bold text-sand-600 uppercase tracking-wider sticky top-0 z-10">
             <div className="flex items-center gap-2">
-              <Layers className="w-3.5 h-3.5 text-indigo-600" />
+              <Layers className="w-3.5 h-3.5 text-brand-600" />
               <span>Tool Name & Operating Role</span>
             </div>
             <div className="flex items-center gap-6">
@@ -419,9 +419,9 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
             </div>
           </div>
 
-          <div className="divide-y divide-slate-100 text-xs">
+          <div className="divide-y divide-sand-100 text-xs">
             {filteredToolStats.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 italic">No tool executions recorded yet.</div>
+              <div className="p-8 text-center text-sand-400 italic">No tool executions recorded yet.</div>
             ) : (
               filteredToolStats.map((stat, idx) => {
                 const themeColor = getAgentTheme(stat.agentId);
@@ -431,17 +431,17 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                 return (
                   <div
                     key={`${stat.agentId}_${stat.toolName}_${idx}`}
-                    className="p-3.5 hover:bg-slate-50/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    className="p-3.5 hover:bg-sand-50/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700 font-mono text-[11px] font-bold shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-sand-100 border border-sand-200 flex items-center justify-center text-sand-700 font-mono text-[11px] font-bold shrink-0">
                         🛠️
                       </div>
 
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-slate-900 truncate">{stat.toolName}</span>
-                          <span className="text-[10px] font-mono text-slate-400 hidden sm:inline">
+                          <span className="font-mono font-bold text-sand-900 truncate">{stat.toolName}</span>
+                          <span className="text-[10px] font-mono text-sand-400 hidden sm:inline">
                             ({new Date(stat.lastUsedAt).toLocaleTimeString()})
                           </span>
                         </div>
@@ -462,7 +462,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                               {stat.agentName.charAt(0)}
                             </span>
                           )}
-                          <span className="text-[11px] text-slate-600 font-medium truncate">
+                          <span className="text-[11px] text-sand-600 font-medium truncate">
                             {stat.agentName}
                           </span>
                           <span
@@ -476,16 +476,16 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                     </div>
 
                     <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 pl-11 sm:pl-0">
-                      <div className="flex items-center gap-1.5 text-slate-700 font-bold">
+                      <div className="flex items-center gap-1.5 text-sand-700 font-bold">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                         <span>{stat.count}x</span>
                       </div>
 
                       <div className="w-36 text-right space-y-1">
-                        <div className="text-slate-900 font-mono font-bold text-xs">
+                        <div className="text-sand-900 font-mono font-bold text-xs">
                           {formatSec(stat.totalDurationSec)}
                         </div>
-                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div className="w-full bg-sand-100 rounded-full h-1.5 overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all duration-500"
                             style={{
@@ -506,8 +506,8 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
       {/* TAB 2: MOST USED SKILLS BREAKDOWN */}
       {activeTab === 'skills' && (
-        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-          <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-600 uppercase tracking-wider sticky top-0 z-10">
+        <div className="border border-sand-200 rounded-xl overflow-hidden shadow-xs">
+          <div className="bg-sand-50 px-4 py-3 border-b border-sand-200 flex items-center justify-between text-xs font-bold text-sand-600 uppercase tracking-wider sticky top-0 z-10">
             <div className="flex items-center gap-2">
               <Sparkles className="w-3.5 h-3.5 text-amber-600" />
               <span>Skill Identifier & Purpose</span>
@@ -518,9 +518,9 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
             </div>
           </div>
 
-          <div className="divide-y divide-slate-100 text-xs">
+          <div className="divide-y divide-sand-100 text-xs">
             {filteredSkillStats.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 italic">
+              <div className="p-8 text-center text-sand-400 italic">
                 No active skills recorded for the selected role filter.
               </div>
             ) : (
@@ -530,7 +530,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                 return (
                   <div
                     key={skill.skillId}
-                    className="p-3.5 hover:bg-slate-50/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    className="p-3.5 hover:bg-sand-50/80 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700 font-bold text-xs shrink-0">
@@ -538,26 +538,26 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-indigo-700 text-xs">{skill.skillId}</span>
-                          <span className="text-slate-800 font-semibold truncate">{skill.skillName}</span>
+                          <span className="font-mono font-bold text-brand-700 text-xs">{skill.skillId}</span>
+                          <span className="text-sand-800 font-semibold truncate">{skill.skillName}</span>
                         </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5">
-                          Utilized by: <span className="text-slate-700 font-medium">{skill.lastUsedByAgentName}</span>
+                        <div className="text-[11px] text-sand-400 mt-0.5">
+                          Utilized by: <span className="text-sand-700 font-medium">{skill.lastUsedByAgentName}</span>
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between sm:justify-end gap-6 shrink-0 pl-10 sm:pl-0">
-                      <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                      <div className="flex items-center gap-1.5 font-bold text-sand-800">
                         <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
                         <span>{skill.count} runs</span>
                       </div>
 
                       <div className="w-36 text-right space-y-1">
-                        <div className="text-slate-900 font-mono font-bold text-xs">
+                        <div className="text-sand-900 font-mono font-bold text-xs">
                           {formatSec(skill.totalDurationSec)}
                         </div>
-                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                        <div className="w-full bg-sand-100 rounded-full h-1.5 overflow-hidden">
                           <div
                             className="h-full rounded-full bg-amber-500 transition-all duration-500"
                             style={{ width: `${percentage}%` }}
@@ -584,7 +584,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
             return (
               <div
                 key={role.agentId}
-                className="bg-slate-50/70 border border-slate-200 rounded-xl p-4 space-y-3.5 shadow-xs flex flex-col justify-between"
+                className="bg-sand-50/70 border border-sand-200 rounded-xl p-4 space-y-3.5 shadow-xs flex flex-col justify-between"
               >
                 <div>
                   {/* Header: Avatar, Name & Role */}
@@ -593,7 +593,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                       <img
                         src={avatar}
                         alt={role.agentName}
-                        className="w-10 h-10 rounded-xl object-cover border-2 shrink-0 bg-white"
+                        className="w-10 h-10 rounded-xl object-cover border-2 shrink-0 bg-surface"
                         style={{ borderColor: themeColor }}
                       />
                     ) : (
@@ -605,33 +605,33 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                       </div>
                     )}
                     <div className="min-w-0">
-                      <h4 className="font-bold text-slate-900 text-xs truncate">{role.agentName}</h4>
-                      <p className="text-[11px] text-slate-500 truncate">{role.role}</p>
+                      <h4 className="font-bold text-sand-900 text-xs truncate">{role.agentName}</h4>
+                      <p className="text-[11px] text-sand-500 truncate">{role.role}</p>
                     </div>
                   </div>
 
                   {/* Metrics Grid */}
                   <div className="mt-3.5 grid grid-cols-2 gap-2 text-center text-xs">
-                    <div className="bg-white p-2 rounded-lg border border-slate-200/80 shadow-xs">
-                      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Invocations</div>
-                      <div className="text-sm font-black text-slate-800">{role.invocations}x</div>
+                    <div className="bg-surface p-2 rounded-lg border border-sand-200/80 shadow-xs">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-sand-400">Invocations</div>
+                      <div className="text-sm font-black text-sand-800">{role.invocations}x</div>
                     </div>
-                    <div className="bg-white p-2 rounded-lg border border-slate-200/80 shadow-xs">
-                      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Total Active</div>
-                      <div className="text-sm font-mono font-bold text-indigo-700">{formatSec(role.activeTimeSec)}</div>
+                    <div className="bg-surface p-2 rounded-lg border border-sand-200/80 shadow-xs">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-sand-400">Total Active</div>
+                      <div className="text-sm font-mono font-bold text-brand-700">{formatSec(role.activeTimeSec)}</div>
                     </div>
                   </div>
                 </div>
 
                 {/* SLA Adherence & Progress */}
-                <div className="space-y-1.5 pt-2 border-t border-slate-200/70">
+                <div className="space-y-1.5 pt-2 border-t border-sand-200/70">
                   <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-500 flex items-center gap-1 font-medium">
+                    <span className="text-sand-500 flex items-center gap-1 font-medium">
                       <Award className="w-3 h-3 text-emerald-600" /> SLA Adherence
                     </span>
                     <span className="font-extrabold text-emerald-700">{role.slaAdherenceRate}%</span>
                   </div>
-                  <div className="w-full bg-slate-200/70 rounded-full h-1.5 overflow-hidden">
+                  <div className="w-full bg-sand-200/70 rounded-full h-1.5 overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all duration-500"
                       style={{
@@ -650,18 +650,18 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
       {/* TAB 4: FILE CHANGES & UPDATED CONTENT */}
       {activeTab === 'files' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between px-1 text-xs text-slate-500">
+          <div className="flex items-center justify-between px-1 text-xs text-sand-500">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-700">
+              <span className="font-bold text-sand-700">
                 Showing {filteredFileChanges.length} of {fileChanges.length} {fileChanges.length === 1 ? 'file change' : 'file changes'}
               </span>
               {selectedAgentFilter !== 'all' && (
-                <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
+                <span className="px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200 text-[10px] font-bold">
                   Role: {agents.find((a) => a.id === selectedAgentFilter)?.name || selectedAgentFilter}
                 </span>
               )}
               {fileActionFilter !== 'all' && (
-                <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold uppercase">
+                <span className="px-2 py-0.5 rounded-full bg-sand-100 text-sand-700 border border-sand-200 text-[10px] font-bold uppercase">
                   {fileActionFilter}
                 </span>
               )}
@@ -675,7 +675,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                     setExpandedFileIds(new Set(filteredFileChanges.map((f) => f.id)));
                   }
                 }}
-                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                className="text-[11px] font-bold text-brand-600 hover:text-brand-800 transition-colors"
               >
                 {expandedFileIds.size === filteredFileChanges.length ? 'Collapse All' : 'Expand All'}
               </button>
@@ -683,10 +683,10 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
           </div>
 
           {filteredFileChanges.length === 0 ? (
-            <div className="border border-slate-200 rounded-xl p-12 text-center bg-slate-50/50">
-              <FileCode className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <div className="text-sm font-bold text-slate-700">No file changes match the current filter</div>
-              <p className="text-xs text-slate-400 mt-1">Try selecting "All Roles & Members" or clearing your search filter.</p>
+            <div className="border border-sand-200 rounded-xl p-12 text-center bg-sand-50/50">
+              <FileCode className="w-8 h-8 text-sand-300 mx-auto mb-2" />
+              <div className="text-sm font-bold text-sand-700">No file changes match the current filter</div>
+              <p className="text-xs text-sand-400 mt-1">Try selecting "All Roles & Members" or clearing your search filter.</p>
               {(selectedAgentFilter !== 'all' || fileActionFilter !== 'all' || fileSearchQuery) && (
                 <button
                   onClick={() => {
@@ -694,7 +694,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                     setFileActionFilter('all');
                     setFileSearchQuery('');
                   }}
-                  className="mt-3 text-xs font-bold text-indigo-600 hover:underline"
+                  className="mt-3 text-xs font-bold text-brand-600 hover:underline"
                 >
                   Reset all filters
                 </button>
@@ -713,22 +713,22 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                 return (
                   <div
                     key={change.id}
-                    className="border border-slate-200/90 rounded-xl overflow-hidden bg-white shadow-xs transition-all hover:border-slate-300"
+                    className="border border-sand-200/90 rounded-xl overflow-hidden bg-surface shadow-xs transition-all hover:border-sand-300"
                   >
                     {/* File Change Header Row */}
                     <div
                       onClick={() => toggleExpandFile(change.id)}
-                      className="p-3.5 bg-slate-50/60 hover:bg-slate-50 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors"
+                      className="p-3.5 bg-sand-50/60 hover:bg-sand-50 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors"
                     >
                       {/* Left: Extension badge, file name, path & summary */}
                       <div className="flex items-start gap-3 min-w-0">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 font-mono text-[10px] font-black shrink-0 mt-0.5">
+                        <div className="w-8 h-8 rounded-lg bg-brand-50 border border-brand-200 flex items-center justify-center text-brand-700 font-mono text-[10px] font-black shrink-0 mt-0.5">
                           {ext.slice(0, 4)}
                         </div>
 
                         <div className="min-w-0 space-y-0.5">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono font-bold text-slate-900 text-xs truncate">
+                            <span className="font-mono font-bold text-sand-900 text-xs truncate">
                               {change.fileName}
                             </span>
 
@@ -739,7 +739,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                   : change.action === 'refactored'
                                   ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                  : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                  : 'bg-brand-50 text-brand-700 border-brand-200'
                               }`}
                             >
                               {change.action === 'created'
@@ -756,12 +756,12 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                             )}
                           </div>
 
-                          <div className="font-mono text-[11px] text-slate-400 truncate">
+                          <div className="font-mono text-[11px] text-sand-400 truncate">
                             {change.filePath}
                           </div>
 
                           {change.summary && (
-                            <div className="text-[11px] text-slate-600 font-medium line-clamp-1 pt-0.5">
+                            <div className="text-[11px] text-sand-600 font-medium line-clamp-1 pt-0.5">
                               {change.summary}
                             </div>
                           )}
@@ -769,7 +769,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                       </div>
 
                       {/* Right: Operating Agent, Timestamp & Expand Chevron */}
-                      <div className="flex items-center justify-between md:justify-end gap-4 shrink-0 pl-11 md:pl-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
+                      <div className="flex items-center justify-between md:justify-end gap-4 shrink-0 pl-11 md:pl-0 pt-2 md:pt-0 border-t md:border-t-0 border-sand-100">
                         {/* Operating Role/Agent Badge */}
                         <div className="flex items-center gap-2">
                           {avatar ? (
@@ -788,7 +788,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                             </span>
                           )}
                           <div className="text-left">
-                            <div className="text-[11px] font-bold text-slate-800 leading-tight">
+                            <div className="text-[11px] font-bold text-sand-800 leading-tight">
                               {change.agentName}
                             </div>
                             <span
@@ -802,13 +802,13 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
                         {/* Timestamp */}
                         <div className="text-right">
-                          <span className="text-[10px] font-mono text-slate-400 block">
+                          <span className="text-[10px] font-mono text-sand-400 block">
                             {new Date(change.timestamp).toLocaleTimeString()}
                           </span>
                         </div>
 
                         {/* Expand / Collapse Chevron */}
-                        <div className="w-6 h-6 rounded-md bg-white border border-slate-200 flex items-center justify-center text-slate-500 shadow-2xs">
+                        <div className="w-6 h-6 rounded-md bg-surface border border-sand-200 flex items-center justify-center text-sand-500 shadow-2xs">
                           {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                         </div>
                       </div>
@@ -816,20 +816,20 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
                     {/* Updated Content Code Viewer Block */}
                     {isExpanded && (
-                      <div className="border-t border-slate-200 bg-slate-900 text-slate-200">
+                      <div className="theme-static border-t border-sand-200 bg-sand-900 text-sand-200">
                         {/* Code Header Bar */}
-                        <div className="px-4 py-2.5 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="px-4 py-2.5 bg-sand-950 border-b border-sand-800 flex flex-wrap items-center justify-between gap-2 text-xs">
                           <div className="flex items-center gap-2">
                             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                            <span className="font-bold text-slate-200">Updated Content Added</span>
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-indigo-300 border border-slate-700">
+                            <span className="font-bold text-sand-200">Updated Content Added</span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sand-800 text-brand-300 border border-sand-700">
                               {ext}
                             </span>
                           </div>
 
                           <div className="flex items-center gap-3">
                             {change.instruction && (
-                              <span className="text-[11px] text-slate-400 italic hidden lg:inline max-w-md truncate">
+                              <span className="text-[11px] text-sand-400 italic hidden lg:inline max-w-md truncate">
                                 "{change.instruction}"
                               </span>
                             )}
@@ -838,7 +838,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                                 e.stopPropagation();
                                 handleCopyContent(change.id, change.contentPreview || '');
                               }}
-                              className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-semibold text-slate-300 hover:text-white transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                              className="px-2.5 py-1 rounded bg-sand-800 hover:bg-sand-700 border border-sand-700 text-[11px] font-semibold text-sand-300 hover:text-white transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
                             >
                               {isCopied ? (
                                 <>
@@ -847,7 +847,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                                 </>
                               ) : (
                                 <>
-                                  <Copy className="w-3 h-3 text-slate-400" />
+                                  <Copy className="w-3 h-3 text-sand-400" />
                                   <span>Copy Snippet</span>
                                 </>
                               )}
@@ -859,17 +859,17 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                         {lines.length > 0 ? (
                           <div className="p-4 font-mono text-xs overflow-x-auto max-h-[420px] overflow-y-auto leading-relaxed select-text space-y-0.5">
                             {lines.map((line, idx) => (
-                              <div key={idx} className="flex hover:bg-slate-800/60 rounded px-1 -mx-1 group">
-                                <span className="w-8 text-right pr-3 select-none text-slate-600 font-mono text-[11px] group-hover:text-slate-500">
+                              <div key={idx} className="flex hover:bg-sand-800/60 rounded px-1 -mx-1 group">
+                                <span className="w-8 text-right pr-3 select-none text-sand-600 font-mono text-[11px] group-hover:text-sand-500">
                                   {idx + 1}
                                 </span>
                                 <span className="select-none text-emerald-500/80 pr-2 font-bold">+</span>
-                                <span className="text-slate-200 whitespace-pre font-mono">{line || ' '}</span>
+                                <span className="text-sand-200 whitespace-pre font-mono">{line || ' '}</span>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <div className="p-6 text-center text-slate-500 italic text-xs">
+                          <div className="p-6 text-center text-sand-500 italic text-xs">
                             File updated on workspace filesystem. Full preview captured in git revision.
                           </div>
                         )}
@@ -886,13 +886,13 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
       {/* TAB 5: INTER-AGENT COMMUNICATIONS & REAL-TIME DIALOGUES */}
       {activeTab === 'communications' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between px-1 text-xs text-slate-500">
+          <div className="flex items-center justify-between px-1 text-xs text-sand-500">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-700">
+              <span className="font-bold text-sand-700">
                 Showing {filteredCommunications.length} of {communications.length} {communications.length === 1 ? 'dialogue' : 'dialogues'}
               </span>
               {selectedAgentFilter !== 'all' && (
-                <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
+                <span className="px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200 text-[10px] font-bold">
                   Filter: {agents.find((a) => a.id === selectedAgentFilter)?.name || selectedAgentFilter}
                 </span>
               )}
@@ -900,10 +900,10 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
           </div>
 
           {filteredCommunications.length === 0 ? (
-            <div className="border border-slate-200 rounded-xl p-12 text-center bg-slate-50/50">
-              <MessageSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <div className="text-sm font-bold text-slate-700">No agent dialogues match the current filter</div>
-              <p className="text-xs text-slate-400 mt-1">
+            <div className="border border-sand-200 rounded-xl p-12 text-center bg-sand-50/50">
+              <MessageSquare className="w-8 h-8 text-sand-300 mx-auto mb-2" />
+              <div className="text-sm font-bold text-sand-700">No agent dialogues match the current filter</div>
+              <p className="text-xs text-sand-400 mt-1">
                 When agents communicate via subagent delegations (`invoke_subagent`), directives (`send_message`), or task handoffs, their conversations appear here in real-time.
               </p>
               {(selectedAgentFilter !== 'all' || commSearchQuery) && (
@@ -912,7 +912,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                     setSelectedAgentFilter('all');
                     setCommSearchQuery('');
                   }}
-                  className="mt-3 text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                  className="mt-3 text-xs font-bold text-brand-600 hover:underline cursor-pointer"
                 >
                   Reset all filters
                 </button>
@@ -935,14 +935,14 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                 return (
                   <div
                     key={comm.id}
-                    className="border border-slate-200/90 rounded-2xl overflow-hidden bg-white shadow-xs hover:border-slate-300 transition-all"
+                    className="border border-sand-200/90 rounded-2xl overflow-hidden bg-surface shadow-xs hover:border-sand-300 transition-all"
                   >
                     {/* Communication Dialogue Header */}
-                    <div className="p-3.5 bg-slate-50/70 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div className="p-3.5 bg-sand-50/70 border-b border-sand-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
                       {/* Sender and Recipient with Directional Indicator */}
                       <div className="flex flex-wrap items-center gap-2.5 min-w-0">
                         {/* Sender Card */}
-                        <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-xl border border-slate-200/90 shadow-2xs">
+                        <div className="flex items-center gap-2 bg-surface px-2.5 py-1 rounded-xl border border-sand-200/90 shadow-2xs">
                           {fromAvatar ? (
                             <img
                               src={fromAvatar}
@@ -958,7 +958,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                               {comm.fromAgentName.charAt(0)}
                             </div>
                           )}
-                          <span className="font-extrabold text-slate-800 text-xs truncate max-w-[120px]">
+                          <span className="font-extrabold text-sand-800 text-xs truncate max-w-[120px]">
                             {comm.fromAgentName}
                           </span>
                           <span
@@ -970,12 +970,12 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                         </div>
 
                         {/* Direction Arrow */}
-                        <div className="flex items-center text-indigo-500 font-bold shrink-0">
+                        <div className="flex items-center text-brand-500 font-bold shrink-0">
                           <ArrowRight className="w-4 h-4 animate-pulse" />
                         </div>
 
                         {/* Recipient Card */}
-                        <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-xl border border-slate-200/90 shadow-2xs">
+                        <div className="flex items-center gap-2 bg-surface px-2.5 py-1 rounded-xl border border-sand-200/90 shadow-2xs">
                           {toAvatar ? (
                             <img
                               src={toAvatar}
@@ -991,7 +991,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                               {comm.toAgentName.charAt(0)}
                             </div>
                           )}
-                          <span className="font-extrabold text-slate-800 text-xs truncate max-w-[120px]">
+                          <span className="font-extrabold text-sand-800 text-xs truncate max-w-[120px]">
                             {comm.toAgentName}
                           </span>
                           <span
@@ -1004,13 +1004,13 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
                         {/* Task Ref Badge */}
                         {comm.taskKey && (
-                          <span className="font-mono text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                          <span className="font-mono text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-sand-100 text-sand-700 border border-sand-200">
                             {comm.taskKey}
                           </span>
                         )}
 
                         {/* Channel Badge */}
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200">
                           {comm.channel === 'pr_review'
                             ? 'PR Review'
                             : comm.channel === 'qa_handoff'
@@ -1023,8 +1023,8 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
                       {/* Right: Timestamp & Copy Button */}
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-slate-400" />
+                        <span className="text-[11px] font-mono text-sand-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-sand-400" />
                           {timeString}
                         </span>
 
@@ -1043,9 +1043,9 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                             voiceService.speak(`${comm.fromAgentName} says: ${comm.message}`, roleKey as any);
                           }}
                           title="Speak dialogue with agent persona voice"
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white hover:bg-indigo-50/80 border border-slate-200 text-indigo-700 hover:border-indigo-300 transition-colors shadow-2xs active:scale-95 cursor-pointer"
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-surface hover:bg-brand-50/80 border border-sand-200 text-brand-700 hover:border-brand-300 transition-colors shadow-2xs active:scale-95 cursor-pointer"
                         >
-                          <Volume2 className="w-3 h-3 text-indigo-600" />
+                          <Volume2 className="w-3 h-3 text-brand-600" />
                           <span>Speak</span>
                         </button>
 
@@ -1056,7 +1056,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                             setTimeout(() => setCopiedCommId(null), 2000);
                           }}
                           title="Copy communication text"
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors shadow-2xs active:scale-95 cursor-pointer"
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-surface hover:bg-sand-100 border border-sand-200 text-sand-600 transition-colors shadow-2xs active:scale-95 cursor-pointer"
                         >
                           {isCopied ? (
                             <>
@@ -1065,7 +1065,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                             </>
                           ) : (
                             <>
-                              <Copy className="w-3 h-3 text-slate-400" />
+                              <Copy className="w-3 h-3 text-sand-400" />
                               <span>Copy</span>
                             </>
                           )}
@@ -1076,14 +1076,14 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                     {/* Dialogue Body & Task Title */}
                     <div className="p-4 space-y-2.5">
                       {comm.taskTitle && (
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
-                          <CornerDownRight className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-sand-900">
+                          <CornerDownRight className="w-3.5 h-3.5 text-brand-600 shrink-0" />
                           <span>{comm.taskTitle}</span>
                         </div>
                       )}
 
                       {/* Actual Message Bubble */}
-                      <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-3.5 text-xs text-slate-800 leading-relaxed font-sans whitespace-pre-wrap select-text">
+                      <div className="bg-sand-50/80 border border-sand-200/80 rounded-xl p-3.5 text-xs text-sand-800 leading-relaxed font-sans whitespace-pre-wrap select-text">
                         {comm.message}
                       </div>
                     </div>

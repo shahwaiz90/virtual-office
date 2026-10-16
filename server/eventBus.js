@@ -26,7 +26,6 @@ class EventBus extends EventEmitter {
     this.initAgents();
 
     // Clean initial Kanban state (awaits active agent tasks or demo trigger)
-    this.tasks = new Map();
     this.isDemoRunning = false;
     this.clearedAt = Date.now();
 
@@ -34,16 +33,68 @@ class EventBus extends EventEmitter {
     this.activeHandoff = null;
     this.handoffTimeout = null;
 
-    // Clean Analytics Maps (populated dynamically as tools/skills are invoked)
-    this.toolUsageMap = new Map();
-    this.skillUsageMap = new Map();
-    this.roleInvocationMap = new Map();
+    // Active sprint tracking
+    this.activeSprintId = 'sprint-1';
+    this.activeSprintPath = '.agents/sprints/sprint-1';
+    this.sprints = [];
+    this.initSprintInfo();
+
+    this.agentBusyTimers = new Map();
+    this.jiraConfluenceItems = [];
+    this.deliverables = new Map();
+    this.initDefaultState();
+  }
+
+  initDefaultState() {
+    this.tasks = new Map();
+    this.deliverables = new Map();
     this.fileChanges = [];
     this.communications = [];
-    this.agentBusyTimers = new Map();
+    this.events = [];
+    this.toolUsageMap = new Map();
+    this.skillUsageMap = new Map();
+    this.jiraConfluenceItems = [];
+    this.activeHandoff = null;
     this.initStandbyRoleAnalytics();
-    this.initDefaultFileChanges();
-    this.initDefaultCommunications();
+  }
+
+  recordJiraConfluenceItem(item) {
+    if (!item) return;
+    const id = item.id || item.ticketKey || item.pageId || `jc_${Date.now()}`;
+    const normalized = {
+      id,
+      sourceType: item.sourceType || (item.pageId ? 'confluence' : 'jira'),
+      ticketKey: item.ticketKey || null,
+      pageId: item.pageId || null,
+      url: item.url || null,
+      title: item.title || (item.ticketKey ? `Jira Ticket ${item.ticketKey}` : `Confluence Page ${item.pageId}`),
+      summary: item.summary || item.details || '',
+      command: item.command || '',
+      timestamp: item.timestamp || new Date().toISOString(),
+      agentId: item.agentId || 'tech-pm',
+      details: item.details || '',
+    };
+
+    // Deduplicate by ticketKey, pageId, or id
+    const existingIdx = this.jiraConfluenceItems.findIndex(
+      (existing) =>
+        (normalized.ticketKey && existing.ticketKey === normalized.ticketKey) ||
+        (normalized.pageId && existing.pageId === normalized.pageId) ||
+        existing.id === normalized.id
+    );
+
+    if (existingIdx !== -1) {
+      this.jiraConfluenceItems[existingIdx] = {
+        ...this.jiraConfluenceItems[existingIdx],
+        ...normalized,
+      };
+    } else {
+      this.jiraConfluenceItems.unshift(normalized);
+      if (this.jiraConfluenceItems.length > 50) {
+        this.jiraConfluenceItems.pop();
+      }
+    }
+    return normalized;
   }
 
   setAgentBusyTimer(agentId, callback, delayMs = 4000) {
@@ -97,6 +148,53 @@ class EventBus extends EventEmitter {
     }
   }
 
+  initSprintInfo() {
+    try {
+      const fs = require('fs');
+      const root = getProjectRoot();
+      const indexPath = path.join(root, '.agents', 'sprints', 'index.json');
+      if (fs.existsSync(indexPath)) {
+        const raw = fs.readFileSync(indexPath, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (parsed.activeSprintId) {
+          this.activeSprintId = parsed.activeSprintId;
+        }
+        if (Array.isArray(parsed.sprints)) {
+          this.sprints = parsed.sprints;
+          const active = this.sprints.find((s) => s.id === this.activeSprintId);
+          if (active && active.path) {
+            this.activeSprintPath = active.path;
+          } else {
+            this.activeSprintPath = `.agents/sprints/${this.activeSprintId}`;
+          }
+        }
+      } else {
+        this.activeSprintId = 'sprint-1';
+        this.activeSprintPath = '.agents/sprints/sprint-1';
+        this.sprints = [
+          {
+            id: 'sprint-1',
+            number: 1,
+            name: 'Sprint 1',
+            path: '.agents/sprints/sprint-1',
+            status: 'active',
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      }
+    } catch (e) {
+      // Fallback
+      this.activeSprintId = 'sprint-1';
+      this.activeSprintPath = '.agents/sprints/sprint-1';
+    }
+  }
+
+  setSprintState(activeSprintId, activeSprintPath, sprints) {
+    if (activeSprintId) this.activeSprintId = activeSprintId;
+    if (activeSprintPath) this.activeSprintPath = activeSprintPath;
+    if (Array.isArray(sprints)) this.sprints = sprints;
+  }
+
   initStandbyRoleAnalytics() {
     this.roleInvocationMap = new Map();
     for (const [agentId, agent] of this.agents.entries()) {
@@ -122,54 +220,55 @@ class EventBus extends EventEmitter {
   }
 
   /**
-   * Deconstructs a high-level feature goal into 4 sequenced tasks across the team
-   * using OrchestrationRules and registers them live on the Authoritative Task Board.
+   * Places a user requirement on the board.
+   * - If `aiTasks` (the breakdown produced by the AI / orchestrating agent) is given, those tasks are
+   *   registered exactly as written — any number, any titles.
+   * - Otherwise the requirement is registered verbatim as ONE backlog card for the orchestrator to
+   *   break down. No template (Plan/Build/Review/Test) tasks are invented here.
    */
-  breakdownAndAssignTasks(goal, assignerId) {
+  breakdownAndAssignTasks(goal, assignerId, aiTasks) {
     if (!goal || typeof goal !== 'string') return [];
     const cleanGoal = goal.trim();
     if (this.agents.size === 0) return [];
 
-    const { pm, lead } = OrchestrationRules.resolveTeamRoles(this.agents);
-    const decomposed = OrchestrationRules.decomposeSprintGoal(cleanGoal, this.agents);
+    const { pm } = OrchestrationRules.resolveTeamRoles(this.agents);
+    const existingTasks = Array.from(this.tasks.values());
+    let decomposed = OrchestrationRules.normalizeAITasks(aiTasks, this.agents, { existingTasks });
+    const fromAI = decomposed.length > 0;
+    if (!fromAI) {
+      decomposed = OrchestrationRules.decomposeSprintGoal(cleanGoal, this.agents, { existingTasks });
+    }
 
-    // Store in tasks map
     for (const task of decomposed) {
       this.tasks.set(task.id, task);
     }
 
-    // Set lead & dev activity
-    lead.status = 'working';
-    lead.currentTask = decomposed[0].title;
-    lead.activityMessage = `Breaking down & architecting: ${cleanGoal}`;
-
-    // Record inter-agent communication
+    const first = decomposed[0];
+    const target = this.agents.get(first.assignedTo) || pm;
     this.recordCommunication({
       fromAgentId: pm.id,
       fromAgentName: pm.name,
       fromAgentRole: pm.role,
-      toAgentId: lead.id,
-      toAgentName: lead.name,
-      toAgentRole: lead.role,
-      taskKey: decomposed[0].key,
-      taskTitle: decomposed[0].title,
-      message: `Decomposed feature goal "${cleanGoal}" into 4 sprint deliverables on the Authoritative Task Board. Assigning Architecture Spike to Tech Lead.`,
+      toAgentId: target.id,
+      toAgentName: target.name,
+      toAgentRole: target.role,
+      taskKey: first.key,
+      taskTitle: first.title,
+      message: fromAI
+        ? `Broke "${cleanGoal}" into ${decomposed.length} task${decomposed.length === 1 ? '' : 's'}: ${decomposed.map((t) => `${t.key} ${t.title} → ${t.assignedTo}`).join('; ')}`
+        : `Registered requirement "${cleanGoal}" in the backlog for breakdown.`,
       channel: 'subagent_delegation',
       timestamp: new Date().toISOString(),
     });
 
     this.recordRoleInvocation(pm.id, 8);
-    this.recordRoleInvocation(lead.id, 12);
     this.recordSkillUsage('task-decomposition', pm.id, 15);
-    this.recordSkillUsage('task-decomposition', lead.id, 15);
 
-    // Update workflow title & phase
     this.workflowTitle = `${this.projectName} • ${cleanGoal.slice(0, 32)}`;
     this.currentPhase = 'Sprint Execution';
-    this.latestMilestone = `Task Decomposed & Assigned: ${cleanGoal}`;
+    this.latestMilestone = fromAI ? `Requirement broken into ${decomposed.length} tasks` : 'Requirement added to backlog';
     this.latestMilestoneAgentId = pm.id;
 
-    // Broadcast state update to all visualizers
     this.broadcast({
       type: 'SYNC_STATE',
       data: this.getStateSnapshot(),
@@ -415,6 +514,287 @@ class EventBus extends EventEmitter {
     return record;
   }
 
+  recordDeliverable(item) {
+    if (!item) return null;
+    const now = new Date().toISOString();
+    const id = item.id || `deliv-${item.type || 'artifact'}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    
+    // Normalize agent information if agentId is supplied
+    let agentName = item.agentName;
+    let role = item.role;
+    let roleSlug = item.roleSlug;
+    if (item.agentId && this.agents.has(item.agentId)) {
+      const ag = this.agents.get(item.agentId);
+      if (!agentName) agentName = ag.name;
+      if (!role) role = ag.role;
+    }
+
+    if (!roleSlug) {
+      const r = (role || '').toLowerCase();
+      if (r.includes('product') || r.includes('pm') || r.includes('scrum')) roleSlug = 'pm';
+      else if (r.includes('test') || r.includes('qa') || r.includes('quality')) roleSlug = 'qa';
+      else if (r.includes('lead') || r.includes('architect')) roleSlug = 'tech-lead';
+      else if (r.includes('dev') || r.includes('engineer')) roleSlug = 'dev';
+      else roleSlug = 'specialist';
+    }
+
+    const normalized = {
+      id,
+      title: item.title || 'Sprint Deliverable',
+      type: item.type || 'source_code',
+      role: role || 'Engineering Team',
+      roleSlug: roleSlug || 'specialist',
+      agentId: item.agentId || 'web-dev',
+      agentName: agentName || 'Developer',
+      status: item.status || 'delivered',
+      summary: item.summary || '',
+      content: item.content || '',
+      format: item.format || 'markdown',
+      filePath: item.filePath || '',
+      version: item.version || 'v1.0',
+      sprintId: item.sprintId || this.activeSprintId || 'sprint-1',
+      deliveredTo: item.deliveredTo || '',
+      deliveredToName: item.deliveredToName || '',
+      deliveredToRole: item.deliveredToRole || '',
+      metadata: item.metadata || {},
+      createdAt: item.createdAt || now,
+      updatedAt: now,
+    };
+
+    // Deduplicate by id or title
+    this.deliverables.set(normalized.id, normalized);
+
+    this.broadcast({
+      type: 'DELIVERABLE_UPDATE',
+      deliverable: normalized,
+      state: this.getStateSnapshot(),
+    });
+
+    return normalized;
+  }
+
+  initDefaultDeliverables() {
+    this.deliverables.clear();
+    const { pm, lead, dev, tester } = OrchestrationRules.resolveTeamRoles(this.agents);
+
+    const prdContent = `# Product Requirement Document (PRD)
+## Feature: User Authentication & Token Vault (US-101)
+**Author**: ${pm.name} (${pm.role})
+**Delivered To**: ${lead.name} (${lead.role})
+**Status**: Approved & Ready for Architecture
+
+### 1. Objective & Problem Statement
+Provide enterprise-grade session lifecycle and JWT security with multi-factor biometrics and automatic token refreshing.
+
+### 2. User Stories & Acceptance Criteria
+- **US-101.1**: User can log in with OAuth2 & secure password credentials.
+- **US-101.2**: Access tokens expire in 15 minutes; refresh tokens auto-rotate.
+- **US-101.3**: Failed login threshold of 5 attempts triggers exponential cooldown.
+- **US-101.4**: Token payload signed with RS256 with key rotation support.
+- **US-101.5**: Full audit telemetry emitted for compliance monitoring.
+
+### 3. Definition of Done (DoD)
+- [x] Functional specs reviewed and signed off.
+- [x] Zero P0/P1 security vulnerabilities.
+- [x] Automated test coverage >= 95%.
+- [x] Performance SLA: Authentication latency under 120ms at p99.`;
+
+    const archContent = `# Architectural Design Contract & Implementation Plan
+## Feature: User Authentication & Token Vault (ARCH-101)
+**Author**: ${lead.name} (${lead.role})
+**Delivered To**: ${dev.name} (${dev.role})
+**Status**: Handed off for Implementation
+
+### 1. Component Boundaries & Contract
+- \`AuthService\`: Coordinates handshake, credential verification, and token exchange.
+- \`TokenVault\`: In-memory isolated storage with platform-keychain hardware backing.
+- \`AuthInterceptor\`: Axios/Fetch pipeline middleware injecting Bearer tokens and managing transparent 401 refresh cycles.
+
+### 2. Implementation Specifications
+- **Format**: TypeScript Strict / ESM Module.
+- **Error Handling**: Standardized \`AuthError\` class with error codes \`TOKEN_EXPIRED\`, \`INVALID_CREDENTIALS\`, \`RATE_LIMITED\`.
+- **Concurrency**: Lock refresh requests using a mutex semaphore to eliminate stampedes.
+
+### 3. Quality Gates
+- Lint: ESLint zero-warning policy.
+- Types: TypeScript strict mode with no implicit \`any\`.`;
+
+    const codeContent = `/**
+ * AuthService & Token Vault Implementation (CODE-101)
+ * Author: ${dev.name} (${dev.role})
+ * Delivered To: ${lead.name} (${lead.role})
+ */
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+export class AuthService {
+  private static instance: AuthService;
+  private tokenCache: Map<string, string> = new Map();
+
+  static getInstance(): AuthService {
+    if (!AuthService.instance) {
+      AuthService.instance = new AuthService();
+    }
+    return AuthService.instance;
+  }
+
+  async authenticate(credentials: { email: string; token: string }): Promise<AuthTokens> {
+    if (!credentials.email || !credentials.token) {
+      throw new Error('INVALID_CREDENTIALS');
+    }
+    const tokens: AuthTokens = {
+      accessToken: 'jwt_access_' + Math.random().toString(36).substring(2),
+      refreshToken: 'jwt_refresh_' + Math.random().toString(36).substring(2),
+      expiresIn: 900
+    };
+    this.tokenCache.set('active_token', tokens.accessToken);
+    return tokens;
+  }
+
+  async verifySession(token: string): Promise<boolean> {
+    return Boolean(token && token.startsWith('jwt_access_'));
+  }
+}`;
+
+    const qaContent = `# Automated E2E Test Suite & Verification Report
+## Verification: Authentication Pipeline (QA-101)
+**Author**: ${tester.name} (${tester.role})
+**Delivered To**: ${pm.name} (${pm.role})
+**Status**: 100% Pass Rate (Ready for Production Release)
+
+### 1. Test Execution Summary
+- **Total Test Cases Executed**: 42
+- **Passed**: 42 (100%)
+- **Failed**: 0 (0%)
+- **Code Coverage**: 98.4% Line / 96.1% Branch
+- **Execution Time**: 1.84s
+
+### 2. Test Suites
+| Test Suite | Tests | Result | Duration |
+|:---|:---:|:---:|:---:|
+| OAuth2 Credential Verification | 14 | PASSED | 420ms |
+| Refresh Token Rotation & Mutex | 12 | PASSED | 610ms |
+| Rate-Limiter & Exponential Backoff | 8 | PASSED | 390ms |
+| Keychain Secure Persistence | 8 | PASSED | 420ms |
+
+### 3. QA Sign-Off
+All acceptance criteria defined in PRD-101 have been verified with automated regression tests. Ready for sprint signoff.`;
+
+    const defaultItems = [
+      {
+        id: 'deliv-prd-101',
+        title: 'PRD-101: User Authentication & Token Vault Specification',
+        type: 'prd',
+        role: pm.role,
+        roleSlug: 'pm',
+        agentId: pm.id,
+        agentName: pm.name,
+        status: 'approved',
+        summary: 'Complete product requirements, user stories, acceptance criteria, and Definition of Done for user authentication.',
+        content: prdContent,
+        format: 'markdown',
+        filePath: '.agents/sprints/sprint-1/PRD-101.md',
+        version: 'v1.0',
+        sprintId: this.activeSprintId,
+        deliveredTo: lead.id,
+        deliveredToName: lead.name,
+        deliveredToRole: lead.role,
+        metadata: {
+          wordCount: 380,
+          acceptanceCriteriaCount: 5,
+          targetPlatform: 'Web & Mobile'
+        },
+        createdAt: new Date(Date.now() - 3600000).toISOString(),
+        updatedAt: new Date(Date.now() - 3600000).toISOString(),
+      },
+      {
+        id: 'deliv-arch-101',
+        title: 'ARCH-101: Authentication Architecture & Token Security Specification',
+        type: 'architecture',
+        role: lead.role,
+        roleSlug: 'tech-lead',
+        agentId: lead.id,
+        agentName: lead.name,
+        status: 'delivered',
+        summary: 'Architectural component contracts, TokenVault interface boundaries, and concurrency mutex design.',
+        content: archContent,
+        format: 'markdown',
+        filePath: '.agents/sprints/sprint-1/ARCH-101.md',
+        version: 'v1.0',
+        sprintId: this.activeSprintId,
+        deliveredTo: dev.id,
+        deliveredToName: dev.name,
+        deliveredToRole: dev.role,
+        metadata: {
+          wordCount: 290,
+          securityChecksPassed: 8,
+          targetPlatform: 'Multiplatform'
+        },
+        createdAt: new Date(Date.now() - 2700000).toISOString(),
+        updatedAt: new Date(Date.now() - 2700000).toISOString(),
+      },
+      {
+        id: 'deliv-code-101',
+        title: 'CODE-101: AuthService & Token Interceptor Implementation',
+        type: 'source_code',
+        role: dev.role,
+        roleSlug: 'dev',
+        agentId: dev.id,
+        agentName: dev.name,
+        status: 'in_review',
+        summary: 'Core AuthService class with credential verification, session validation, and TokenVault caching.',
+        content: codeContent,
+        format: 'code',
+        filePath: 'src/services/AuthService.ts',
+        version: 'v1.0',
+        sprintId: this.activeSprintId,
+        deliveredTo: lead.id,
+        deliveredToName: lead.name,
+        deliveredToRole: lead.role,
+        metadata: {
+          linesOfCode: 38,
+          coveragePercent: 96,
+          targetPlatform: 'TypeScript / Node'
+        },
+        createdAt: new Date(Date.now() - 1800000).toISOString(),
+        updatedAt: new Date(Date.now() - 1800000).toISOString(),
+      },
+      {
+        id: 'deliv-qa-101',
+        title: 'QA-101: E2E Authentication Test Suite & Regression Report',
+        type: 'test_report',
+        role: tester.role,
+        roleSlug: 'qa',
+        agentId: tester.id,
+        agentName: tester.name,
+        status: 'approved',
+        summary: 'Automated test suite report with 100% pass rate across 42 test cases and zero vulnerabilities.',
+        content: qaContent,
+        format: 'markdown',
+        filePath: '.agents/sprints/sprint-1/QA-TEST-REPORT-101.md',
+        version: 'v1.0',
+        sprintId: this.activeSprintId,
+        deliveredTo: pm.id,
+        deliveredToName: pm.name,
+        deliveredToRole: pm.role,
+        metadata: {
+          testCount: 42,
+          testPassRate: '100%',
+          coveragePercent: 98.4
+        },
+        createdAt: new Date(Date.now() - 900000).toISOString(),
+        updatedAt: new Date(Date.now() - 900000).toISOString(),
+      }
+    ];
+
+    for (const d of defaultItems) {
+      this.deliverables.set(d.id, d);
+    }
+  }
+
   registerWsClient(ws) {
     this.wsClients.add(ws);
     // Send initial snapshot on connection
@@ -487,6 +867,47 @@ class EventBus extends EventEmitter {
       timestamp,
       payload,
     };
+
+    // Normalize Jira / Confluence items
+    if (
+      type === 'jira_confluence_lookup' ||
+      (payload && (payload.sourceType === 'jira' || payload.sourceType === 'confluence' || payload.ticketKey || payload.pageId))
+    ) {
+      const p = payload || {};
+      const item = {
+        id: `jc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        sourceType: p.sourceType || (p.ticketKey ? 'jira' : 'confluence'),
+        ticketKey: p.ticketKey || null,
+        pageId: p.pageId || null,
+        url: p.url || null,
+        title: p.title || (p.ticketKey ? `Jira Ticket ${p.ticketKey}` : `Confluence Page ${p.pageId || ''}`),
+        summary: p.summary || p.details || '',
+        status: p.status || 'Active',
+        command: p.command || null,
+        timestamp: timestamp,
+        agentId: agentId || null,
+        details: p.details || '',
+      };
+      // Deduplicate by ticketKey or pageId or url
+      const existingIndex = this.jiraConfluenceItems.findIndex(
+        (x) =>
+          (item.ticketKey && x.ticketKey === item.ticketKey) ||
+          (item.pageId && x.pageId === item.pageId) ||
+          (item.url && x.url === item.url)
+      );
+      if (existingIndex >= 0) {
+        this.jiraConfluenceItems[existingIndex] = {
+          ...this.jiraConfluenceItems[existingIndex],
+          ...item,
+          timestamp: item.timestamp,
+        };
+      } else {
+        this.jiraConfluenceItems.unshift(item);
+        if (this.jiraConfluenceItems.length > 50) {
+          this.jiraConfluenceItems.pop();
+        }
+      }
+    }
 
     // Update in-memory event list
     this.events.unshift(normalized);
@@ -649,16 +1070,44 @@ class EventBus extends EventEmitter {
       }
 
       switch (type) {
+        case 'jira_confluence_lookup':
+          agent.status = 'working';
+          agent.activityMessage = payload.ticketKey
+            ? `Viewing Jira Ticket: ${payload.ticketKey}`
+            : (payload.details || `Viewing ${payload.pageId || 'Confluence Doc'}`);
+          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 5;
+          this.recordRoleInvocation(agentId, 5);
+          this.recordToolUsage(agentId, payload.tool || 'read_jira.py', 5);
+
+          // Auto-revert back to available standby state
+          this.setAgentBusyTimer(agentId, () => {
+            if (!this.isDemoRunning && agent.status === 'working') {
+              agent.status = 'available';
+              agent.activityMessage = 'Ready at workstation';
+              this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+            }
+          }, 4000);
+          break;
+
         case 'tool_executing':
         case 'tool_started':
           agent.status = 'working';
           agent.lastTool = payload.tool || agent.lastTool;
           agent.activityMessage = `Running tool: ${payload.tool || 'Action'}`;
+          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 5;
+          this.recordRoleInvocation(agentId, 5);
           this.recordToolUsage(agentId, payload.tool || 'tool_execution', 5);
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
             if (!this.isDemoRunning && (agent.status === 'working' || agent.status === 'coding')) {
+              if (agent.taskStartedAt) {
+                const elapsed = Math.max(1, Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000));
+                agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
+                agent.taskCompletedAt = new Date().toISOString();
+                agent.taskStartedAt = null;
+                this.recordRoleInvocation(agentId, elapsed);
+              }
               agent.status = 'available';
               agent.currentTask = null;
               agent.activityMessage = 'Ready at workstation';
@@ -670,6 +1119,8 @@ class EventBus extends EventEmitter {
         case 'command_executing':
           agent.status = payload.command && payload.command.includes('test') ? 'testing' : 'coding';
           agent.activityMessage = `Executing: ${payload.command ? payload.command.substring(0, 45) : 'Terminal command'}`;
+          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 8;
+          this.recordRoleInvocation(agentId, 8);
           {
             const cmdName = payload.command ? payload.command.split(' ')[0] : 'terminal_command';
             this.recordToolUsage(agentId, cmdName, 8);
@@ -678,6 +1129,13 @@ class EventBus extends EventEmitter {
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
             if (!this.isDemoRunning && (agent.status === 'working' || agent.status === 'coding' || agent.status === 'testing')) {
+              if (agent.taskStartedAt) {
+                const elapsed = Math.max(1, Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000));
+                agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
+                agent.taskCompletedAt = new Date().toISOString();
+                agent.taskStartedAt = null;
+                this.recordRoleInvocation(agentId, elapsed);
+              }
               agent.status = 'available';
               agent.currentTask = null;
               agent.activityMessage = 'Ready at workstation';
@@ -690,11 +1148,20 @@ class EventBus extends EventEmitter {
           agent.status = 'coding';
           agent.currentFile = payload.file;
           agent.activityMessage = `Editing: ${payload.file ? payload.file.split('/').pop() : 'Codebase'}`;
+          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 6;
+          this.recordRoleInvocation(agentId, 6);
           this.recordToolUsage(agentId, payload.tool || 'replace_file_content', 6);
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
             if (!this.isDemoRunning && (agent.status === 'coding' || agent.status === 'working')) {
+              if (agent.taskStartedAt) {
+                const elapsed = Math.max(1, Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000));
+                agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
+                agent.taskCompletedAt = new Date().toISOString();
+                agent.taskStartedAt = null;
+                this.recordRoleInvocation(agentId, elapsed);
+              }
               agent.status = 'available';
               agent.currentTask = null;
               agent.activityMessage = 'Ready at workstation';
@@ -706,6 +1173,8 @@ class EventBus extends EventEmitter {
         case 'planning_started':
           agent.status = 'planning';
           agent.activityMessage = 'Designing 5-tier architecture & pre-mapping files';
+          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 12;
+          this.recordRoleInvocation(agentId, 12);
           this.recordToolUsage(agentId, payload.tool || 'impact-analysis', 12);
           break;
 
@@ -713,15 +1182,18 @@ class EventBus extends EventEmitter {
           agent.status = 'celebrating';
           agent.activityMessage = `🎉 Done: ${payload.task || 'Task complete!'}`;
           agent.taskCompletedAt = new Date().toISOString();
+          let dur = 10;
           if (agent.taskStartedAt) {
-            const dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
+            dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
             agent.taskDurationSec = dur;
-            agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
           }
+          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
+          this.recordRoleInvocation(agentId, dur);
           this.setAgentBusyTimer(agent.id, () => {
             if (agent.status === 'celebrating') {
               agent.status = 'available';
               agent.activityMessage = 'Ready at workstation';
+              agent.taskStartedAt = null;
               this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
             }
           }, 5000);
@@ -731,23 +1203,46 @@ class EventBus extends EventEmitter {
           if (payload.testsFailed > 0) {
             agent.status = 'error';
             agent.activityMessage = `Tests Failed: ${payload.testsFailed} errors`;
+            agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 6;
+            this.recordRoleInvocation(agentId, 6);
           } else {
             agent.status = 'celebrating';
             agent.activityMessage = `🎉 All ${payload.testsPassed || 'unit'} tests passed green!`;
             agent.taskCompletedAt = new Date().toISOString();
+            let testDur = 8;
             if (agent.taskStartedAt) {
-              const dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
-              agent.taskDurationSec = dur;
-              agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
+              testDur = Math.max(8, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
+              agent.taskDurationSec = testDur;
             }
+            agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + testDur;
+            this.recordRoleInvocation(agentId, testDur);
             this.setAgentBusyTimer(agent.id, () => {
               if (agent.status === 'celebrating') {
                 agent.status = 'available';
                 agent.activityMessage = 'Ready at workstation';
+                agent.taskStartedAt = null;
                 this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
               }
             }, 5000);
           }
+          break;
+
+        case 'jira_confluence_lookup':
+        case 'spec_inspected':
+          agent.status = 'working';
+          agent.activityMessage = payload.sourceType === 'confluence'
+            ? `Reading spec: ${payload.pageId || payload.title || 'Confluence'}`
+            : `Inspecting ticket: ${payload.ticketKey || payload.title || 'Jira'}`;
+          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 6;
+          this.recordRoleInvocation(agentId, 6);
+          this.recordToolUsage(agentId, payload.tool || (payload.sourceType === 'confluence' ? 'read_confluence.py' : 'read_jira.py'), 6);
+          this.setAgentBusyTimer(agentId, () => {
+            if (!this.isDemoRunning && agent.status === 'working') {
+              agent.status = 'available';
+              agent.activityMessage = 'Ready at workstation';
+              this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+            }
+          }, 4000);
           break;
 
         case 'error':
@@ -756,6 +1251,23 @@ class EventBus extends EventEmitter {
           break;
       }
       agent.updatedAt = new Date().toISOString();
+    }
+
+    // 4b. Record Jira / Confluence item
+    if ((type === 'jira_confluence_lookup' || type === 'spec_inspected') && payload) {
+      this.recordJiraConfluenceItem({
+        id: payload.id || payload.ticketKey || payload.pageId || `jc_${Date.now()}`,
+        sourceType: payload.sourceType || (payload.pageId ? 'confluence' : 'jira'),
+        ticketKey: payload.ticketKey,
+        pageId: payload.pageId,
+        url: payload.url,
+        title: payload.title || (payload.ticketKey ? `Jira Ticket ${payload.ticketKey}` : `Confluence Page ${payload.pageId}`),
+        summary: payload.summary || payload.details || '',
+        command: payload.command || '',
+        timestamp: event.timestamp || new Date().toISOString(),
+        agentId: agentId || 'tech-pm',
+        details: payload.details || '',
+      });
     }
 
     // 5. Universal File Change Recording (captures both recognized agents and dynamic subagents)
@@ -811,7 +1323,7 @@ class EventBus extends EventEmitter {
           delegatedByRole: payload.delegatedByRole || 'AI Agent',
           column: payload.column || 'in_progress',
           skill: payload.allowedSkill || payload.skill || payload.tool || 'coding',
-          progress: payload.progress || 25,
+          progress: payload.progress !== undefined ? payload.progress : (payload.column === 'done' ? 100 : 0),
           updatedAt: new Date().toISOString(),
         });
       }
@@ -842,8 +1354,9 @@ class EventBus extends EventEmitter {
         if (payload.assignedTo) task.assignedTo = payload.assignedTo;
         if (payload.delegatedBy) task.delegatedBy = payload.delegatedBy;
         if (payload.delegatedByRole) task.delegatedByRole = payload.delegatedByRole;
-        if (payload.task) task.title = payload.task;
-        if (payload.details) task.description = payload.details;
+        // Activity events never overwrite what the delegating agent wrote on the card
+        if (payload.task && !task.title) task.title = payload.task;
+        if (payload.details && !task.description) task.description = payload.details;
         if (payload.allowedSkill || payload.skill) task.skill = payload.allowedSkill || payload.skill;
         task.updatedAt = new Date().toISOString();
       }
@@ -858,7 +1371,9 @@ class EventBus extends EventEmitter {
       (payload.phase && /deliver/i.test(payload.phase)) ||
       (payload.milestone && /deliver|sign-?off|all tasks complete|feature delivered|shipped/i.test(payload.milestone));
 
-    if (isFeatureDelivered) {
+    // Only the scripted demo closes the whole board at once. Real agents move each card themselves
+    // (POST /api/tasks/:key/status), so one "delivered" message must not complete everyone's work.
+    if (isFeatureDelivered && this.isDemoRunning) {
       for (const [id, task] of this.tasks.entries()) {
         if (task.column !== 'done') {
           task.column = 'done';
@@ -869,7 +1384,7 @@ class EventBus extends EventEmitter {
     }
 
     // Auto-complete test and review tasks when test result is successful
-    if (type === 'test_result' && (!payload.testsFailed || payload.testsFailed === 0)) {
+    if (this.isDemoRunning && type === 'test_result' && (!payload.testsFailed || payload.testsFailed === 0)) {
       for (const [id, task] of this.tasks.entries()) {
         if (task.column === 'testing' || task.column === 'review' || id === 'DELIV-3' || id === 'DELIV-4') {
           task.column = 'done';
@@ -926,12 +1441,17 @@ class EventBus extends EventEmitter {
       },
       agents: agentsList,
       tasks: tasksList,
+      deliverables: Array.from(this.deliverables.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+      activeSprintId: this.activeSprintId || 'sprint-1',
+      activeSprintPath: this.activeSprintPath || '.agents/sprints/sprint-1',
+      sprints: this.sprints || [],
       toolUsageAnalytics: hasAgents ? Array.from(this.toolUsageMap.values()).sort((a, b) => b.totalDurationSec - a.totalDurationSec) : [],
       skillUsageAnalytics: hasAgents ? Array.from(this.skillUsageMap.values()).sort((a, b) => b.count - a.count) : [],
       roleInvocationAnalytics: hasAgents ? Array.from(this.roleInvocationMap.values()).sort((a, b) => b.invocations - a.invocations) : [],
       fileChanges: hasAgents ? this.fileChanges : [],
       communications: hasAgents ? this.communications : [],
       activeHandoff: hasAgents ? this.activeHandoff : null,
+      jiraConfluenceItems: this.jiraConfluenceItems || [],
       connectedViewers: this.wsClients.size,
       isDemoRunning: this.isDemoRunning || false,
       events: hasAgents ? this.events.slice(0, 60) : [],
@@ -960,6 +1480,7 @@ class EventBus extends EventEmitter {
     this.latestMilestoneAgentId = this.agents.size > 0 ? (this.agents.get('tech-pm')?.id || this.agents.keys().next().value) : 'project-manager';
     this.tasks = new Map();
     this.loadDemoTasks();
+    this.initDefaultDeliverables();
     this.toolUsageMap = new Map();
     this.initDefaultToolAnalytics();
     this.skillUsageMap = new Map();
@@ -980,6 +1501,7 @@ class EventBus extends EventEmitter {
   }
 
   resetWorkflow(workflowTitle) {
+    this.jiraConfluenceItems = [];
     return this.loadDemoWorkflow(workflowTitle);
   }
 
@@ -987,6 +1509,7 @@ class EventBus extends EventEmitter {
     this.clearedAt = Date.now();
     this.isDemoRunning = false;
     this.isGhostTeam = false;
+    this.jiraConfluenceItems = [];
     this.clearAllAgentBusyTimers();
     if (this.handoffTimeout) {
       clearTimeout(this.handoffTimeout);
@@ -1001,6 +1524,8 @@ class EventBus extends EventEmitter {
     this.fileChanges = [];
     this.communications = [];
     this.activeHandoff = null;
+    this.jiraConfluenceItems = [];
+    this.deliverables = new Map();
 
     // Update workspace identity
     this.projectName = path.basename(projectDir) || 'Active Project';
@@ -1054,6 +1579,8 @@ class EventBus extends EventEmitter {
     this.skillUsageMap = new Map();
     this.fileChanges = [];
     this.communications = [];
+    this.jiraConfluenceItems = [];
+    this.deliverables = new Map();
     if (this.handoffTimeout) {
       clearTimeout(this.handoffTimeout);
       this.handoffTimeout = null;

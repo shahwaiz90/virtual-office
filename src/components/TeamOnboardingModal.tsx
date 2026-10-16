@@ -481,20 +481,20 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/60 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl max-h-[96vh] sm:max-h-[90vh] flex flex-col bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200/80 overflow-hidden text-slate-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-scrim/60 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="relative w-full max-w-4xl max-h-[96vh] sm:max-h-[90vh] flex flex-col bg-surface rounded-2xl sm:rounded-3xl shadow-2xl border border-sand-200/80 overflow-hidden text-sand-800">
         
         {/* Apple-Style Sleek Header */}
-        <div className="px-4 py-3.5 sm:px-6 sm:py-4 bg-white border-b border-slate-100 flex flex-col gap-2.5 shrink-0">
+        <div className="px-4 py-3.5 sm:px-6 sm:py-4 bg-surface border-b border-sand-100 flex flex-col gap-2.5 shrink-0">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs shrink-0">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-600 shadow-2xs shrink-0">
                 <Users className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="text-sm sm:text-base font-bold tracking-tight text-slate-900 truncate">
-                    {flowStep === 'platform' ? 'Virtual Office Setup' : flowStep === 'preview' ? `${getPlatformLabel(selectedTemplateId)} Team` : 'Team Studio & Skills'}
+                  <h2 className="text-sm sm:text-base font-bold tracking-tight text-sand-900 truncate">
+                    {flowStep === 'platform' ? 'Agent Command Center Setup' : flowStep === 'preview' ? `${getPlatformLabel(selectedTemplateId)} Team` : 'Team Studio & Skills'}
                   </h2>
                   {flowStep !== 'platform' && (
                     <span className={`text-[9px] sm:text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border shrink-0 ${
@@ -502,13 +502,13 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         : selectedTemplateId === 'ios'
                         ? 'bg-sky-50 text-sky-700 border-sky-200'
-                        : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                        : 'bg-brand-50 text-brand-700 border-brand-200'
                     }`}>
                       {selectedTemplateId.toUpperCase()}
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] sm:text-xs text-slate-500 truncate hidden xs:block">
+                <p className="text-[11px] sm:text-xs text-sand-500 truncate hidden xs:block">
                   {flowStep === 'platform' 
                     ? 'Select your project platform to configure your specialized AI squad.'
                     : flowStep === 'preview'
@@ -521,7 +521,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={onClose}
-                className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 sm:p-2 rounded-xl text-sand-400 hover:text-sand-700 hover:bg-sand-100 transition-colors cursor-pointer"
                 title="Close"
               >
                 <X className="w-5 h-5" />
@@ -530,14 +530,14 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
           </div>
 
           {/* Clean Stepper Tabs for All Viewports */}
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl text-xs font-semibold self-start sm:self-auto w-full sm:w-auto overflow-x-auto">
+          <div className="flex items-center gap-1 p-1 bg-sand-100 rounded-xl text-xs font-semibold self-start sm:self-auto w-full sm:w-auto overflow-x-auto">
             <button
               type="button"
               onClick={() => setFlowStep('platform')}
               className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap text-xs ${
                 flowStep === 'platform'
-                  ? 'bg-white text-indigo-700 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-surface text-brand-700 shadow-xs font-bold'
+                  : 'text-sand-600 hover:text-sand-900'
               }`}
             >
               <span>1. Platform</span>
@@ -548,8 +548,8 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
               onClick={() => setFlowStep('preview')}
               className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap text-xs ${
                 flowStep === 'preview'
-                  ? 'bg-white text-indigo-700 shadow-xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-surface text-brand-700 shadow-xs font-bold'
+                  : 'text-sand-600 hover:text-sand-900'
               }`}
             >
               <span>2. Team Preview</span>
@@ -562,8 +562,8 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
               }}
               className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap text-xs ${
                 flowStep === 'studio'
-                  ? 'bg-white text-indigo-700 shadow-xs font-bold'
-                  : 'text-slate-500 hover:text-slate-900'
+                  ? 'bg-surface text-brand-700 shadow-xs font-bold'
+                  : 'text-sand-500 hover:text-sand-900'
               }`}
             >
               <Sliders className="w-3 h-3" />
@@ -573,7 +573,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
         </div>
 
         {/* Modal Main Content Container */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-7 bg-slate-50/40">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-7 bg-sand-50/40">
           
           {error && (
             <div className="mb-4 p-3 sm:p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2.5">
@@ -590,8 +590,8 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
           )}
 
           {loading ? (
-            <div className="py-24 flex flex-col items-center justify-center gap-2.5 text-slate-500">
-              <RefreshCw className="w-6 h-6 animate-spin text-indigo-600" />
+            <div className="py-24 flex flex-col items-center justify-center gap-2.5 text-sand-500">
+              <RefreshCw className="w-6 h-6 animate-spin text-brand-600" />
               <span className="text-xs font-semibold">Preparing virtual office setup...</span>
             </div>
           ) : flowStep === 'platform' ? (
@@ -601,10 +601,10 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
             /* ========================================================================= */
             <div className="max-w-3xl mx-auto space-y-5 sm:space-y-6 py-1 animate-in fade-in duration-200">
               <div className="text-center space-y-1">
-                <h3 className="text-lg sm:text-2xl font-bold tracking-tight text-slate-900">
+                <h3 className="text-lg sm:text-2xl font-bold tracking-tight text-sand-900">
                   What type of project are you building?
                 </h3>
-                <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
+                <p className="text-xs sm:text-sm text-sand-500 max-w-md mx-auto">
                   Select your stack to configure official guidelines, skills, and 4 dedicated specialist roles.
                 </p>
               </div>
@@ -615,10 +615,10 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                 {/* 1. Android Platform Card */}
                 <div
                   onClick={() => handleApplyTemplate('android', true)}
-                  className={`group relative p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 bg-white ${
+                  className={`group relative p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 bg-surface ${
                     selectedTemplateId === 'android'
                       ? 'border-emerald-500 shadow-sm ring-3 ring-emerald-500/10'
-                      : 'border-slate-200/80 hover:border-emerald-300 hover:shadow-sm'
+                      : 'border-sand-200/80 hover:border-emerald-300 hover:shadow-sm'
                   }`}
                 >
                   <div className="space-y-3">
@@ -627,29 +627,29 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center justify-between">
-                        <h4 className="text-sm sm:text-base font-bold text-slate-900">Android</h4>
+                        <h4 className="text-sm sm:text-base font-bold text-sand-900">Android</h4>
                         <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                           KOTLIN
                         </span>
                       </div>
-                      <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5">
+                      <p className="text-[11px] sm:text-xs text-sand-500 font-medium mt-0.5">
                         Jetpack Compose • Gradle
                       </p>
                     </div>
-                    <p className="text-xs text-slate-600 leading-relaxed">
+                    <p className="text-xs text-sand-600 leading-relaxed">
                       Pre-configured with modern Android architecture, Compose UI performance, R8 shrinking, and unit test suites.
                     </p>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-100 space-y-2">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <div className="pt-3 border-t border-sand-100 space-y-2">
+                    <div className="text-[10px] font-bold text-sand-400 uppercase tracking-wider">
                       Included 4-Agent Team:
                     </div>
-                    <div className="flex flex-wrap gap-1 text-[11px] text-slate-600">
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium">Scrum Master</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium">Android Lead</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium">Android Dev</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium">Mobile QA</span>
+                    <div className="flex flex-wrap gap-1 text-[11px] text-sand-600">
+                      <span className="px-1.5 py-0.5 rounded bg-sand-100 font-medium">Scrum Master</span>
+                      <span className="px-1.5 py-0.5 rounded bg-sand-100 font-medium">Android Lead</span>
+                      <span className="px-1.5 py-0.5 rounded bg-sand-100 font-medium">Android Dev</span>
+                      <span className="px-1.5 py-0.5 rounded bg-sand-100 font-medium">Mobile QA</span>
                     </div>
 
                     <button
@@ -665,10 +665,10 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                 {/* 2. iOS Platform Card */}
                 <div
                   onClick={() => handleApplyTemplate('ios', true)}
-                  className={`group relative p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 bg-white ${
+                  className={`group relative p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 bg-surface ${
                     selectedTemplateId === 'ios'
                       ? 'border-sky-500 shadow-sm ring-3 ring-sky-500/10'
-                      : 'border-slate-200/80 hover:border-sky-300 hover:shadow-sm'
+                      : 'border-sand-200/80 hover:border-sky-300 hover:shadow-sm'
                   }`}
                 >
                   <div className="space-y-3">
@@ -677,29 +677,29 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center justify-between">
-                        <h4 className="text-sm sm:text-base font-bold text-slate-900">iOS & Apple</h4>
+                        <h4 className="text-sm sm:text-base font-bold text-sand-900">iOS & Apple</h4>
                         <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">
                           SWIFT 6
                         </span>
                       </div>
-                      <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5">
+                      <p className="text-[11px] sm:text-xs text-sand-500 font-medium mt-0.5">
                         SwiftUI • Xcode • Swift Testing
                       </p>
                     </div>
-                    <p className="text-xs text-slate-600 leading-relaxed">
+                    <p className="text-xs text-sand-600 leading-relaxed">
                       Tailored for modern Swift Testing, Apple Design Guidelines, Clean SwiftUI Views, and strict Xcode build hardening.
                     </p>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-100 space-y-2">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <div className="pt-3 border-t border-sand-100 space-y-2">
+                    <div className="text-[10px] font-bold text-sand-400 uppercase tracking-wider">
                       Included 4-Agent Team:
                     </div>
-                    <div className="flex flex-wrap gap-1 text-[11px] text-slate-600">
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium">Scrum Master</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium">iOS Lead</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium">iOS Dev</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium">iOS QA</span>
+                    <div className="flex flex-wrap gap-1 text-[11px] text-sand-600">
+                      <span className="px-1.5 py-0.5 rounded bg-sand-100 font-medium">Scrum Master</span>
+                      <span className="px-1.5 py-0.5 rounded bg-sand-100 font-medium">iOS Lead</span>
+                      <span className="px-1.5 py-0.5 rounded bg-sand-100 font-medium">iOS Dev</span>
+                      <span className="px-1.5 py-0.5 rounded bg-sand-100 font-medium">iOS QA</span>
                     </div>
 
                     <button
@@ -715,46 +715,46 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                 {/* 3. Web Platform Card */}
                 <div
                   onClick={() => handleApplyTemplate('web', true)}
-                  className={`group relative p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 bg-white ${
+                  className={`group relative p-4 sm:p-5 rounded-2xl sm:rounded-3xl border-2 transition-all duration-200 cursor-pointer flex flex-col justify-between gap-4 bg-surface ${
                     selectedTemplateId === 'web'
-                      ? 'border-indigo-500 shadow-sm ring-3 ring-indigo-500/10'
-                      : 'border-slate-200/80 hover:border-indigo-300 hover:shadow-sm'
+                      ? 'border-brand-500 shadow-sm ring-3 ring-brand-500/10'
+                      : 'border-sand-200/80 hover:border-brand-300 hover:shadow-sm'
                   }`}
                 >
                   <div className="space-y-3">
-                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-2xs group-hover:scale-105 transition-transform">
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-600 shadow-2xs group-hover:scale-105 transition-transform">
                       <Globe className="w-6 h-6" />
                     </div>
                     <div>
                       <div className="flex items-center justify-between">
-                        <h4 className="text-sm sm:text-base font-bold text-slate-900">Web & Cloud</h4>
-                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        <h4 className="text-sm sm:text-base font-bold text-sand-900">Web & Cloud</h4>
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200">
                           REACT 19
                         </span>
                       </div>
-                      <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5">
+                      <p className="text-[11px] sm:text-xs text-sand-500 font-medium mt-0.5">
                         TypeScript • Vite • Vitest
                       </p>
                     </div>
-                    <p className="text-xs text-slate-600 leading-relaxed">
+                    <p className="text-xs text-sand-600 leading-relaxed">
                       Optimized for fullstack web apps, reusable component systems, responsive styling, modern browser APIs, and automated UI tests.
                     </p>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-100 space-y-2">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <div className="pt-3 border-t border-sand-100 space-y-2">
+                    <div className="text-[10px] font-bold text-sand-400 uppercase tracking-wider">
                       Included 4-Agent Team:
                     </div>
-                    <div className="flex flex-wrap gap-1 text-[11px] text-slate-600">
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium">Scrum Master</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium">Web Lead</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium">Web Dev</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 font-medium">Web QA</span>
+                    <div className="flex flex-wrap gap-1 text-[11px] text-sand-600">
+                      <span className="px-1.5 py-0.5 rounded bg-sand-100 font-medium">Scrum Master</span>
+                      <span className="px-1.5 py-0.5 rounded bg-sand-100 font-medium">Web Lead</span>
+                      <span className="px-1.5 py-0.5 rounded bg-sand-100 font-medium">Web Dev</span>
+                      <span className="px-1.5 py-0.5 rounded bg-sand-100 font-medium">Web QA</span>
                     </div>
 
                     <button
                       type="button"
-                      className="w-full mt-2 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs cursor-pointer"
+                      className="w-full mt-2 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white shadow-2xs cursor-pointer"
                     >
                       <span>Select Web</span>
                       <ArrowRight className="w-3.5 h-3.5" />
@@ -773,23 +773,23 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
             <div className="space-y-4 sm:space-y-5 max-w-4xl mx-auto py-1 animate-in fade-in duration-200">
               
               {/* Header Navigation */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-200/60">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-sand-200/60">
                 <div className="space-y-0.5 min-w-0">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setFlowStep('platform')}
-                      className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer"
+                      className="text-xs font-bold text-sand-500 hover:text-sand-800 flex items-center gap-1 transition-colors cursor-pointer"
                     >
                       <ArrowLeft className="w-3.5 h-3.5" />
                       <span>Change Platform</span>
                     </button>
-                    <span className="text-slate-300">•</span>
-                    <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                    <span className="text-sand-300">•</span>
+                    <span className="text-xs font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-100">
                       {getPlatformLabel(selectedTemplateId)} Stack
                     </span>
                   </div>
-                  <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                  <h3 className="text-base sm:text-lg font-bold text-sand-900 tracking-tight">
                     Your Autonomous AI Engineering Squad
                   </h3>
                 </div>
@@ -801,9 +801,9 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                       setFlowStep('studio');
                       setViewMode('roster');
                     }}
-                    className="text-xs font-bold text-slate-700 hover:text-indigo-600 bg-white hover:bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer shadow-2xs flex items-center gap-1.5"
+                    className="text-xs font-bold text-sand-700 hover:text-brand-600 bg-surface hover:bg-sand-50 border border-sand-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer shadow-2xs flex items-center gap-1.5"
                   >
-                    <Sliders className="w-3.5 h-3.5 text-slate-500" />
+                    <Sliders className="w-3.5 h-3.5 text-sand-500" />
                     <span>Customize Roles</span>
                   </button>
                 </div>
@@ -817,7 +817,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                   return (
                     <div
                       key={ag.id}
-                      className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 shadow-xs flex flex-col justify-between gap-3.5"
+                      className="bg-surface rounded-2xl border border-sand-200/90 p-4 sm:p-5 shadow-xs flex flex-col justify-between gap-3.5"
                     >
                       <div className="space-y-2.5">
                         {/* Top: Avatar, Name, Role, Badge */}
@@ -827,32 +827,32 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                               <img
                                 src={ag.avatar_url || ag.avatarUrl || PRESET_AVATARS[idx % PRESET_AVATARS.length].url}
                                 alt={ag.name}
-                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-cover border-2 border-slate-100 bg-slate-50 shadow-2xs max-w-[40px] max-h-[40px]"
+                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-cover border-2 border-sand-100 bg-sand-50 shadow-2xs max-w-[40px] max-h-[40px]"
                                 style={{ width: 38, height: 38 }}
                               />
                               {isPrimary && (
-                                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-slate-900 flex items-center justify-center text-[9px] shadow-xs">
+                                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-amber-400 text-sand-900 flex items-center justify-center text-[9px] shadow-xs">
                                   👑
                                 </span>
                               )}
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <h4 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                                <h4 className="text-sm sm:text-base font-bold text-sand-900 truncate">
                                   {ag.name}
                                 </h4>
-                                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+                                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-sand-100 text-sand-700 border border-sand-200 shrink-0">
                                   {ag.badge}
                                 </span>
                               </div>
-                              <div className="text-xs font-semibold text-indigo-600 flex items-center gap-1 mt-0.5">
+                              <div className="text-xs font-semibold text-brand-600 flex items-center gap-1 mt-0.5">
                                 <span>{ag.role}</span>
                                 {isPrimary ? (
                                   <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200">
                                     Primary Orchestrator
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] font-medium text-slate-400">
+                                  <span className="text-[10px] font-medium text-sand-400">
                                     • Subagent
                                   </span>
                                 )}
@@ -862,25 +862,25 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                         </div>
 
                         {/* Plain English Core Responsibility */}
-                        <p className="text-xs text-slate-600 leading-relaxed">
+                        <p className="text-xs text-sand-600 leading-relaxed">
                           {ag.description || 'Executes assigned engineering deliverables and reports completion back to the team.'}
                         </p>
                       </div>
 
                       {/* Bottom Info: Delegation & Skills */}
-                      <div className="pt-2.5 border-t border-slate-100 space-y-1.5">
-                        <div className="flex items-center justify-between text-[11px] text-slate-500">
-                          <span className="font-semibold text-slate-400">Assigned Domain Skills:</span>
-                          <span className="font-bold text-slate-700">{(ag.skills || []).length} Skills</span>
+                      <div className="pt-2.5 border-t border-sand-100 space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px] text-sand-500">
+                          <span className="font-semibold text-sand-400">Assigned Domain Skills:</span>
+                          <span className="font-bold text-sand-700">{(ag.skills || []).length} Skills</span>
                         </div>
                         <div className="flex flex-wrap gap-1">
                           {(ag.skills || []).slice(0, 3).map((sk) => (
-                            <span key={sk} className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                            <span key={sk} className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-sand-100 text-sand-600">
                               {sk}
                             </span>
                           ))}
                           {(ag.skills || []).length > 3 && (
-                            <span className="text-[10px] text-slate-400 px-1 py-0.5 font-medium">
+                            <span className="text-[10px] text-sand-400 px-1 py-0.5 font-medium">
                               +{(ag.skills || []).length - 3} more
                             </span>
                           )}
@@ -901,25 +901,25 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
             <div className="space-y-4 animate-in fade-in duration-200">
               
               {/* Studio Sub-Header */}
-              <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-slate-200/70">
+              <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-sand-200/70">
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setFlowStep('preview')}
-                    className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer shadow-2xs"
+                    className="flex items-center gap-1.5 text-xs font-bold text-sand-700 hover:text-sand-900 bg-surface hover:bg-sand-50 border border-sand-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer shadow-2xs"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Back to Overview</span>
                   </button>
 
-                  <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl text-xs font-bold ml-1">
+                  <div className="flex items-center gap-1 p-1 bg-sand-100 rounded-xl text-xs font-bold ml-1">
                     <button
                       type="button"
                       onClick={() => setViewMode('roster')}
                       className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                         viewMode === 'roster' || viewMode === 'edit'
-                          ? 'bg-white text-indigo-700 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-surface text-brand-700 shadow-xs'
+                          : 'text-sand-600 hover:text-sand-900'
                       }`}
                     >
                       <Users className="w-3.5 h-3.5" />
@@ -930,8 +930,8 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                       onClick={() => setViewMode('skills')}
                       className={`px-3 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                         viewMode === 'skills'
-                          ? 'bg-white text-indigo-700 shadow-xs'
-                          : 'text-slate-600 hover:text-slate-900'
+                          ? 'bg-surface text-brand-700 shadow-xs'
+                          : 'text-sand-600 hover:text-sand-900'
                       }`}
                     >
                       <FileCode className="w-3.5 h-3.5 text-emerald-600" />
@@ -944,7 +944,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                   <button
                     type="button"
                     onClick={handleAddNewAgent}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-white border border-indigo-200 hover:border-indigo-300 shadow-2xs cursor-pointer transition-all active:scale-95"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-brand-700 hover:text-brand-900 bg-surface border border-brand-200 hover:border-brand-300 shadow-2xs cursor-pointer transition-all active:scale-95"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Role</span>
@@ -957,23 +957,23 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                 <div className="space-y-3.5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                     <div>
-                      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                      <h4 className="text-xs font-bold text-sand-900 uppercase tracking-wider">
                         Domain Skills Catalog ({filteredAvailableSkills.length})
                       </h4>
-                      <p className="text-xs text-slate-500">
-                        Inspect or author <code className="font-mono text-slate-700">SKILL.md</code> files.
+                      <p className="text-xs text-sand-500">
+                        Inspect or author <code className="font-mono text-sand-700">SKILL.md</code> files.
                       </p>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <div className="relative">
-                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                        <Search className="w-3.5 h-3.5 text-sand-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
                           value={skillSearchQuery}
                           onChange={(e) => setSkillSearchQuery(e.target.value)}
                           placeholder="Filter skills..."
-                          className="text-xs bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden w-40 sm:w-52"
+                          className="text-xs bg-surface border border-sand-200 rounded-xl pl-8 pr-3 py-1.5 focus:ring-1 focus:ring-brand-500 focus:outline-hidden w-40 sm:w-52"
                         />
                       </div>
                       <button
@@ -983,7 +983,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                             handleOpenSkillEditor(newSkillName.trim());
                           }
                         }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-white border border-indigo-200 hover:border-indigo-300 shadow-2xs cursor-pointer transition-all active:scale-95 shrink-0"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-brand-700 hover:text-brand-900 bg-surface border border-brand-200 hover:border-brand-300 shadow-2xs cursor-pointer transition-all active:scale-95 shrink-0"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>New Skill</span>
@@ -995,22 +995,22 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                     {searchableSkills.map((sk) => (
                       <div
                         key={sk.name}
-                        className="bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 p-3.5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between gap-2.5"
+                        className="bg-surface rounded-2xl border border-sand-200 hover:border-brand-300 p-3.5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between gap-2.5"
                       >
                         <div className="flex items-start justify-between gap-2.5">
                           <div className="flex items-start gap-2 min-w-0">
                             <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border ${
                               sk.category === 'android' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
                               sk.category === 'ios' ? 'bg-sky-50 text-sky-600 border-sky-100' :
-                              'bg-indigo-50 text-indigo-600 border-indigo-100'
+                              'bg-brand-50 text-brand-600 border-brand-100'
                             }`}>
                               <FileCode className="w-3.5 h-3.5" />
                             </div>
                             <div className="min-w-0">
-                              <span className="text-xs sm:text-sm font-bold text-slate-900 truncate block">
+                              <span className="text-xs sm:text-sm font-bold text-sand-900 truncate block">
                                 {sk.title || sk.name}
                               </span>
-                              <span className="text-[10px] font-mono text-slate-400 block truncate">
+                              <span className="text-[10px] font-mono text-sand-400 block truncate">
                                 .agents/skills/{sk.name}/SKILL.md
                               </span>
                             </div>
@@ -1019,21 +1019,21 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border shrink-0 ${
                             sk.onDisk
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-slate-100 text-slate-500 border-slate-200'
+                              : 'bg-sand-100 text-sand-500 border-sand-200'
                           }`}>
                             {sk.onDisk ? 'Saved' : 'Official'}
                           </span>
                         </div>
 
-                        <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+                        <p className="text-xs text-sand-600 line-clamp-2 leading-relaxed">
                           {sk.description || 'Provides authoritative instructions for development and testing.'}
                         </p>
 
-                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                        <div className="pt-2 border-t border-sand-100 flex items-center justify-between">
                           <button
                             type="button"
                             onClick={() => handleOpenSkillEditor(sk.name)}
-                            className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-200 transition-colors cursor-pointer"
+                            className="flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-800 hover:bg-brand-50 px-2 py-1 rounded-lg border border-brand-200 transition-colors cursor-pointer"
                           >
                             <Pencil className="w-3 h-3" />
                             <span>View & Edit</span>
@@ -1045,7 +1045,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                               handleAddSkill(sk.name);
                               setViewMode('edit');
                             }}
-                            className="text-[11px] font-semibold text-slate-600 hover:text-indigo-600 hover:bg-slate-100 px-2 py-1 rounded-md transition-colors cursor-pointer"
+                            className="text-[11px] font-semibold text-sand-600 hover:text-brand-600 hover:bg-sand-100 px-2 py-1 rounded-md transition-colors cursor-pointer"
                           >
                             + Assign
                           </button>
@@ -1065,22 +1065,22 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                           setSelectedAgentIndex(idx);
                           setViewMode('edit');
                         }}
-                        className="group bg-white rounded-2xl border border-slate-200 hover:border-indigo-400 p-3.5 sm:p-4 shadow-2xs hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between gap-2.5 relative"
+                        className="group bg-surface rounded-2xl border border-sand-200 hover:border-brand-400 p-3.5 sm:p-4 shadow-2xs hover:shadow-xs transition-all cursor-pointer flex flex-col justify-between gap-2.5 relative"
                       >
                         <div className="flex items-start justify-between gap-2.5">
                           <div className="flex items-center gap-2.5 min-w-0">
                             <img
                               src={ag.avatar_url || ag.avatarUrl || '/assets/developer.png'}
                               alt={ag.name}
-                              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-cover border border-slate-200 bg-slate-50 shrink-0 max-w-[36px] max-h-[36px]"
+                              className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl object-cover border border-sand-200 bg-sand-50 shrink-0 max-w-[36px] max-h-[36px]"
                               style={{ width: 36, height: 36 }}
                             />
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                                <span className="text-xs sm:text-sm font-bold text-sand-900 truncate">
                                   {ag.name}
                                 </span>
-                                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
+                                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.2 rounded bg-brand-50 text-brand-700 border border-brand-200 shrink-0">
                                   {ag.badge}
                                 </span>
                                 {idx === 0 && (
@@ -1089,22 +1089,22 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                                   </span>
                                 )}
                               </div>
-                              <div className="text-xs text-slate-500 truncate font-medium">
+                              <div className="text-xs text-sand-500 truncate font-medium">
                                 {ag.role}
                               </div>
                             </div>
                           </div>
 
-                          <span className="text-[11px] font-semibold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0">
+                          <span className="text-[11px] font-semibold text-brand-600 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0">
                             Edit <ChevronRight className="w-3 h-3" />
                           </span>
                         </div>
 
-                        <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+                        <p className="text-xs text-sand-600 line-clamp-2 leading-relaxed">
                           {ag.description || 'Responsible for project tasks and engineering delivery.'}
                         </p>
 
-                        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1">
+                        <div className="pt-2 border-t border-sand-100 flex flex-wrap items-center gap-1">
                           {(ag.skills || []).slice(0, 3).map((sk) => (
                             <span
                               key={sk}
@@ -1112,14 +1112,14 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                                 e.stopPropagation();
                                 handleOpenSkillEditor(sk);
                               }}
-                              className="inline-flex items-center gap-1 text-[10px] font-semibold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 rounded px-1.5 py-0.5 transition-colors border border-transparent hover:border-indigo-200"
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold bg-sand-100 hover:bg-brand-50 text-sand-700 hover:text-brand-700 rounded px-1.5 py-0.5 transition-colors border border-transparent hover:border-brand-200"
                             >
-                              <FileCode className="w-2.5 h-2.5 text-indigo-500" />
+                              <FileCode className="w-2.5 h-2.5 text-brand-500" />
                               <span>{sk}</span>
                             </span>
                           ))}
                           {(ag.skills || []).length > 3 && (
-                            <span className="text-[10px] text-slate-400 font-medium px-1">
+                            <span className="text-[10px] text-sand-400 font-medium px-1">
                               +{(ag.skills || []).length - 3} more
                             </span>
                           )}
@@ -1130,19 +1130,19 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                 </div>
               ) : (
                 /* Advanced Single Role Editor */
-                <div className="space-y-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs">
-                  <div className="flex items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100">
+                <div className="space-y-4 bg-surface p-4 sm:p-5 rounded-2xl border border-sand-200 shadow-xs">
+                  <div className="flex items-center justify-between gap-2.5 pb-2.5 border-b border-sand-100">
                     <div className="flex items-center gap-2 overflow-x-auto py-1 min-w-0 flex-1">
                       <button
                         type="button"
                         onClick={() => setViewMode('roster')}
-                        className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200 transition-colors cursor-pointer shrink-0 shadow-2xs"
+                        className="flex items-center gap-1.5 text-xs font-bold text-sand-700 hover:text-sand-900 hover:bg-sand-100 px-2.5 py-1.5 rounded-xl border border-sand-200 transition-colors cursor-pointer shrink-0 shadow-2xs"
                       >
                         <ArrowLeft className="w-3.5 h-3.5" />
                         <span>All Roles</span>
                       </button>
 
-                      <div className="h-5 w-px bg-slate-200 shrink-0 mx-0.5" />
+                      <div className="h-5 w-px bg-sand-200 shrink-0 mx-0.5" />
 
                       <div className="flex items-center gap-1.5">
                         {agents.map((ag, idx) => (
@@ -1152,14 +1152,14 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                             onClick={() => setSelectedAgentIndex(idx)}
                             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
                               idx === selectedAgentIndex
-                                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs'
-                                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-transparent'
+                                ? 'bg-brand-50 text-brand-700 border border-brand-200 shadow-2xs'
+                                : 'text-sand-600 hover:text-sand-900 hover:bg-sand-100 border border-transparent'
                             }`}
                           >
                             <img
                               src={ag.avatar_url || ag.avatarUrl || PRESET_AVATARS[idx % PRESET_AVATARS.length].url}
                               alt={ag.name}
-                              className="w-4 h-4 rounded-full object-cover border border-slate-200 bg-white shrink-0"
+                              className="w-4 h-4 rounded-full object-cover border border-sand-200 bg-surface shrink-0"
                               style={{ width: 16, height: 16 }}
                             />
                             <span className="truncate max-w-[100px]">{ag.name}</span>
@@ -1172,10 +1172,10 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                   {currentAgent && (
                     <div className="space-y-4">
                       {/* Identity Row */}
-                      <div className="p-3.5 sm:p-4 bg-slate-50/70 rounded-2xl border border-slate-200/80 space-y-3">
+                      <div className="p-3.5 sm:p-4 bg-sand-50/70 rounded-2xl border border-sand-200/80 space-y-3">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div className="flex items-center gap-2.5">
-                            <div className="relative w-9 h-9 rounded-xl border border-indigo-200 bg-white shadow-2xs p-0.5 flex items-center justify-center shrink-0">
+                            <div className="relative w-9 h-9 rounded-xl border border-brand-200 bg-surface shadow-2xs p-0.5 flex items-center justify-center shrink-0">
                               <img
                                 src={currentAgent.avatar_url || currentAgent.avatarUrl || PRESET_AVATARS[0].url}
                                 alt="Current avatar"
@@ -1189,27 +1189,27 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                                 value={currentAgent.name}
                                 onChange={(e) => handleUpdateCurrentAgent('name', e.target.value)}
                                 placeholder="Agent Name"
-                                className="text-xs font-bold text-slate-900 bg-white border border-slate-200 rounded-lg px-2.5 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden w-full sm:w-44"
+                                className="text-xs font-bold text-sand-900 bg-surface border border-sand-200 rounded-lg px-2.5 py-1 focus:ring-1 focus:ring-brand-500 focus:outline-hidden w-full sm:w-44"
                               />
                               <input
                                 type="text"
                                 value={currentAgent.role}
                                 onChange={(e) => handleUpdateCurrentAgent('role', e.target.value)}
                                 placeholder="Role Title"
-                                className="text-[11px] text-slate-600 bg-white border border-slate-200 rounded-lg px-2.5 py-1 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden w-full sm:w-56 block"
+                                className="text-[11px] text-sand-600 bg-surface border border-sand-200 rounded-lg px-2.5 py-1 focus:ring-1 focus:ring-brand-500 focus:outline-hidden w-full sm:w-56 block"
                               />
                             </div>
                           </div>
 
                           <div className="flex items-center sm:flex-col sm:items-end justify-between sm:justify-start gap-2 shrink-0">
                             <div className="flex items-center gap-1.5">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase">Badge:</span>
+                              <span className="text-[10px] font-bold text-sand-400 uppercase">Badge:</span>
                               <input
                                 type="text"
                                 value={currentAgent.badge}
                                 onChange={(e) => handleUpdateCurrentAgent('badge', e.target.value.toUpperCase())}
                                 maxLength={4}
-                                className="text-xs font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-2 py-1 w-16 text-center uppercase focus:bg-white focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+                                className="text-xs font-extrabold text-brand-700 bg-brand-50 border border-brand-200 rounded-lg px-2 py-1 w-16 text-center uppercase focus:bg-surface focus:ring-1 focus:ring-brand-500 focus:outline-hidden"
                               />
                             </div>
 
@@ -1231,8 +1231,8 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                         </div>
 
                         {/* Avatar Rack */}
-                        <div className="pt-2 border-t border-slate-200/60">
-                          <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                        <div className="pt-2 border-t border-sand-200/60">
+                          <div className="text-[10px] font-bold text-sand-400 uppercase tracking-wider mb-1.5">
                             Choose Avatar
                           </div>
                           <div className="flex flex-wrap items-center gap-1.5">
@@ -1245,8 +1245,8 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                                   onClick={() => handleUpdateCurrentAgent('avatar_url', av.url)}
                                   className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg border transition-all p-0.5 cursor-pointer flex items-center justify-center shrink-0 ${
                                     isCurrent
-                                      ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-500/20 scale-105 shadow-2xs'
-                                      : 'border-slate-200 bg-white hover:border-slate-400 hover:scale-105'
+                                      ? 'border-brand-600 bg-brand-50 ring-2 ring-brand-500/20 scale-105 shadow-2xs'
+                                      : 'border-sand-200 bg-surface hover:border-sand-400 hover:scale-105'
                                   }`}
                                   style={{ width: 32, height: 32 }}
                                   title={av.label}
@@ -1266,19 +1266,19 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
 
                       {/* Description */}
                       <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-700">Role Purpose & Responsibilities</label>
+                        <label className="text-xs font-bold text-sand-700">Role Purpose & Responsibilities</label>
                         <textarea
                           value={currentAgent.description}
                           onChange={(e) => handleUpdateCurrentAgent('description', e.target.value)}
                           rows={2}
-                          className="w-full text-xs text-slate-700 bg-white border border-slate-200 rounded-xl p-2.5 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+                          className="w-full text-xs text-sand-700 bg-surface border border-sand-200 rounded-xl p-2.5 focus:ring-1 focus:ring-brand-500 focus:outline-hidden"
                           placeholder="Describe what this role accomplishes..."
                         />
                       </div>
 
                       {/* Tools Allowed */}
                       <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-700">Allowed Tool Access</label>
+                        <label className="text-xs font-bold text-sand-700">Allowed Tool Access</label>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                           {ALL_TOOLS.map((t) => {
                             const isAllowed = (currentAgent.allowed_tools || []).includes(t);
@@ -1289,12 +1289,12 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                                 onClick={() => handleToggleTool(t)}
                                 className={`flex items-center gap-1.5 p-2 rounded-xl border text-xs font-medium transition-all text-left cursor-pointer ${
                                   isAllowed
-                                    ? 'bg-indigo-50/80 border-indigo-200 text-indigo-900 shadow-2xs font-semibold'
-                                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                    ? 'bg-brand-50/80 border-brand-200 text-brand-900 shadow-2xs font-semibold'
+                                    : 'bg-surface border-sand-200 text-sand-500 hover:bg-sand-50'
                                 }`}
                               >
                                 <div className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[9px] ${
-                                  isAllowed ? 'bg-indigo-600 text-white' : 'border border-slate-300'
+                                  isAllowed ? 'bg-brand-600 text-white' : 'border border-sand-300'
                                 }`}>
                                   {isAllowed && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                                 </div>
@@ -1307,7 +1307,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
 
                       {/* Safety Guardrails */}
                       <div className="space-y-1.5">
-                        <label className="text-xs font-bold text-slate-700">Strict Safety Rules (Prohibited Actions)</label>
+                        <label className="text-xs font-bold text-sand-700">Strict Safety Rules (Prohibited Actions)</label>
                         <div className="space-y-1.5">
                           {(currentAgent.prohibited_actions || []).map((p, pIdx) => (
                             <div key={pIdx} className="flex items-center justify-between p-2 rounded-xl bg-rose-50/50 border border-rose-100 text-xs text-rose-900">
@@ -1329,7 +1329,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                               type="text"
                               id="new-prohibited-input"
                               placeholder="e.g. No direct production commits without review"
-                              className="flex-1 text-xs bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus:ring-1 focus:ring-indigo-500 focus:outline-hidden"
+                              className="flex-1 text-xs bg-surface border border-sand-200 rounded-xl px-3 py-1.5 focus:ring-1 focus:ring-brand-500 focus:outline-hidden"
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   handleAddProhibited(e.currentTarget.value);
@@ -1346,7 +1346,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                                   el.value = '';
                                 }
                               }}
-                              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer shrink-0"
+                              className="px-3 py-1.5 bg-sand-100 hover:bg-sand-200 text-sand-700 text-xs font-bold rounded-xl cursor-pointer shrink-0"
                             >
                               Add Rule
                             </button>
@@ -1365,10 +1365,10 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
 
         {/* Modal Bottom Action Bar (Persistent Across Preview & Studio, Hidden on Platform Step) */}
         {flowStep !== 'platform' && (
-          <div className="px-4 py-3 sm:px-6 sm:py-3.5 bg-white border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0 animate-in fade-in">
-            <div className="text-[11px] sm:text-xs text-slate-500 flex items-center gap-1.5 justify-center sm:justify-start">
+          <div className="px-4 py-3 sm:px-6 sm:py-3.5 bg-surface border-t border-sand-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shrink-0 animate-in fade-in">
+            <div className="text-[11px] sm:text-xs text-sand-500 flex items-center gap-1.5 justify-center sm:justify-start">
               <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-              <span className="truncate">Saves to <code className="text-slate-800 bg-slate-100 px-1 py-0.2 rounded font-mono text-[10px]">.agents/agents.json</code></span>
+              <span className="truncate">Saves to <code className="text-sand-800 bg-sand-100 px-1 py-0.2 rounded font-mono text-[10px]">.agents/agents.json</code></span>
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -1376,7 +1376,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setFlowStep('preview')}
-                  className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer text-center"
+                  className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl text-xs font-bold text-sand-600 hover:text-sand-800 hover:bg-sand-100 transition-colors cursor-pointer text-center"
                 >
                   Done Customizing
                 </button>
@@ -1385,7 +1385,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
               <button
                 onClick={onClose}
                 disabled={saving}
-                className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer text-center"
+                className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl text-xs font-bold text-sand-600 hover:text-sand-800 hover:bg-sand-100 transition-colors cursor-pointer text-center"
               >
                 Cancel
               </button>
@@ -1393,7 +1393,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
               <button
                 onClick={handleSaveTeam}
                 disabled={saving || agents.length === 0}
-                className="flex-1 sm:flex-initial px-5 py-2 rounded-xl text-xs sm:text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                className="flex-1 sm:flex-initial px-5 py-2 rounded-xl text-xs sm:text-sm font-bold text-white bg-brand-600 hover:bg-brand-700 active:scale-95 shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {saving ? (
                   <>
@@ -1413,10 +1413,10 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
 
         {/* Embedded Fullscreen SKILL.md Markdown Editor Modal */}
         {editingSkill && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/60 backdrop-blur-md animate-in fade-in duration-150">
-            <div className="relative w-full max-w-3xl max-h-[90vh] flex flex-col bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800">
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-scrim/60 backdrop-blur-md animate-in fade-in duration-150">
+            <div className="relative w-full max-w-3xl max-h-[90vh] flex flex-col bg-surface rounded-2xl sm:rounded-3xl shadow-2xl border border-sand-200 overflow-hidden text-sand-800">
               {/* Header */}
-              <div className="px-4 py-3 sm:px-6 sm:py-3.5 bg-slate-900 text-white flex items-center justify-between">
+              <div className="theme-static px-4 py-3 sm:px-6 sm:py-3.5 bg-sand-900 text-white flex items-center justify-between">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 shrink-0">
                     <FileCode className="w-3.5 h-3.5" />
@@ -1431,31 +1431,31 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setEditingSkill(null)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="p-1 rounded-lg text-sand-400 hover:text-white hover:bg-sand-800 transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               {/* Editor Body */}
-              <div className="p-3 sm:p-4 flex-1 flex flex-col min-h-[300px] bg-slate-900">
+              <div className="theme-static p-3 sm:p-4 flex-1 flex flex-col min-h-[300px] bg-sand-900">
                 <textarea
                   value={skillContentDraft}
                   onChange={(e) => setSkillContentDraft(e.target.value)}
-                  className="w-full flex-1 min-h-[280px] bg-slate-950 text-emerald-300 font-mono text-xs p-3.5 rounded-xl border border-slate-800 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 resize-none leading-relaxed"
+                  className="w-full flex-1 min-h-[280px] bg-sand-950 text-emerald-300 font-mono text-xs p-3.5 rounded-xl border border-sand-800 focus:outline-hidden focus:ring-1 focus:ring-brand-500 resize-none leading-relaxed"
                   placeholder="Enter SKILL.md markdown instructions here..."
                 />
               </div>
 
               {/* Footer */}
-              <div className="px-4 py-3 sm:px-6 sm:py-3 bg-white border-t border-slate-200 flex items-center justify-between gap-2">
+              <div className="px-4 py-3 sm:px-6 sm:py-3 bg-surface border-t border-sand-200 flex items-center justify-between gap-2">
                 <div className="text-xs truncate">
                   {skillSaveSuccess ? (
                     <span className="text-emerald-600 font-bold flex items-center gap-1 animate-in fade-in truncate">
                       <CheckCircle className="w-3.5 h-3.5 shrink-0" /> {skillSaveSuccess}
                     </span>
                   ) : (
-                    <span className="text-slate-400 text-[10px] sm:text-[11px] truncate">Instructions enforced on next run</span>
+                    <span className="text-sand-400 text-[10px] sm:text-[11px] truncate">Instructions enforced on next run</span>
                   )}
                 </div>
 
@@ -1463,7 +1463,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setEditingSkill(null)}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold text-sand-600 hover:bg-sand-100 transition-colors cursor-pointer"
                   >
                     Close
                   </button>
@@ -1471,7 +1471,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                     type="button"
                     onClick={handleSaveSkillContent}
                     disabled={savingSkill}
-                    className="px-4 py-1.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-95 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="px-4 py-1.5 rounded-xl text-xs font-bold text-white bg-brand-600 hover:bg-brand-700 active:scale-95 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     {savingSkill ? (
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />

@@ -3,7 +3,7 @@
  * 
  * OrchestrationRules Engine
  * 
- * Centralizes multi-agent team role resolution, 4-phase sprint decomposition,
+ * Centralizes multi-agent team role resolution, normalization of AI-produced task breakdowns,
  * event transition side-effect rules, and seed demo templates.
  * Decouples business logic from the EventBus transport layer.
  */
@@ -143,72 +143,120 @@ class OrchestrationRules {
   }
 
   /**
-   * Deconstructs a high-level user goal into 4 sequenced engineering tasks
-   * (Architecture Spike -> Feature Implementation -> Code Review -> QA Verification)
+   * Light, non-destructive cleanup of a title the AI/agent produced.
+   * Only strips markdown decoration and whitespace, and caps length.
+   * It NEVER maps keywords to canned titles or rewrites the agent's wording.
+   */
+  static distillShortTopic(goal, maxLen = 80) {
+    if (!goal || typeof goal !== 'string') return '';
+    const clean = goal
+      .replace(/\r?\n/g, ' ')
+      .replace(/^[\s#*`"'>\-]+|[\s*`"']+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (clean.length <= maxLen) return clean;
+    const cut = clean.slice(0, maxLen - 1);
+    const lastSpace = cut.lastIndexOf(' ');
+    return `${(lastSpace > maxLen / 2 ? cut.slice(0, lastSpace) : cut).trim()}…`;
+  }
+
+  /**
+   * Returns the highest numeric suffix used by existing task keys (e.g. WEB-214 -> 214).
+   */
+  static highestKeyNumber(existingTasks) {
+    const list = Array.isArray(existingTasks)
+      ? existingTasks
+      : Array.from(existingTasks ? existingTasks.values() : []);
+    let max = 100;
+    for (const t of list) {
+      const m = String((t && t.key) || '').match(/-(\d+)$/);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    return max;
+  }
+
+  /**
+   * Normalizes a task list produced by the AI / orchestrating agent so it can be placed on the board.
+   * - Any number of tasks (no fixed count, no fixed stages).
+   * - Titles, descriptions, skills and order are preserved exactly as the AI wrote them.
+   * - Assignees must exist in the roster; unknown assignees fall back to the orchestrator's first
+   *   delegation target (or the orchestrator itself) instead of a guessed "stage" role.
+   * - Missing keys are generated as <PREFIX>-<next number>.
+   */
+  static normalizeAITasks(aiTasks, agentsMapOrList, options = {}) {
+    if (!Array.isArray(aiTasks)) return [];
+    const { pm, platformBadge, list } = this.resolveTeamRoles(agentsMapOrList);
+    const byId = new Map(list.map((a) => [String(a.id).toLowerCase(), a]));
+    const findAgent = (ref) => {
+      if (!ref) return null;
+      const r = String(ref).toLowerCase().trim();
+      return byId.get(r) || list.find((a) => (a.name && a.name.toLowerCase() === r)) || null;
+    };
+    const pmTargets = pm.delegation_targets || pm.handoffTo || pm.delegationTargets || [];
+    const defaultAssignee = findAgent(pmTargets[0]) || pm;
+
+    const prefix = options.keyPrefix || platformBadge;
+    let next = this.highestKeyNumber(options.existingTasks) + 1;
+    const now = new Date().toISOString();
+    const stamp = Date.now();
+    const validColumns = ['backlog', 'assigned', 'in_progress', 'review', 'testing', 'done'];
+
+    const out = [];
+    aiTasks.forEach((t, idx) => {
+      if (!t || typeof t !== 'object') return;
+      const title = this.distillShortTopic(String(t.title || ''));
+      if (!title) return;
+      const assigned = findAgent(t.assignedTo || t.assignee || t.agent) || defaultAssignee;
+      const delegator = findAgent(t.delegatedBy) || (assigned.id === pm.id ? { id: 'user', role: 'User' } : pm);
+      const key = t.key ? String(t.key).trim() : `${prefix}-${next++}`;
+      const column = validColumns.includes(t.column) ? t.column : 'backlog';
+      out.push({
+        id: t.id || `TASK-${key}`,
+        key,
+        title,
+        description: String(t.description || title),
+        acceptanceCriteria: Array.isArray(t.acceptanceCriteria) ? t.acceptanceCriteria : undefined,
+        dependsOn: Array.isArray(t.dependsOn) ? t.dependsOn : undefined,
+        assignedTo: assigned.id,
+        delegatedBy: delegator.id,
+        delegatedByRole: delegator.role || delegator.name,
+        column,
+        skill: t.skill || undefined,
+        progress: typeof t.progress === 'number' ? t.progress : (column === 'done' ? 100 : 0),
+        order: idx,
+        createdAt: now,
+        updatedAt: now,
+        batchId: options.batchId || String(stamp),
+      });
+    });
+    return out;
+  }
+
+  /**
+   * Registers a raw user requirement on the board WITHOUT inventing a breakdown.
+   * Used only when no AI breakdown is available: a single backlog intake card that holds the
+   * requirement verbatim and is owned by the primary orchestrator, who must break it down.
+   * (Backlog-first policy.) No Plan/Build/Review/Test templates are generated here.
    */
   static decomposeSprintGoal(goal, agentsMapOrList, options = {}) {
     const cleanGoal = (goal || '').trim();
     if (!cleanGoal) return [];
-
-    const { pm, lead, dev, tester, platformBadge } = this.resolveTeamRoles(agentsMapOrList);
-    const timestamp = Date.now();
-    const batchId = Math.random().toString(36).substring(2, 5).toUpperCase();
-
+    const { pm, platformBadge } = this.resolveTeamRoles(agentsMapOrList);
+    const key = `${options.keyPrefix || platformBadge}-${this.highestKeyNumber(options.existingTasks) + 1}`;
     const now = new Date().toISOString();
     return [
       {
-        id: `TASK-${timestamp}-1`,
-        key: `${platformBadge}-${batchId}1`,
-        title: `Architecture Spike: ${cleanGoal}`,
-        description: `Map impacted files, audit boundary contracts, formulate Clean Architecture interfaces, and write technical execution plan.`,
-        assignedTo: lead.id,
-        delegatedBy: pm.id,
-        delegatedByRole: pm.role || pm.name,
-        column: 'in_progress',
+        id: `TASK-${key}`,
+        key,
+        title: this.distillShortTopic(cleanGoal),
+        description: cleanGoal,
+        assignedTo: pm.id,
+        delegatedBy: 'user',
+        delegatedByRole: 'User',
+        column: 'backlog',
         skill: 'task-decomposition',
-        progress: 35,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: `TASK-${timestamp}-2`,
-        key: `${platformBadge}-${batchId}2`,
-        title: `Core Feature Implementation: ${cleanGoal}`,
-        description: `Build domain models, repositories, reactive state flows, and UI composables/components adhering to architecture spike.`,
-        assignedTo: dev.id,
-        delegatedBy: lead.id,
-        delegatedByRole: lead.role || lead.name,
-        column: 'assigned',
-        skill: 'feature-implementation',
         progress: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: `TASK-${timestamp}-3`,
-        key: `${platformBadge}-${batchId}3`,
-        title: `Quality Gate & Code Review: ${cleanGoal}`,
-        description: `10-Point architectural quality review, verify immutability, audit zero memory leaks, and inspect Definition of Done.`,
-        assignedTo: lead.id,
-        delegatedBy: dev.id,
-        delegatedByRole: dev.role || dev.name,
-        column: 'backlog',
-        skill: 'code-review',
-        progress: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: `TASK-${timestamp}-4`,
-        key: `${platformBadge}-${batchId}4`,
-        title: `Automated QA & Acceptance Verification: ${cleanGoal}`,
-        description: `Author and execute automated test suites (unit + integration + regression) to certify 100% green pass rate and acceptance criteria.`,
-        assignedTo: tester.id,
-        delegatedBy: lead.id,
-        delegatedByRole: lead.role || lead.name,
-        column: 'backlog',
-        skill: 'automated-testing',
-        progress: 0,
+        needsBreakdown: true,
         createdAt: now,
         updatedAt: now,
       },

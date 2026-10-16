@@ -99,6 +99,51 @@ class DemoSimulator {
               phase: 'Sprint Planning',
             },
           });
+
+          // Deliverable 1: PM emits PRD to Tech Lead
+          eventBus.recordDeliverable({
+            id: 'deliv-prd-101',
+            title: 'PRD-101: User Authentication & Token Vault Specification',
+            type: 'prd',
+            role: pmAgent.role,
+            roleSlug: 'pm',
+            agentId: pmId,
+            agentName: pmName,
+            status: 'approved',
+            summary: `Sprint 42 feature specification authored by ${pmName}: Scope, user journeys, 6 acceptance criteria, and DoD.`,
+            content: `# Product Requirement Document (PRD)
+## Feature: User Authentication & Token Vault (US-101)
+**Author**: ${pmName} (${pmAgent.role})
+**Delivered To**: ${leadName} (${leadAgent.role})
+**Sprint**: Sprint 42
+**Status**: Approved & Ready for Architecture
+
+### 1. Objective & User Need
+Deliver robust authentication with zero security regressions. Users authenticate with cryptographic token rotation and hardware-backed keychain storage.
+
+### 2. User Stories & Acceptance Criteria
+- **US-101.1**: Authenticate user credentials and return signed JWT with RS256 token.
+- **US-101.2**: Access tokens expire in 15 minutes; auto-refresh rotates without logout.
+- **US-101.3**: Failed attempts trigger exponential backoff after 5 attempts.
+- **US-101.4**: Token payload signed with RS256 with key rotation support.
+- **US-101.5**: Full audit telemetry emitted for compliance monitoring.
+- **US-101.6**: Definition of Done: 100% unit tests pass, zero lint warnings.
+
+### 3. Handover Contract
+Handed off to Technical Lead (${leadName}) for component boundary contracts and architecture spike.`,
+            format: 'markdown',
+            filePath: '.agents/sprints/sprint-42/PRD-101.md',
+            version: 'v1.0',
+            sprintId: 'sprint-42',
+            deliveredTo: leadId,
+            deliveredToName: leadName,
+            deliveredToRole: leadAgent.role,
+            metadata: {
+              wordCount: 285,
+              acceptanceCriteriaCount: 6,
+              targetPlatform: isAndroid ? 'Android' : isIos ? 'iOS' : 'Web/Node',
+            },
+          });
         },
       },
 
@@ -164,6 +209,50 @@ class DemoSimulator {
           });
           const t2 = eventBus.tasks.get('TASK-2');
           if (t2) { t2.column = 'done'; t2.progress = 100; }
+
+          // Deliverable 2: Tech Lead emits Technical Implementation Plan & Architecture
+          eventBus.recordDeliverable({
+            id: 'deliv-arch-101',
+            title: 'ARCH-101: Authentication Architecture & Token Security Specification',
+            type: 'architecture',
+            role: leadAgent.role,
+            roleSlug: 'tech-lead',
+            agentId: leadId,
+            agentName: leadName,
+            status: 'delivered',
+            summary: `Technical implementation plan by ${leadName}: Component tree, token lifecycle contracts, and security gates.`,
+            content: `# Architecture Contract & Technical Implementation Plan
+## Story: US-101 User Authentication Service (ARCH-101)
+**Author**: ${leadName} (${leadAgent.role})
+**Delivered To**: ${devName} (${devAgent.role})
+**Sprint**: Sprint 42
+**Status**: Handed off for Implementation
+
+### 1. Component Architecture & Contracts
+- **AuthService**: Handles credentials, session generation, and token expiration verification.
+- **TokenVault**: Encrypted in-memory store backed by OS hardware keychain.
+- **AuthInterceptor**: Injects Bearer tokens and captures 401 unauthenticated signals to trigger refresh.
+
+### 2. Implementation Rules & Constraints
+- Immutable state transfer objects (\`UserSession\`, \`AuthToken\`).
+- Zero implicit any types; strict compile targets.
+- 100% test branch coverage on credential verification and refresh lock concurrency.
+
+### 3. Deliverable Acceptance Criteria
+- Verified against PRD-101 Definition of Done before opening pull request.`,
+            format: 'markdown',
+            filePath: '.agents/sprints/sprint-42/ARCH-101.md',
+            version: 'v1.0',
+            sprintId: 'sprint-42',
+            deliveredTo: devId,
+            deliveredToName: devName,
+            deliveredToRole: devAgent.role,
+            metadata: {
+              wordCount: 220,
+              securityChecksPassed: 8,
+              targetPlatform: isAndroid ? 'Android' : isIos ? 'iOS' : 'TypeScript/Node',
+            },
+          });
         },
       },
 
@@ -331,6 +420,70 @@ class DemoSimulator {
               milestone: `${devName} submitted PR #101 to ${leadName} for code review.`,
             },
           });
+
+          // Deliverable 3: Dev emits Source Code Deliverable
+          eventBus.recordDeliverable({
+            id: 'deliv-code-101',
+            title: `CODE-101: AuthService & Token Interceptor Implementation (${devFileName})`,
+            type: 'source_code',
+            role: devAgent.role,
+            roleSlug: 'dev',
+            agentId: devId,
+            agentName: devName,
+            status: 'in_review',
+            summary: `Core authentication service with token encryption, session persistence, and initial unit tests in ${devFileName}.`,
+            content: `/**
+ * AuthService Implementation (CODE-101)
+ * Author: ${devName} (${devAgent.role})
+ * Delivered To: ${leadName} (${leadAgent.role})
+ * Platform: ${isAndroid ? 'Android Kotlin' : isIos ? 'iOS Swift' : 'TypeScript/Node'}
+ */
+${isAndroid
+  ? `class AuthRepository(private val authApi: AuthApi, private val sessionDao: SessionDao) {
+  val sessionState: StateFlow<UserSession?> = sessionDao.observeSession()
+
+  suspend fun authenticate(credentials: AuthCredentials): Result<UserSession> {
+    val response = authApi.login(credentials)
+    sessionDao.saveSession(response.session)
+    return Result.success(response.session)
+  }
+}`
+  : isIos
+  ? `actor AuthService: ObservableObject {
+  @Published private(set) var currentSession: UserSession?
+
+  func authenticate(credentials: AuthCredentials) async throws -> UserSession {
+    let session = try await apiClient.login(credentials)
+    self.currentSession = session
+    return session
+  }
+}`
+  : `export class AuthService {
+  private readonly sessionStore = new Map<string, UserSession>();
+
+  async authenticate(credentials: AuthCredentials): Promise<AuthResult> {
+    const user = await this.userRepository.findByEmail(credentials.email);
+    if (!user || !verifyPassword(credentials.password, user.passwordHash)) {
+      throw new AuthenticationError('Invalid email or password');
+    }
+    const token = signJwt({ sub: user.id, email: user.email }, { expiresIn: '8h' });
+    this.sessionStore.set(user.id, { token, lastActive: Date.now() });
+    return { token, user: Object.freeze(user) };
+  }
+}`}`,
+            format: 'code',
+            filePath: devFile,
+            version: 'v1.0',
+            sprintId: 'sprint-42',
+            deliveredTo: leadId,
+            deliveredToName: leadName,
+            deliveredToRole: leadAgent.role,
+            metadata: {
+              linesOfCode: 56,
+              coveragePercent: 92,
+              targetPlatform: isAndroid ? 'Android' : isIos ? 'iOS' : 'Web/TypeScript',
+            },
+          });
         },
       },
 
@@ -482,6 +635,48 @@ class DemoSimulator {
           });
           const t3 = eventBus.tasks.get('TASK-3');
           if (t3) { t3.column = 'done'; t3.progress = 100; }
+
+          // Deliverable 4: Tech Lead emits Code Review & Quality Gate Report
+          eventBus.recordDeliverable({
+            id: 'deliv-rev-101',
+            title: 'REV-101: Architectural Quality Gate & Security Review Report',
+            type: 'code_review',
+            role: leadAgent.role,
+            roleSlug: 'tech-lead',
+            agentId: leadId,
+            agentName: leadName,
+            status: 'approved',
+            summary: `Code review and Definition of Done verification by ${leadName}: Zero memory leaks, verified token expiration, approved for QA merge.`,
+            content: `# Senior Architectural Review & Definition of Done Sign-Off
+## Feature: PR #101 User Authentication Service (REV-101)
+**Reviewer**: ${leadName} (${leadAgent.role})
+**Author**: ${devName} (${devAgent.role})
+**Sprint**: Sprint 42
+**Status**: APPROVED & MERGED
+
+### 1. Verification Checklist (10-Point Quality Gate)
+- [x] Immutability enforced on all session DTOs.
+- [x] Token expiration timestamps checked prior to state restoration.
+- [x] Edge-case unit tests added for malformed signatures and expired sessions.
+- [x] Concurrency mutex prevents stampeding refresh calls.
+- [x] Zero compiler errors or linter warnings.
+- [x] All 100% unit tests execute and pass green.
+
+### 2. Tech Lead Verdict
+PR #101 satisfies the Definition of Done. Approved and dispatched to QA for automated regression testing.`,
+            format: 'markdown',
+            filePath: '.agents/sprints/sprint-42/REV-101-CODE-REVIEW.md',
+            version: 'v1.0',
+            sprintId: 'sprint-42',
+            deliveredTo: testerId,
+            deliveredToName: testerName,
+            deliveredToRole: testerAgent.role,
+            metadata: {
+              wordCount: 195,
+              securityChecksPassed: 10,
+              targetPlatform: isAndroid ? 'Android' : isIos ? 'iOS' : 'Web/Node',
+            },
+          });
         },
       },
 
@@ -537,6 +732,56 @@ class DemoSimulator {
           });
           const t4 = eventBus.tasks.get('TASK-4');
           if (t4) { t4.column = 'done'; t4.progress = 100; }
+
+          // Deliverable 5: QA emits Automated Test Report & Verification
+          eventBus.recordDeliverable({
+            id: 'deliv-qa-101',
+            title: 'QA-101: E2E Authentication Test Suite & Regression Report',
+            type: 'test_report',
+            role: testerAgent.role,
+            roleSlug: 'qa',
+            agentId: testerId,
+            agentName: testerName,
+            status: 'approved',
+            summary: `Automated test execution by ${testerName}: 18/18 Acceptance Criteria tests passed with zero regressions via ${testCmd}.`,
+            content: `# Automated E2E Test Suite & Regression Report
+## Sprint 42 Verification: Feature US-101 Authentication
+**Author**: ${testerName} (${testerAgent.role})
+**Delivered To**: ${pmName} (${pmAgent.role})
+**Status**: 100% PASS RATE (Certified for Release)
+
+### 1. Test Execution Metrics
+- **Command**: \`${testCmd}\`
+- **Total Tests Executed**: 18
+- **Passed**: 18 (100%)
+- **Failed**: 0 (0%)
+- **Regression Defects**: 0
+- **Code Coverage**: 98.4%
+
+### 2. Verified Acceptance Criteria
+- [x] US-101.1: OAuth2 and password credential exchange.
+- [x] US-101.2: 15-minute token expiry with auto-refresh rotation.
+- [x] US-101.3: Rate limiting exponential backoff on 5 failures.
+- [x] US-101.4: Hardware-backed keychain persistence.
+- [x] US-101.5: Security audit telemetry emitted.
+- [x] US-101.6: Zero P0/P1 security vulnerabilities.
+
+### 3. QA Recommendation
+Ready for immediate production release sign-off by Product Manager.`,
+            format: 'markdown',
+            filePath: '.agents/sprints/sprint-42/QA-TEST-REPORT-101.md',
+            version: 'v1.0',
+            sprintId: 'sprint-42',
+            deliveredTo: pmId,
+            deliveredToName: pmName,
+            deliveredToRole: pmAgent.role,
+            metadata: {
+              testCount: 18,
+              testPassRate: '100%',
+              coveragePercent: 98.4,
+              targetPlatform: isAndroid ? 'Android' : isIos ? 'iOS' : 'Web/Node',
+            },
+          });
         },
       },
 
@@ -590,6 +835,43 @@ class DemoSimulator {
           });
           const t5 = eventBus.tasks.get('TASK-5');
           if (t5) { t5.column = 'done'; t5.progress = 100; }
+
+          // Deliverable 6: PM emits Release Sign-Off
+          eventBus.recordDeliverable({
+            id: 'deliv-rel-101',
+            title: 'REL-101: Sprint 42 Production Release Sign-Off & DoD Checklist',
+            type: 'release_signoff',
+            role: pmAgent.role,
+            roleSlug: 'pm',
+            agentId: pmId,
+            agentName: pmName,
+            status: 'approved',
+            summary: `Final Sprint 42 delivery certification signed by ${pmName}: 100% acceptance criteria verified, QA certified, ready to deploy.`,
+            content: `# Production Release Sign-Off & Sprint Delivery Certificate
+## Feature: User Authentication & Token Vault (REL-101)
+**Sign-Off Authority**: ${pmName} (${pmAgent.role})
+**Sprint**: Sprint 42
+**Status**: OFFICIALLY SIGNED OFF & SHIPPED
+
+### 1. Sprint Accomplishments
+All user stories for authentication, encrypted token lifecycle, and session verification have been delivered and verified across all roles:
+- **Product Management**: PRD-101 Definition of Done satisfied.
+- **Tech Leadership**: Architecture contract ARCH-101 implemented and REV-101 quality gate passed.
+- **Core Engineering**: Code deliverable CODE-101 merged with zero regression defects.
+- **QA & Testing**: QA-101 automated test suite passed at 100% rate.
+
+### 2. Stakeholder Release Authorization
+The release candidate meets all enterprise security, audit, and quality thresholds. Authorized for production rollout.`,
+            format: 'markdown',
+            filePath: '.agents/sprints/sprint-42/RELEASE-SIGNOFF-101.md',
+            version: 'v1.0',
+            sprintId: 'sprint-42',
+            metadata: {
+              wordCount: 175,
+              acceptanceCriteriaCount: 6,
+              targetPlatform: isAndroid ? 'Android' : isIos ? 'iOS' : 'Web/Node',
+            },
+          });
 
           // Complete scenario: reset demo flags so UI updates from "Stop Demo" back to "Demo Agentic Workflow"
           this.isRunning = false;
@@ -686,14 +968,25 @@ class DemoSimulator {
         }
       }
 
-      // Reset board tasks & workflow back to clean Standby
+      // Reset board tasks, analytics & workflow back to clean Standby
       eventBus.tasks = new Map();
       eventBus.fileChanges = [];
       eventBus.communications = [];
+      eventBus.toolUsageMap = new Map();
+      eventBus.skillUsageMap = new Map();
+      eventBus.initStandbyRoleAnalytics();
       eventBus.workflowTitle = `${eventBus.projectName || 'Virtual Office'} • Standby`;
       eventBus.currentPhase = 'Standby & Ready';
       eventBus.latestMilestone = `👉 Standby on ${eventBus.projectName || 'workspace'}: Ready for AI agent tasks.`;
       eventBus.latestMilestoneAgentId = eventBus.agents.size > 0 ? eventBus.agents.keys().next().value : 'project-manager';
+    }
+
+    eventBus.events = [];
+    eventBus.deliverables = new Map();
+    eventBus.jiraConfluenceItems = [];
+    // Bring the real sprint's tasks back onto the board
+    if (typeof eventBus.resyncRealTasks === 'function') {
+      eventBus.resyncRealTasks();
     }
 
     eventBus.broadcast({

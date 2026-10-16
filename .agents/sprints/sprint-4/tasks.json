@@ -1,0 +1,21 @@
+{
+  "sprintId": "sprint-4",
+  "version": "1.0.0",
+  "updatedAt": "2026-10-16T19:32:31.852Z",
+  "tasks": [
+    {
+      "id": "TASK-CC-380729357",
+      "key": "CC-380729357",
+      "title": "i like color something like Beige and teal",
+      "description": "i like color something like Beige and teal",
+      "assignedTo": "web-dev",
+      "delegatedBy": "tech-pm",
+      "delegatedByRole": "Tech Scrum Master",
+      "column": "done",
+      "skill": "task-decomposition",
+      "progress": 100,
+      "createdAt": "2026-10-16T19:32:31.596Z",
+      "updatedAt": "2026-10-16T19:44:18.338Z"
+    }
+  ]
+}

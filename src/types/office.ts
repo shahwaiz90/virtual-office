@@ -1,6 +1,8 @@
 export type AgentStatus =
   | 'available'
+  | 'idle'
   | 'working'
+  | 'handoff'
   | 'planning'
   | 'coding'
   | 'testing'
@@ -87,6 +89,30 @@ export interface KanbanTask {
   createdAt?: string;
   updatedAt: string;
   logs?: string[];
+  /** 'requirement' for the user's request; 'task' (default) for work broken out of it */
+  type?: 'requirement' | 'task';
+  /** Card this task was broken out of */
+  parentKey?: string;
+  /** Instructions written by the delegator for the assignee's role (the handoff message) */
+  brief?: string;
+  acceptanceCriteria?: string[];
+  dependsOn?: string[];
+  context?: string | { files?: string[]; decisions?: string[]; links?: string[]; notes?: string };
+  /** Agent-to-agent conversation on this card */
+  thread?: TaskThreadEntry[];
+  /** What the assignee delivered */
+  result?: string;
+}
+
+export type TaskThreadKind = 'handoff' | 'question' | 'answer' | 'update' | 'decision' | 'result' | 'status';
+
+export interface TaskThreadEntry {
+  id: string;
+  agentId: string;
+  kind: TaskThreadKind;
+  text: string;
+  to?: string;
+  at: string;
 }
 
 export interface NormalizedEvent {
@@ -123,6 +149,11 @@ export interface NormalizedEvent {
     taskId?: string;
     column?: TaskColumn;
     progress?: number;
+    assignedTo?: string;
+    delegatedBy?: string;
+    delegatedByRole?: string;
+    key?: string;
+    [key: string]: any;
   };
 }
 
@@ -205,6 +236,76 @@ export interface AgentCommunication {
   timestamp: string;
 }
 
+export interface SprintInfo {
+  id: string;
+  number: number;
+  name: string;
+  path: string;
+  status: 'active' | 'completed' | 'planned' | string;
+  createdAt: string;
+}
+
+export interface JiraConfluenceItem {
+  id: string;
+  sourceType: 'jira' | 'confluence';
+  ticketKey?: string | null;
+  pageId?: string | null;
+  url?: string | null;
+  title?: string;
+  summary?: string;
+  status?: string;
+  command?: string | null;
+  timestamp: string;
+  agentId?: string | null;
+  details?: string;
+}
+
+export type DeliverableType =
+  | 'prd'
+  | 'implementation_plan'
+  | 'source_code'
+  | 'test_report'
+  | 'architecture'
+  | 'code_review'
+  | 'release_signoff';
+
+export type DeliverableStatus = 'draft' | 'in_review' | 'delivered' | 'approved';
+
+export interface DeliverableMetadata {
+  wordCount?: number;
+  testPassRate?: string;
+  testCount?: number;
+  coveragePercent?: number;
+  linesOfCode?: number;
+  acceptanceCriteriaCount?: number;
+  securityChecksPassed?: number;
+  targetPlatform?: string;
+  [key: string]: any;
+}
+
+export interface RoleDeliverable {
+  id: string;
+  title: string;
+  type: DeliverableType;
+  role: string;
+  roleSlug: 'pm' | 'tech-lead' | 'dev' | 'qa' | 'specialist';
+  agentId: string;
+  agentName: string;
+  status: DeliverableStatus;
+  summary: string;
+  content: string;
+  format: 'markdown' | 'code' | 'json';
+  filePath?: string;
+  version: string;
+  sprintId?: string;
+  deliveredTo?: string;
+  deliveredToName?: string;
+  deliveredToRole?: string;
+  metadata?: DeliverableMetadata;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface OfficeState {
   workflow: {
     id: string;
@@ -218,6 +319,7 @@ export interface OfficeState {
     milestone: string;
     milestoneAgentId?: string;
     isDemoRunning?: boolean;
+    hasAgents?: boolean;
   };
   metrics: {
     totalAgents: number;
@@ -229,12 +331,20 @@ export interface OfficeState {
   };
   agents: Agent[];
   tasks: KanbanTask[];
+  deliverables?: RoleDeliverable[];
+  activeSprintId?: string;
+  activeSprintPath?: string;
+  sprints?: SprintInfo[];
   toolUsageAnalytics?: ToolUsageStat[];
   skillUsageAnalytics?: SkillUsageStat[];
   roleInvocationAnalytics?: RoleInvocationStat[];
   fileChanges?: FileChangeRecord[];
   communications?: AgentCommunication[];
+  jiraConfluenceItems?: JiraConfluenceItem[];
   activeHandoff: ActiveHandoff | null;
   connectedViewers: number;
   isDemoRunning?: boolean;
+  hasCustomAgentsConfig?: boolean;
+  events?: any[];
 }
+

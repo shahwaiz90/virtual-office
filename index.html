@@ -3,40 +3,76 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AI Agent Virtual Office — Real-Time OpenCode Visualizer</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%234338ca'><path d='M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z'/></svg>" />
+    <title>Agent Command Center</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230f766b'><path d='M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z'/></svg>" />
+    <script>
+      // Apply the saved (or system) theme before first paint to avoid a light flash
+      (function () {
+        var theme = null;
+        try { theme = localStorage.getItem('vo-theme'); } catch (e) {}
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        if (theme === 'dark') document.documentElement.classList.add('dark');
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Every palette resolves to a CSS variable from src/styles/tokens.css so themes swap values, not classes
+      (function () {
+        var palettes = ["sand", "brand", "clay", "olive", "slate", "gray", "zinc", "neutral", "stone", "indigo", "violet", "purple", "fuchsia", "pink", "rose", "red", "orange", "amber", "yellow", "lime", "green", "emerald", "teal", "cyan", "sky", "blue"];
+        var steps = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950'];
+        var colors = {};
+        palettes.forEach(function (p) {
+          colors[p] = {};
+          steps.forEach(function (s) {
+            colors[p][s] = 'rgb(var(--c-' + p + '-' + s + ') / <alpha-value>)';
+          });
+        });
+        var token = function (name) { return 'rgb(var(--' + name + ') / <alpha-value>)'; };
+        colors.surface = { DEFAULT: token('surface'), raised: token('surface-raised') };
+        colors.canvas = token('canvas');
+        colors.fg = { DEFAULT: token('fg'), muted: token('fg-muted'), subtle: token('fg-subtle') };
+        colors.line = { DEFAULT: token('line'), strong: token('line-strong') };
+        colors.accent = { DEFAULT: token('accent'), hover: token('accent-hover'), soft: token('accent-soft') };
+        colors.success = token('success');
+        colors.warning = token('warning');
+        colors.danger = token('danger');
+        colors.info = token('info');
+        colors.scrim = token('scrim');
+        tailwind.config = {
+          darkMode: 'class',
+          theme: {
+            extend: {
+              colors: colors,
+              fontFamily: {
+                sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                mono: ['"JetBrains Mono"', 'monospace'],
+              },
+              boxShadow: { card: 'var(--shadow-card)', pop: 'var(--shadow-pop)' },
+              borderRadius: { token: 'var(--radius-md)' },
+            },
+          },
+        };
+      })();
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
       body {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        background-color: #f8fafc;
-        color: #0f172a;
         margin: 0;
         padding: 0;
         overflow-x: hidden;
       }
-      .font-mono {
-        font-family: 'JetBrains Mono', monospace;
-      }
-      /* Clean Light Scrollbars */
       ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
       }
-      ::-webkit-scrollbar-track {
-        background: #f1f5f9;
-      }
       ::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
         border-radius: 3px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
       }
     </style>
   </head>
-  <body class="bg-slate-50 text-slate-800 min-h-screen antialiased">
+  <body class="bg-canvas text-fg min-h-screen antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

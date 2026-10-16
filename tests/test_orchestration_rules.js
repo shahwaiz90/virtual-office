@@ -29,33 +29,52 @@ test('OrchestrationRules: platformBadge detection', () => {
   assert.equal(OrchestrationRules.resolveTeamRoles(genericRoster).platformBadge, 'TSK');
 });
 
-test('OrchestrationRules: decomposeSprintGoal generates 4 standard sprint tasks', () => {
+test('OrchestrationRules: no hardcoded breakdown — raw requirement becomes ONE backlog card for the orchestrator', () => {
   const roster = [
-    { id: 'pm-1', name: 'Scrum Master', badge: 'PM' },
+    { id: 'pm-1', name: 'Scrum Master', badge: 'PM', is_primary: true },
     { id: 'lead-1', name: 'Tech Lead', badge: 'LEAD' },
     { id: 'dev-1', name: 'Developer', badge: 'DEV' },
-    { id: 'qa-1', name: 'Tester', badge: 'QA' },
   ];
+  const goal = 'Let users export the Kanban board as CSV';
+  const tasks = OrchestrationRules.decomposeSprintGoal(goal, roster);
+  assert.equal(tasks.length, 1, 'Without an AI breakdown nothing must be invented');
+  assert.equal(tasks[0].assignedTo, 'pm-1');
+  assert.equal(tasks[0].column, 'backlog');
+  assert.equal(tasks[0].description, goal);
+  assert.equal(tasks[0].needsBreakdown, true);
+  assert.ok(!/^(Plan|Build|Review|Test):/.test(tasks[0].title), 'No template prefixes');
+});
 
-  const tasks = OrchestrationRules.decomposeSprintGoal('Build biometrics authentication', roster);
-  assert.equal(tasks.length, 4, 'Must produce 4 decomposed sprint tasks');
+test('OrchestrationRules: normalizeAITasks keeps the AI breakdown exactly (any count, titles, assignees)', () => {
+  const roster = [
+    { id: 'tech-pm', is_primary: true, delegation_targets: ['web-tech-lead'] },
+    { id: 'web-tech-lead' },
+    { id: 'web-dev' },
+  ];
+  const ai = [
+    { title: 'Define CSV columns for task export', assignedTo: 'web-tech-lead', skill: 'task-decomposition' },
+    { title: 'Add GET /api/tasks/export.csv endpoint', assignedTo: 'web-dev', dependsOn: ['Define CSV columns for task export'] },
+    { title: 'Add Export button to Kanban header', assignedTo: 'web-dev' },
+    { title: 'Review export output and edge cases', assignedTo: 'web-tech-lead' },
+    { title: 'Write e2e test for export', assignedTo: 'web-tester' },
+  ];
+  const tasks = OrchestrationRules.normalizeAITasks(ai, roster, { existingTasks: [{ key: 'WEB-212' }] });
+  assert.equal(tasks.length, 5, 'Task count comes from the AI, not a template');
+  assert.deepEqual(tasks.map((t) => t.title), ai.map((t) => t.title), 'Titles preserved verbatim');
+  assert.equal(tasks[1].assignedTo, 'web-dev');
+  assert.deepEqual(tasks[1].dependsOn, ['Define CSV columns for task export']);
+  assert.equal(tasks[4].assignedTo, 'web-tech-lead', 'Unknown agent falls back to orchestrator delegation target');
+  assert.equal(tasks[0].key, 'WEB-213', 'Keys continue after the highest existing key');
+  assert.equal(new Set(tasks.map((t) => t.key)).size, 5, 'Keys are unique');
 
-  // Verify task sequence
-  assert.equal(tasks[0].assignedTo, 'lead-1');
-  assert.equal(tasks[0].column, 'in_progress');
-  assert.ok(tasks[0].title.includes('Architecture Spike'));
+  const single = OrchestrationRules.normalizeAITasks([{ title: 'Fix typo in Settings title', assignedTo: 'web-dev' }], roster);
+  assert.equal(single.length, 1, 'A small requirement may be a single task');
+});
 
-  assert.equal(tasks[1].assignedTo, 'dev-1');
-  assert.equal(tasks[1].column, 'assigned');
-  assert.ok(tasks[1].title.includes('Core Feature Implementation'));
-
-  assert.equal(tasks[2].assignedTo, 'lead-1');
-  assert.equal(tasks[2].column, 'backlog');
-  assert.ok(tasks[2].title.includes('Quality Gate & Code Review'));
-
-  assert.equal(tasks[3].assignedTo, 'qa-1');
-  assert.equal(tasks[3].column, 'backlog');
-  assert.ok(tasks[3].title.includes('Acceptance Verification'));
+test('OrchestrationRules: distillShortTopic never maps keywords to canned titles', () => {
+  assert.equal(OrchestrationRules.distillShortTopic('Build biometrics authentication'), 'Build biometrics authentication');
+  assert.equal(OrchestrationRules.distillShortTopic('**Add sprint picker**'), 'Add sprint picker');
+  assert.ok(OrchestrationRules.distillShortTopic('word '.repeat(40)).length <= 80);
 });
 
 test('OrchestrationRules: getInitialDemoTasks returns 5 demo tasks', () => {
@@ -115,3 +134,53 @@ test('OrchestrationRules: inferChannel determines channels strictly by agent IDs
   assert.equal(OrchestrationRules.inferChannel('any-from', 'any-to', 'custom_channel'), 'custom_channel');
 });
 
+test('OrchestrationRules: sanitizeTaskKey and exact AI task title preservation', () => {
+  const { sanitizeTaskKey, parseRealTasksFromContent, registerRealAgentTask, syncTasksFromJson } = require('../server/watchers.js');
+  const { eventBus } = require('../server/eventBus.js');
+
+  // 1. sanitizeTaskKey
+  assert.equal(sanitizeTaskKey('SPIKE-331'), 'SPIKE-331', 'Agent keys are not rewritten');
+  assert.equal(sanitizeTaskKey(' `REV-202` '), 'REV-202');
+  assert.equal(sanitizeTaskKey('TASK-303'), 'TASK-303');
+
+  // 2. Exact AI title preservation from markdown table
+  const sampleMarkdown = `
+| Task Key | Title | Assignee | Status |
+| :--- | :--- | :--- | :--- |
+| PLAN-351 | Design Biometrics Auth Flow | web-tech-lead | in_progress |
+| DEV-352 | Implement Biometrics Helper | web-dev | assigned |
+| REVIEW-353 | Review Biometrics Security | web-tech-lead | backlog |
+| QA-354 | Verify Biometrics Passkey Tests | web-tester | backlog |
+`;
+
+  const parsed = parseRealTasksFromContent(sampleMarkdown);
+  assert.equal(parsed.length, 4);
+  assert.equal(parsed[0].title, 'Design Biometrics Auth Flow', 'Must preserve exact AI title without keyword overwrite');
+  assert.equal(parsed[1].title, 'Implement Biometrics Helper', 'Must preserve exact AI title without keyword overwrite');
+  assert.equal(parsed[0].key, 'PLAN-351');
+
+  // 3. registerRealAgentTask keeps the agent's key and title exactly
+  const spikeTask = registerRealAgentTask({
+    key: 'SPIKE-999',
+    title: 'Spike Investigation and Findings on WebAuthn',
+    assignedTo: 'web-tech-lead',
+    column: 'in_progress',
+  }, { skipPersist: true });
+  const storedSpike = eventBus.tasks.get(spikeTask.id);
+  assert.ok(storedSpike, 'Task must be registered and not deleted');
+  assert.equal(storedSpike.key, 'SPIKE-999', 'Key must be preserved');
+  assert.equal(storedSpike.title, 'Spike Investigation and Findings on WebAuthn', 'Title must be preserved verbatim');
+  eventBus.tasks.delete(spikeTask.id);
+
+  // 4. Exact AI title without Spike is preserved 100%
+  const aiTask = registerRealAgentTask({
+    key: 'DEV-888',
+    title: 'Setup WebAuthn Passkey Credentials Storage',
+    assignedTo: 'web-dev',
+    column: 'assigned',
+  }, { skipPersist: true });
+  const storedAi = eventBus.tasks.get(aiTask.id);
+  assert.ok(storedAi, 'AI Task must be registered');
+  assert.equal(storedAi.title, 'Setup WebAuthn Passkey Credentials Storage', 'Exact AI title must be preserved');
+  eventBus.tasks.delete(aiTask.id);
+});

@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Agent, ActiveHandoff } from '../types/office';
-import { Pencil, Sparkles, Users } from 'lucide-react';
+import { Agent, ActiveHandoff, NormalizedEvent } from '../types/office';
+import { Pencil, Sparkles, Users, Terminal, LayoutGrid } from 'lucide-react';
+import { WorkstationTerminalTile, isMockEvent, isMockTask } from './WorkstationTerminalTile';
 
 interface VirtualOfficeProps {
   agents: Agent[];
@@ -11,6 +12,8 @@ interface VirtualOfficeProps {
   onEditAgent?: (agent: Agent) => void;
   onEditTeam?: () => void;
   isLoading?: boolean;
+  events?: NormalizedEvent[];
+  onViewModeChange?: (mode: 'floor' | 'terminal_grid') => void;
 }
 
 interface RoomWorkingState {
@@ -28,6 +31,62 @@ interface RoomWorkingState {
  * Creates a pre-filtered, bicubic downsampled canvas for high-resolution images
  * to eliminate canvas aliasing and pixelation on high-DPI displays.
  */
+// Floor plan colors follow the portal theme. The scene was drawn with Tailwind slate/indigo literals;
+// tc() looks each one up in the design tokens (src/styles/tokens.css) so rooms, labels and badges
+// match the beige/teal identity in light and dark mode. Unmapped colors (wood, screens, status
+// lights, agent colors) are returned unchanged.
+const SCENE_TOKENS: Record<string, string> = {
+  '#ffffff': 'surface',
+  '#f8fafc': 'c-sand-50',
+  '#f1f5f9': 'c-sand-100',
+  '#edf2f7': 'c-sand-100',
+  '#e2e8f0': 'c-sand-200',
+  '#cbd5e1': 'c-sand-300',
+  '#94a3b8': 'c-sand-400',
+  '#64748b': 'c-sand-500',
+  '#475569': 'c-sand-600',
+  '#334155': 'c-sand-700',
+  'text-800': 'c-sand-800',
+  'text-900': 'c-sand-900',
+  '#6366f1': 'c-brand-500',
+  '#4f46e5': 'c-brand-600',
+  // Lounge creams
+  '#fbf9f5': 'c-sand-50',
+  '#f5f3ee': 'c-sand-100',
+  '#ece7de': 'c-sand-200',
+  '#e6e2da': 'c-sand-200',
+  '#e2e0d8': 'c-sand-200',
+  '#d5cebf': 'c-sand-300',
+  '#fffbeb': 'c-amber-50',
+  '#fefce8': 'c-yellow-50',
+  '#ecfdf5': 'c-emerald-50',
+  '#a7f3d0': 'c-emerald-200',
+};
+
+// Monitor screens and device bodies stay dark in both themes (warm ink instead of slate)
+const SCENE_INK = '#2a241e';
+const SCENE_INK_SOFT = '#40372d';
+
+let sceneColorCache: Record<string, string> | null = null;
+
+function resolveSceneColors(): Record<string, string> {
+  const styles = getComputedStyle(document.documentElement);
+  const resolved: Record<string, string> = {};
+  for (const [key, token] of Object.entries(SCENE_TOKENS)) {
+    const channels = styles.getPropertyValue(`--${token}`).trim().split(/\s+/).map(Number);
+    if (channels.length === 3 && channels.every((c) => Number.isFinite(c))) {
+      // Hex output keeps `${color}1a`-style alpha suffixes working
+      resolved[key] = '#' + channels.map((c) => c.toString(16).padStart(2, '0')).join('');
+    }
+  }
+  return resolved;
+}
+
+function tc(key: string): string {
+  if (!sceneColorCache) sceneColorCache = resolveSceneColors();
+  return sceneColorCache[key] ?? key;
+}
+
 function createCrispAvatarCanvas(img: HTMLImageElement, targetSize = 160): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = targetSize;
@@ -65,11 +124,30 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   onEditAgent,
   onEditTeam,
   isLoading = false,
+  events: rawEvents = [],
+  onViewModeChange,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [viewMode, setViewMode] = useState<'floor' | 'terminal_grid'>('floor');
   const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
   const [, setImagesLoadedVersion] = useState<number>(0);
   const crispAvatarsRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+
+  const events = rawEvents.filter((e) => !isMockEvent(e));
+
+  const handleSetViewMode = (mode: 'floor' | 'terminal_grid') => {
+    setViewMode(mode);
+    onViewModeChange?.(mode);
+  };
+
+  // Re-resolve scene colors when the light/dark theme switches; the render loop picks them up next frame
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      sceneColorCache = null;
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (canvasRef.current && onCanvasReady) {
@@ -87,6 +165,22 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   const rowGap = maxRows <= 2 ? 30 : 25;
   const topMargin = 35;
   const LOGICAL_HEIGHT = topMargin + maxRows * rowHeight + (maxRows - 1) * rowGap + topMargin;
+
+  // Agent room boundary helper for hit-testing and layouts
+  const getAgentBounds = useCallback(
+    (agent: Agent, idx: number) => {
+      const isLeft = idx % 2 === 0;
+      const row = Math.floor(idx / 2);
+      const defaultBounds = {
+        x: isLeft ? 35 : 745,
+        y: topMargin + row * (rowHeight + rowGap),
+        w: 420,
+        h: rowHeight,
+      };
+      return agent.theme?.roomBounds || defaultBounds;
+    },
+    [rowHeight, rowGap, topMargin]
+  );
 
   // Preload and step-downsample all agent avatar images
   useEffect(() => {
@@ -136,7 +230,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
       ctx.imageSmoothingQuality = 'high';
 
       // 1. Crisp slate background
-      ctx.fillStyle = '#f8fafc';
+      ctx.fillStyle = tc('#f8fafc');
       ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
       // 2. Crisp subtle grid
@@ -146,7 +240,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
       drawCentralLoungeAndCoffeeBar(ctx, tick, LOGICAL_HEIGHT);
 
       // 4. Dedicated Agent Workstations (Clean non-overlapping suites for all roles)
-      drawOfficeRooms(ctx, agents, activeHandoff, tick);
+      drawOfficeRooms(ctx, agents, activeHandoff, events, tick);
 
       // 5. 3D Volumetric Animated Characters (with Crisp Retina Avatars & Role Badges)
       draw3DCharacters(
@@ -156,6 +250,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         hoveredAgentId,
         selectedAgentId,
         crispAvatarsRef.current,
+        events,
         tick
       );
 
@@ -172,7 +267,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [agents, activeHandoff, hoveredAgentId, selectedAgentId, LOGICAL_HEIGHT]);
+  }, [agents, activeHandoff, hoveredAgentId, selectedAgentId, LOGICAL_HEIGHT, events]);
 
   // Click handler
   const handleCanvasClick = useCallback(
@@ -185,16 +280,23 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
       const clickX = (e.clientX - rect.left) * scaleX;
       const clickY = (e.clientY - rect.top) * scaleY;
 
-      for (const agent of agents) {
+      for (let idx = 0; idx < agents.length; idx++) {
+        const agent = agents[idx];
+        const bounds = getAgentBounds(agent, idx);
+        const insideRoom =
+          clickX >= bounds.x &&
+          clickX <= bounds.x + bounds.w &&
+          clickY >= bounds.y &&
+          clickY <= bounds.y + bounds.h;
         const pos = agent.currentPosition || agent.theme.deskPosition;
         const dist = Math.hypot(clickX - pos.x, clickY - (pos.y - 20));
-        if (dist < 55) {
+        if (insideRoom || dist < 55) {
           onSelectAgent(agent);
           return;
         }
       }
     },
-    [agents, onSelectAgent, LOGICAL_HEIGHT]
+    [agents, onSelectAgent, LOGICAL_HEIGHT, getAgentBounds]
   );
 
   // Mouse move handler
@@ -209,17 +311,24 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
       const mouseY = (e.clientY - rect.top) * scaleY;
 
       let found: string | null = null;
-      for (const agent of agents) {
+      for (let idx = 0; idx < agents.length; idx++) {
+        const agent = agents[idx];
+        const bounds = getAgentBounds(agent, idx);
+        const insideRoom =
+          mouseX >= bounds.x &&
+          mouseX <= bounds.x + bounds.w &&
+          mouseY >= bounds.y &&
+          mouseY <= bounds.y + bounds.h;
         const pos = agent.currentPosition || agent.theme.deskPosition;
         const dist = Math.hypot(mouseX - pos.x, mouseY - (pos.y - 20));
-        if (dist < 55) {
+        if (insideRoom || dist < 55) {
           found = agent.id;
           break;
         }
       }
       setHoveredAgentId(found);
     },
-    [agents, LOGICAL_HEIGHT]
+    [agents, LOGICAL_HEIGHT, getAgentBounds]
   );
 
   // Mobile Touch handler
@@ -234,57 +343,111 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
       const clickX = (touch.clientX - rect.left) * scaleX;
       const clickY = (touch.clientY - rect.top) * scaleY;
 
-      for (const agent of agents) {
+      for (let idx = 0; idx < agents.length; idx++) {
+        const agent = agents[idx];
+        const bounds = getAgentBounds(agent, idx);
+        const insideRoom =
+          clickX >= bounds.x &&
+          clickX <= bounds.x + bounds.w &&
+          clickY >= bounds.y &&
+          clickY <= bounds.y + bounds.h;
         const pos = agent.currentPosition || agent.theme.deskPosition;
         const dist = Math.hypot(clickX - pos.x, clickY - pos.y);
-        if (dist < 75) {
+        if (insideRoom || dist < 75) {
           onSelectAgent(agent);
           break;
         }
       }
     },
-    [agents, LOGICAL_HEIGHT, onSelectAgent]
+    [agents, LOGICAL_HEIGHT, onSelectAgent, getAgentBounds]
   );
 
   return (
-    <div className="relative w-full bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
+    <div className="relative w-full bg-surface rounded-2xl border border-sand-200/90 shadow-sm overflow-hidden">
       {/* Office Floor Header & Station Quick Edit Toolbar */}
-      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-2.5 text-xs">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-slate-800 flex items-center gap-1.5">
-            🏢 2D Virtual Office Floor
-          </span>
-          <span className="text-[11px] text-slate-500 hidden sm:inline">
-            • {agents.length} Active Workstations
-          </span>
+      <div className="px-4 py-2.5 bg-sand-50 border-b border-sand-200/80 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-sand-800 flex items-center gap-1.5">
+              🏢 Agent Command Center
+            </span>
+            <span className="text-[11px] text-sand-500 hidden sm:inline">
+              • {agents.length} Active Workstations
+            </span>
+          </div>
+
+          {/* Sleek Segmented Pill Control View Switcher */}
+          <div className="inline-flex items-center bg-sand-200/80 p-0.5 rounded-lg border border-sand-200 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => handleSetViewMode('floor')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
+                viewMode === 'floor'
+                  ? 'bg-brand-600 text-white shadow-xs font-bold'
+                  : 'text-sand-600 hover:text-sand-900'
+              }`}
+              title="Switch to 2D Floor Plan view"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Floor Plan</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSetViewMode('terminal_grid')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
+                viewMode === 'terminal_grid'
+                  ? 'bg-brand-600 text-white shadow-xs font-bold'
+                  : 'text-sand-600 hover:text-sand-900'
+              }`}
+              title="Switch to Terminal Grid view"
+            >
+              <Terminal className="w-3.5 h-3.5" />
+              <span>Terminal Grid</span>
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
           {agents.length > 0 && (
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden md:inline">
+            <span className="text-[10px] font-bold text-sand-400 uppercase tracking-wider mr-1 hidden md:inline">
               Workstations:
             </span>
           )}
           {agents.map((ag) => (
-            <button
+            <div
               key={ag.id}
-              onClick={() => onEditAgent ? onEditAgent(ag) : onSelectAgent(ag)}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-slate-700 hover:text-indigo-700 font-semibold text-[11px] transition-all shadow-2xs cursor-pointer group"
-              title={`Click to edit ${ag.name} (${ag.role})`}
+              className="inline-flex items-center rounded-lg shadow-2xs border border-sand-200 bg-surface hover:border-sand-300 transition-all overflow-hidden"
             >
-              <span 
-                className="w-1.5 h-1.5 rounded-full" 
-                style={{ backgroundColor: ag.theme?.themeColor || '#4f46e5' }} 
-              />
-              <span className="font-bold">{ag.theme?.badge || ag.badgeText || ag.name.split(' ')[0]}</span>
-              <Pencil className="w-2.5 h-2.5 text-slate-400 group-hover:text-indigo-600 ml-0.5" />
-            </button>
+              <button
+                onClick={() => onEditAgent ? onEditAgent(ag) : onSelectAgent(ag)}
+                className="flex items-center gap-1.5 px-2 py-1 hover:bg-brand-50/70 text-sand-700 hover:text-brand-700 font-semibold text-[11px] transition-colors cursor-pointer group"
+                title={`Click to view/edit ${ag.name} (${ag.role})`}
+              >
+                <span 
+                  className="w-1.5 h-1.5 rounded-full" 
+                  style={{ backgroundColor: ag.theme?.themeColor || tc('#4f46e5') }} 
+                />
+                <span className="font-bold">{ag.theme?.badge || ag.badgeText || ag.name.split(' ')[0]}</span>
+                <Pencil className="w-2.5 h-2.5 text-sand-400 group-hover:text-brand-600 ml-0.5" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectAgent(ag);
+                  handleSetViewMode('terminal_grid');
+                }}
+                className="p-1 border-l border-sand-200 transition-colors cursor-pointer text-sand-400 hover:text-brand-600 hover:bg-sand-50"
+                title={`Inspect live agent terminal logs for ${ag.name}`}
+              >
+                <Terminal className="w-3 h-3" />
+              </button>
+            </div>
           ))}
 
           {onEditTeam && agents.length > 0 && (
             <button
               onClick={onEditTeam}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[11px] border shadow-2xs transition-all cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200 ml-1"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[11px] border shadow-2xs transition-all cursor-pointer bg-brand-50 hover:bg-brand-100 text-brand-700 border-brand-200 ml-0.5"
               title="Configure Roles, Platform Templates & Skills"
             >
               <Sparkles className="w-3 h-3" />
@@ -294,7 +457,8 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         </div>
       </div>
 
-      <div className="relative">
+      {/* 2D Canvas Floor Plan View (Preserved in DOM to maintain canvas context & onCanvasReady) */}
+      <div className={viewMode === 'floor' ? 'relative block' : 'hidden'}>
         <canvas
           ref={canvasRef}
           onClick={handleCanvasClick}
@@ -307,16 +471,16 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
 
         {/* Empty State Overlay when no agents are configured */}
         {!isLoading && agents.length === 0 && (
-          <div className="absolute inset-0 bg-slate-900/15 backdrop-blur-[2px] flex items-center justify-center p-6 z-10 animate-in fade-in duration-200">
-            <div className="bg-white/95 border border-slate-200 shadow-2xl rounded-3xl p-6 sm:p-8 max-w-md w-full text-center flex flex-col items-center gap-3.5 backdrop-blur-xl animate-in zoom-in-95 duration-200">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm">
+          <div className="absolute inset-0 bg-scrim/15 backdrop-blur-[2px] flex items-center justify-center p-6 z-10 animate-in fade-in duration-200">
+            <div className="bg-surface/95 border border-sand-200 shadow-2xl rounded-3xl p-6 sm:p-8 max-w-md w-full text-center flex flex-col items-center gap-3.5 backdrop-blur-xl animate-in zoom-in-95 duration-200">
+              <div className="w-14 h-14 rounded-2xl bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-600 shadow-sm">
                 <Users className="w-7 h-7" />
               </div>
               <div>
-                <h3 className="text-base sm:text-lg font-extrabold text-slate-900">
+                <h3 className="text-base sm:text-lg font-extrabold text-sand-900">
                   No Agents in Workspace
                 </h3>
-                <p className="text-xs text-slate-600 leading-relaxed mt-1">
+                <p className="text-xs text-sand-600 leading-relaxed mt-1">
                   This directory does not have an agent team configured. Create custom roles or select a starter team (Android, iOS, Web Fullstack, DevOps) to staff your virtual office!
                 </p>
               </div>
@@ -325,7 +489,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
                 <button
                   type="button"
                   onClick={onEditTeam}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/25 active:scale-95 transition-all cursor-pointer mt-1"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md shadow-brand-600/25 active:scale-95 transition-all cursor-pointer mt-1"
                 >
                   <Sparkles className="w-4 h-4" />
                   <span>Create Roles & Agents</span>
@@ -335,6 +499,42 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
           </div>
         )}
       </div>
+
+      {/* Terminal Grid View */}
+      {viewMode === 'terminal_grid' && (
+        <div className="bg-sand-50/60 border-t border-sand-200/80 p-4 sm:p-5 min-h-[580px] grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {agents.length === 0 ? (
+            <div className="col-span-full flex flex-col items-center justify-center p-12 text-center text-sand-500">
+              <div className="w-12 h-12 rounded-2xl bg-sand-100 border border-sand-200 flex items-center justify-center text-sand-600 mb-3 shadow-2xs">
+                <Terminal className="w-6 h-6" />
+              </div>
+              <h3 className="text-sand-800 font-bold text-sm">No Active Workstations</h3>
+              <p className="text-sand-500 text-xs mt-1 max-w-sm">
+                This directory does not have an agent team configured. Create custom roles or select a starter team in Team Studio!
+              </p>
+              {onEditTeam && (
+                <button
+                  type="button"
+                  onClick={onEditTeam}
+                  className="mt-4 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-md shadow-brand-600/20 active:scale-95 transition-all cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Create Roles & Agents</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            agents.map((agent) => (
+              <WorkstationTerminalTile
+                key={`${agent.id}-${agent.role}-${agent.name}`}
+                agent={agent}
+                events={events}
+                onSelectAgent={onSelectAgent}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -344,7 +544,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
    ========================================================================= */
 
 function drawOfficeFloor(ctx: CanvasRenderingContext2D, width: number, height: number) {
-  ctx.strokeStyle = '#edf2f7';
+  ctx.strokeStyle = tc('#edf2f7');
   ctx.lineWidth = 0.75;
   const tileSize = 48;
 
@@ -367,11 +567,11 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   const cx = 600;
 
   // 1. Central Parquet Flooring Zone (Warm Natural Linen / Light Ash)
-  ctx.fillStyle = '#fbf9f5';
+  ctx.fillStyle = tc('#fbf9f5');
   ctx.beginPath();
   ctx.roundRect(cx - 115, 35, 230, Math.max(610, floorHeight - 70), 16);
   ctx.fill();
-  ctx.strokeStyle = '#e6e2da';
+  ctx.strokeStyle = tc('#e6e2da');
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
@@ -379,14 +579,14 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   ctx.font = 'bold 11px Inter, sans-serif';
   const title = '☕ Executive Cafe & Break Lounge';
   const tw = ctx.measureText(title).width;
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = tc('#ffffff');
   ctx.beginPath();
   ctx.roundRect(cx - (tw + 20) / 2, 45, tw + 20, 24, 8);
   ctx.fill();
-  ctx.strokeStyle = '#e2e0d8';
+  ctx.strokeStyle = tc('#e2e0d8');
   ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.fillStyle = '#475569';
+  ctx.fillStyle = tc('#475569');
   ctx.fillText(title, cx - tw / 2, 61);
 
   // 2. 3D Barista Coffee Counter (Warm Honey Oak & Quartz Marble)
@@ -413,11 +613,11 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   }
 
   // Pure White Quartz Countertop with 3D perspective
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = tc('#ffffff');
   ctx.beginPath();
   ctx.roundRect(cx - 90, barY - 22, 180, 22, 6);
   ctx.fill();
-  ctx.strokeStyle = '#e2e8f0';
+  ctx.strokeStyle = tc('#e2e8f0');
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
@@ -425,25 +625,25 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   const emX = cx - 30;
   const emY = barY - 24;
 
-  ctx.fillStyle = '#f8fafc';
+  ctx.fillStyle = tc('#f8fafc');
   ctx.fillRect(emX - 22, emY - 24, 44, 24);
-  ctx.strokeStyle = '#cbd5e1';
+  ctx.strokeStyle = tc('#cbd5e1');
   ctx.lineWidth = 1.5;
   ctx.strokeRect(emX - 22, emY - 24, 44, 24);
 
   // Chrome Cup Warmer Rack
-  ctx.fillStyle = '#e2e8f0';
+  ctx.fillStyle = tc('#e2e8f0');
   ctx.fillRect(emX - 20, emY - 28, 40, 4);
 
   // Pressure gauge dials
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = tc('#ffffff');
   ctx.beginPath();
   ctx.arc(emX - 10, emY - 13, 3.5, 0, Math.PI * 2);
   ctx.arc(emX + 10, emY - 13, 3.5, 0, Math.PI * 2);
   ctx.fill();
 
   // Twin Portafilters
-  ctx.fillStyle = '#334155';
+  ctx.fillStyle = tc('#334155');
   ctx.fillRect(emX - 14, emY, 7, 7);
   ctx.fillRect(emX + 7, emY, 7, 7);
 
@@ -463,12 +663,12 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   }
 
   // Coffee cups stacked on counter
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = tc('#ffffff');
   ctx.beginPath();
   ctx.arc(cx + 40, barY - 15, 6, 0, Math.PI * 2);
   ctx.arc(cx + 56, barY - 15, 6, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#e2e8f0';
+  ctx.strokeStyle = tc('#e2e8f0');
   ctx.lineWidth = 1;
   ctx.stroke();
 
@@ -476,7 +676,7 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   [-50, 50].forEach((offset) => {
     const bx = cx + offset;
     const by = barY + 40;
-    ctx.fillStyle = '#cbd5e1';
+    ctx.fillStyle = tc('#cbd5e1');
     ctx.beginPath();
     ctx.ellipse(bx, by + 8, 11, 4.5, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -501,16 +701,16 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   ctx.fill();
 
   // Natural Beechwood Table surface
-  ctx.fillStyle = '#f1f5f9';
+  ctx.fillStyle = tc('#f1f5f9');
   ctx.beginPath();
   ctx.roundRect(ttX - 52, ttY - 20, 104, 44, 8);
   ctx.fill();
-  ctx.strokeStyle = '#cbd5e1';
+  ctx.strokeStyle = tc('#cbd5e1');
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
   // Center wood grain accent
-  ctx.strokeStyle = '#e2e8f0';
+  ctx.strokeStyle = tc('#e2e8f0');
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(ttX - 44, ttY + 2);
@@ -518,19 +718,19 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   ctx.stroke();
 
   // Tablet & Notepad on table
-  ctx.fillStyle = '#334155';
+  ctx.fillStyle = tc('#334155');
   ctx.fillRect(ttX - 22, ttY - 10, 16, 20);
-  ctx.fillStyle = '#6366f1';
+  ctx.fillStyle = tc('#6366f1');
   ctx.fillRect(ttX - 20, ttY - 8, 12, 16);
 
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = tc('#ffffff');
   ctx.fillRect(ttX + 8, ttY - 8, 14, 18);
-  ctx.strokeStyle = '#cbd5e1';
+  ctx.strokeStyle = tc('#cbd5e1');
   ctx.strokeRect(ttX + 8, ttY - 8, 14, 18);
 
   // Label Pill: Team Huddle
   ctx.font = 'bold 8.5px Inter, sans-serif';
-  ctx.fillStyle = '#475569';
+  ctx.fillStyle = tc('#475569');
   ctx.fillText('🤝 Team Huddle Area', ttX - 44, ttY - 26);
 
   // 4. Retro Arcade Gaming Cabinet & Snack Bar (Y: 390)
@@ -538,7 +738,7 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   const arcY = 385;
 
   // Arcade Cabinet (Matte Charcoal with neon cyan marquee)
-  ctx.fillStyle = '#1e293b';
+  ctx.fillStyle = SCENE_INK_SOFT;
   ctx.beginPath();
   ctx.roundRect(arcX - 16, arcY - 28, 32, 52, 5);
   ctx.fill();
@@ -555,7 +755,7 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   ctx.fillText('ARCADE', arcX - 11, arcY - 20);
 
   // CRT Screen with 8-bit animated scanline glow
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = SCENE_INK;
   ctx.fillRect(arcX - 12, arcY - 14, 24, 18);
   ctx.fillStyle = glow > 0.5 ? '#10b981' : '#3b82f6';
   ctx.fillRect(arcX - 8, arcY - 10, 8, 8); // pixel character
@@ -578,11 +778,11 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   const snackX = cx + 50;
   const snackY = 385;
   // Natural Oak Shelf
-  ctx.fillStyle = '#e2e8f0';
+  ctx.fillStyle = tc('#e2e8f0');
   ctx.beginPath();
   ctx.roundRect(snackX - 22, snackY - 24, 44, 48, 6);
   ctx.fill();
-  ctx.strokeStyle = '#cbd5e1';
+  ctx.strokeStyle = tc('#cbd5e1');
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
@@ -605,7 +805,7 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   ctx.fillRect(snackX + 8, snackY + 4, 8, 14);
 
   ctx.font = 'bold 8.5px Inter, sans-serif';
-  ctx.fillStyle = '#64748b';
+  ctx.fillStyle = tc('#64748b');
   ctx.fillText('Refreshments Bar', snackX - 32, snackY + 32);
 
   // 5. 3D Plush Nordic Oat/Boucle Lounge Sofa & Oak Table (Bottom Lounge Y: 535)
@@ -616,16 +816,16 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   ctx.fill();
 
   // Warm Oat / Biscuit Base
-  ctx.fillStyle = '#ece7de';
+  ctx.fillStyle = tc('#ece7de');
   ctx.beginPath();
   ctx.roundRect(cx - 75, sofaY - 24, 150, 42, 10);
   ctx.fill();
-  ctx.strokeStyle = '#d5cebf';
+  ctx.strokeStyle = tc('#d5cebf');
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
   // Natural Sand Boucle Cushions
-  ctx.fillStyle = '#f5f3ee';
+  ctx.fillStyle = tc('#f5f3ee');
   ctx.beginPath();
   ctx.roundRect(cx - 68, sofaY - 16, 64, 28, 7);
   ctx.roundRect(cx + 4, sofaY - 16, 64, 28, 7);
@@ -648,35 +848,35 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
   ctx.stroke();
 
   // Magazine & Coffee Cups
-  ctx.fillStyle = '#4f46e5';
+  ctx.fillStyle = tc('#4f46e5');
   ctx.fillRect(cx - 28, sofaY - 50, 24, 14);
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = tc('#ffffff');
   ctx.beginPath();
   ctx.arc(cx + 22, sofaY - 42, 4.5, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#e2e8f0';
+  ctx.strokeStyle = tc('#e2e8f0');
   ctx.stroke();
 
   // 6. Extended Campus Amenities for larger teams (5 to 12+ roles)
   if (floorHeight > 750) {
     // Glass Architectural Whiteboard Wall at Y: 720
     const wbY = 720;
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = tc('#ffffff');
     ctx.beginPath();
     ctx.roundRect(cx - 75, wbY - 24, 150, 48, 8);
     ctx.fill();
-    ctx.strokeStyle = '#cbd5e1';
+    ctx.strokeStyle = tc('#cbd5e1');
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
     // Whiteboard diagram lines
-    ctx.fillStyle = '#6366f1';
+    ctx.fillStyle = tc('#6366f1');
     ctx.fillRect(cx - 60, wbY - 14, 28, 12);
     ctx.fillStyle = '#06b6d4';
     ctx.fillRect(cx - 14, wbY - 14, 28, 12);
     ctx.fillStyle = '#10b981';
     ctx.fillRect(cx + 32, wbY - 14, 28, 12);
-    ctx.strokeStyle = '#94a3b8';
+    ctx.strokeStyle = tc('#94a3b8');
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(cx - 32, wbY - 8); ctx.lineTo(cx - 14, wbY - 8);
@@ -684,34 +884,34 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
     ctx.stroke();
 
     ctx.font = 'bold 8.5px Inter, sans-serif';
-    ctx.fillStyle = '#64748b';
+    ctx.fillStyle = tc('#64748b');
     ctx.fillText('Architecture Flow', cx - 38, wbY + 16);
   }
 
   if (floorHeight > 980) {
     // High-Top Standing Collaboration Table at Y: 940
     const htY = 940;
-    ctx.fillStyle = '#e2e8f0';
+    ctx.fillStyle = tc('#e2e8f0');
     ctx.beginPath();
     ctx.roundRect(cx - 60, htY - 18, 120, 36, 8);
     ctx.fill();
-    ctx.strokeStyle = '#94a3b8';
+    ctx.strokeStyle = tc('#94a3b8');
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
     // Laptops on standing desk
-    ctx.fillStyle = '#1e293b';
+    ctx.fillStyle = SCENE_INK_SOFT;
     ctx.fillRect(cx - 40, htY - 10, 20, 14);
     ctx.fillStyle = '#38bdf8';
     ctx.fillRect(cx - 38, htY - 8, 16, 10);
 
-    ctx.fillStyle = '#1e293b';
+    ctx.fillStyle = SCENE_INK_SOFT;
     ctx.fillRect(cx + 20, htY - 10, 20, 14);
     ctx.fillStyle = '#a855f7';
     ctx.fillRect(cx + 22, htY - 8, 16, 10);
 
     ctx.font = 'bold 8.5px Inter, sans-serif';
-    ctx.fillStyle = '#64748b';
+    ctx.fillStyle = tc('#64748b');
     ctx.fillText('Sync & Pairing Pod', cx - 38, htY + 28);
   }
 
@@ -747,7 +947,8 @@ function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: numb
 function getRoomWorkingState(
   room: { x: number; y: number; w: number; h: number; assignedAgentId: string },
   agents: Agent[],
-  activeHandoff: ActiveHandoff | null
+  activeHandoff: ActiveHandoff | null,
+  events: NormalizedEvent[] = []
 ): RoomWorkingState {
   const assignedAgent = agents.find((a) => a.id === room.assignedAgentId);
 
@@ -793,9 +994,51 @@ function getRoomWorkingState(
       }
     }
 
+    const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id) && !isMockEvent(e));
+    let latestEvent: NormalizedEvent | null = null;
+    if (agentEvents.length > 0) {
+      latestEvent = agentEvents.reduce((latest, curr) => {
+        const tLatest = new Date(latest.timestamp).getTime();
+        const tCurr = new Date(curr.timestamp).getTime();
+        return tCurr >= tLatest ? curr : latest;
+      }, agentEvents[0]);
+    }
+
+    const isRecentEvent = latestEvent
+      ? (Date.now() - new Date(latestEvent.timestamp).getTime() < 15000)
+      : false;
+
+    if (isRecentEvent && latestEvent) {
+      const p = latestEvent.payload || {};
+      if (latestEvent.type === 'file_modified') {
+        return { isWorking: true, label: 'REFACTORING', workerName: agent.name };
+      }
+      if (latestEvent.type === 'tool_executing' || latestEvent.type === 'tool_started') {
+        return { isWorking: true, label: 'EXECUTING TOOL', workerName: agent.name };
+      }
+      if (latestEvent.type === 'command_executing') {
+        const isTest = p.command && p.command.includes('test');
+        return { isWorking: true, label: isTest ? 'RUNNING TESTS' : 'EXECUTING COMMAND', workerName: agent.name };
+      }
+      if (latestEvent.type === 'test_result') {
+        return { isWorking: true, label: 'RUNNING TESTS', workerName: agent.name };
+      }
+      if (latestEvent.type === 'planning_started') {
+        return { isWorking: true, label: 'PLANNING', workerName: agent.name };
+      }
+    }
+
     const activeStatuses = ['working', 'coding', 'testing', 'reviewing', 'planning', 'delegating', 'busy'];
     if (activeStatuses.includes(agent.status)) {
-      return { isWorking: true, label: agent.status.toUpperCase(), workerName: agent.name };
+      let activeLabel = agent.status.toUpperCase();
+      if (agent.status === 'coding') activeLabel = 'CODING';
+      else if (agent.status === 'testing') activeLabel = 'RUNNING TESTS';
+      else if (agent.status === 'working') {
+        if (latestEvent && latestEvent.type === 'file_modified') activeLabel = 'REFACTORING';
+        else if (latestEvent && (latestEvent.type === 'tool_executing' || latestEvent.type === 'tool_started')) activeLabel = 'EXECUTING TOOL';
+        else activeLabel = 'WORKING';
+      }
+      return { isWorking: true, label: activeLabel, workerName: agent.name };
     }
 
     if (agent.currentTask && agent.status !== 'idle' && agent.status !== 'available') {
@@ -864,6 +1107,7 @@ function drawOfficeRooms(
   ctx: CanvasRenderingContext2D,
   agents: Agent[],
   activeHandoff: ActiveHandoff | null,
+  events: NormalizedEvent[],
   tick: number
 ) {
   const totalSlots = Math.max(agents.length, 4);
@@ -891,14 +1135,17 @@ function drawOfficeRooms(
       y: bounds.y + bounds.h / 2 + (maxRows <= 2 ? 0 : 15),
     };
 
+    const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id) && !isMockEvent(e));
+
     const rState = getRoomWorkingState(
       { x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h, assignedAgentId: agent.id },
       agents,
-      activeHandoff
+      activeHandoff,
+      events
     );
 
     const suiteName = getSuiteDisplayName(agent, idx);
-    drawRoomBox(ctx, bounds.x, bounds.y, bounds.w, bounds.h, suiteName, agent, agent.theme.themeColor, rState, tick);
+    drawRoomBox(ctx, bounds.x, bounds.y, bounds.w, bounds.h, suiteName, agent, agent.theme.themeColor, rState, agentEvents, tick);
 
     // Draw appropriate 3D workstation furniture
     drawDynamicWorkstation(ctx, agent, deskPos.x, deskPos.y, bounds, idx, tick);
@@ -942,6 +1189,7 @@ function drawRoomBox(
   agent: Agent,
   color: string,
   workingState: RoomWorkingState,
+  agentEvents: NormalizedEvent[],
   tick: number
 ) {
   const pulse = 0.5 + 0.5 * Math.sin(tick * 0.08);
@@ -953,7 +1201,7 @@ function drawRoomBox(
 
   if (workingState.isWorking) {
     const grad = ctx.createLinearGradient(x, y, x + w, y + h);
-    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0, tc('#ffffff'));
     grad.addColorStop(0.5, `${color}0a`);
     grad.addColorStop(1, `${color}18`);
     ctx.fillStyle = grad;
@@ -968,7 +1216,7 @@ function drawRoomBox(
     ctx.fillStyle = scanGrad;
     ctx.fillRect(x + 4, scanY - 8, w - 8, 16);
   } else {
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = tc('#ffffff');
     ctx.fill();
   }
 
@@ -994,7 +1242,7 @@ function drawRoomBox(
     ctx.stroke();
     ctx.restore();
   } else {
-    ctx.strokeStyle = '#cbd5e1';
+    ctx.strokeStyle = tc('#cbd5e1');
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.restore();
@@ -1024,15 +1272,15 @@ function drawRoomBox(
   const textWidth = ctx.measureText(displayTitle).width;
   const pillW = textWidth + 24;
 
-  ctx.fillStyle = workingState.isWorking ? `${color}14` : '#f1f5f9';
+  ctx.fillStyle = workingState.isWorking ? `${color}14` : tc('#f1f5f9');
   ctx.beginPath();
   ctx.roundRect(x + 14, y + 10, pillW, 22, 6);
   ctx.fill();
-  ctx.strokeStyle = workingState.isWorking ? `${color}40` : '#e2e8f0';
+  ctx.strokeStyle = workingState.isWorking ? `${color}40` : tc('#e2e8f0');
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  ctx.fillStyle = workingState.isWorking ? color : '#334155';
+  ctx.fillStyle = workingState.isWorking ? color : tc('#334155');
   ctx.fillText(displayTitle, x + 26, y + 25);
 
   // Status Pill on Row 1 (Right Corner)
@@ -1046,7 +1294,7 @@ function drawRoomBox(
     const statusX = x + w - statusW - 14;
 
     ctx.save();
-    ctx.fillStyle = isReceiving ? '#fffbeb' : '#ffffff';
+    ctx.fillStyle = isReceiving ? tc('#fffbeb') : tc('#ffffff');
     ctx.beginPath();
     ctx.roundRect(statusX, y + 10, statusW, 22, 6);
     ctx.fill();
@@ -1072,15 +1320,15 @@ function drawRoomBox(
     const sbW = ctx.measureText(standbyText).width + 16;
     const sbX = x + w - sbW - 14;
 
-    ctx.fillStyle = '#f8fafc';
+    ctx.fillStyle = tc('#f8fafc');
     ctx.beginPath();
     ctx.roundRect(sbX, y + 10, sbW, 22, 6);
     ctx.fill();
-    ctx.strokeStyle = '#e2e8f0';
+    ctx.strokeStyle = tc('#e2e8f0');
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.fillStyle = '#64748b';
+    ctx.fillStyle = tc('#64748b');
     ctx.fillText(standbyText, sbX + 8, y + 25);
   }
 
@@ -1092,36 +1340,37 @@ function drawRoomBox(
     ? Math.max(0, Math.floor((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000))
     : (agent.taskDurationSec || 0);
 
-  const totalTimeLogged = (agent.totalWorkTimeSec || 0) + (isWorking ? currentTaskElapsed : 0);
+  const eventWorkSec = agentEvents.length * 6;
+  const totalTimeLogged = Math.max((agent.totalWorkTimeSec || 0), eventWorkSec) + (isWorking ? currentTaskElapsed : 0);
   const totalMins = Math.floor(totalTimeLogged / 60);
   const totalSecs = totalTimeLogged % 60;
   const totalStr = totalMins > 0 ? `${totalMins}m ${totalSecs}s` : `${totalSecs}s`;
 
   let workTimeText = '';
-  let badgeBg = '#f8fafc';
-  let badgeBorder = '#cbd5e1';
-  let badgeTextColor = '#334155';
+  let badgeBg = tc('#f8fafc');
+  let badgeBorder = tc('#cbd5e1');
+  let badgeTextColor = tc('#334155');
 
   if (isWorking && agent.taskStartedAt) {
     const mins = Math.floor(currentTaskElapsed / 60);
     const secs = currentTaskElapsed % 60;
     const runStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     workTimeText = `⏱️ Live: ${runStr} • Total Work: ${totalStr}`;
-    badgeBg = '#ffffff';
+    badgeBg = tc('#ffffff');
     badgeBorder = color;
     badgeTextColor = '#0f766e';
   } else if (agent.taskCompletedAt) {
     const finishTimeStr = new Date(agent.taskCompletedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    workTimeText = `🏁 Finished: ${finishTimeStr} • Total Work: ${totalStr}`;
-    badgeBg = '#ecfdf5';
-    badgeBorder = '#a7f3d0';
+    workTimeText = `🏁 Finished: ${finishTimeStr} • Logged Work: ${totalStr}`;
+    badgeBg = tc('#ecfdf5');
+    badgeBorder = tc('#a7f3d0');
     badgeTextColor = '#047857';
   } else {
     // Standby agent with tracked or ready work time
     workTimeText = `⏳ Logged Work: ${totalStr} • Ready`;
-    badgeBg = '#f8fafc';
-    badgeBorder = '#e2e8f0';
-    badgeTextColor = '#64748b';
+    badgeBg = tc('#f8fafc');
+    badgeBorder = tc('#e2e8f0');
+    badgeTextColor = tc('#64748b');
   }
 
   ctx.font = 'bold 9.5px JetBrains Mono, monospace';
@@ -1148,7 +1397,7 @@ function drawRoomBox(
     const bannerW = w - 24;
 
     ctx.save();
-    ctx.fillStyle = '#fffbeb';
+    ctx.fillStyle = tc('#fffbeb');
     ctx.shadowColor = '#f59e0b';
     ctx.shadowBlur = 8 + 4 * pulse;
     ctx.beginPath();
@@ -1190,24 +1439,24 @@ function draw3DExecutiveDesk(ctx: CanvasRenderingContext2D, x: number, y: number
   ctx.fill();
 
   // Mahogany Desk Top
-  ctx.fillStyle = '#e2e8f0';
+  ctx.fillStyle = tc('#e2e8f0');
   ctx.beginPath();
   ctx.roundRect(x - 65, y - 28, 130, 54, 7);
   ctx.fill();
-  ctx.strokeStyle = '#94a3b8';
+  ctx.strokeStyle = tc('#94a3b8');
   ctx.lineWidth = 2;
   ctx.stroke();
 
   // Desk Front 3D Bevel Lip
-  ctx.fillStyle = '#cbd5e1';
+  ctx.fillStyle = tc('#cbd5e1');
   ctx.fillRect(x - 63, y + 20, 126, 6);
 
   // Leather Blotter Pad
-  ctx.fillStyle = '#334155';
+  ctx.fillStyle = tc('#334155');
   ctx.fillRect(x - 34, y - 20, 68, 36);
 
   // Metallic Laptop with glowing screen
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = SCENE_INK;
   ctx.fillRect(x - 20, y - 18, 40, 24);
   ctx.fillStyle = theme;
   ctx.fillRect(x - 17, y - 15, 34, 18);
@@ -1228,9 +1477,9 @@ function draw3DWhiteboard(ctx: CanvasRenderingContext2D, x: number, y: number, w
   ctx.fillRect(x + 2, y + 3, w, h);
 
   // Aluminum Frame
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = tc('#ffffff');
   ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = '#64748b';
+  ctx.strokeStyle = tc('#64748b');
   ctx.lineWidth = 2.5;
   ctx.strokeRect(x, y, w, h);
 
@@ -1240,7 +1489,7 @@ function draw3DWhiteboard(ctx: CanvasRenderingContext2D, x: number, y: number, w
   ctx.fillText('5-TIER CLEAN ARCHITECTURE SPECIFICATIONS', x + 12, y + 15);
 
   const boxes = [
-    { title: 'UI / Screen', x: x + 12, color: '#4f46e5' },
+    { title: 'UI / Screen', x: x + 12, color: tc('#4f46e5') },
     { title: 'ViewModel', x: x + 82, color: '#2563eb' },
     { title: 'Provider', x: x + 152, color: '#0d9488' },
     { title: 'Repository', x: x + 222, color: '#d97706' },
@@ -1254,7 +1503,7 @@ function draw3DWhiteboard(ctx: CanvasRenderingContext2D, x: number, y: number, w
     ctx.lineWidth = 1.5;
     ctx.strokeRect(b.x, y + 22, 60, 26);
 
-    ctx.fillStyle = '#1e293b';
+    ctx.fillStyle = tc('text-800');
     ctx.font = 'bold 8px Inter, sans-serif';
     ctx.fillText(b.title, b.x + 5, y + 38);
   });
@@ -1268,11 +1517,11 @@ function draw3DPlanningTable(ctx: CanvasRenderingContext2D, x: number, y: number
   ctx.fill();
 
   // Table Surface
-  ctx.fillStyle = '#f1f5f9';
+  ctx.fillStyle = tc('#f1f5f9');
   ctx.beginPath();
   ctx.ellipse(x, y, 80, 38, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#cbd5e1';
+  ctx.strokeStyle = tc('#cbd5e1');
   ctx.lineWidth = 2;
   ctx.stroke();
 
@@ -1292,17 +1541,17 @@ function draw3DDevWorkstation(ctx: CanvasRenderingContext2D, x: number, y: numbe
   ctx.fill();
 
   // Workstation Surface
-  ctx.fillStyle = '#e2e8f0';
+  ctx.fillStyle = tc('#e2e8f0');
   ctx.beginPath();
   ctx.roundRect(x - 65, y - 28, 130, 54, 7);
   ctx.fill();
-  ctx.strokeStyle = '#94a3b8';
+  ctx.strokeStyle = tc('#94a3b8');
   ctx.lineWidth = 2;
   ctx.stroke();
 
   // Dual Curved Monitors
   // Monitor 1 (IDE with Kotlin syntax lines)
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = SCENE_INK;
   ctx.fillRect(x - 52, y - 24, 48, 27);
   ctx.fillStyle = '#22c55e';
   ctx.fillRect(x - 47, y - 20, 36, 2.5);
@@ -1312,16 +1561,16 @@ function draw3DDevWorkstation(ctx: CanvasRenderingContext2D, x: number, y: numbe
   ctx.fillRect(x - 47, y - 5, 20, 2.5);
 
   // Monitor 2 (Emulator / Logcat)
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = SCENE_INK;
   ctx.fillRect(x + 4, y - 24, 48, 27);
   ctx.fillStyle = '#a855f7';
   ctx.fillRect(x + 9, y - 20, 38, 18);
 
   // Mechanical Keyboard with RGB glow
-  ctx.fillStyle = '#1e293b';
+  ctx.fillStyle = SCENE_INK_SOFT;
   ctx.fillRect(x - 26, y + 8, 52, 15);
   const rgbPulse = Math.sin(tick * 0.1);
-  ctx.fillStyle = rgbPulse > 0 ? '#6366f1' : '#10b981';
+  ctx.fillStyle = rgbPulse > 0 ? tc('#6366f1') : '#10b981';
   ctx.fillRect(x - 22, y + 10, 44, 2.5);
 
   // Energy Drink Can on desk
@@ -1353,16 +1602,16 @@ function draw3DModernQALab(
   ctx.roundRect(x - 70, y - 22, 140, 64, 8);
   ctx.fill();
 
-  ctx.fillStyle = '#f8fafc';
+  ctx.fillStyle = tc('#f8fafc');
   ctx.beginPath();
   ctx.roundRect(x - 65, y - 28, 130, 54, 7);
   ctx.fill();
-  ctx.strokeStyle = '#cbd5e1';
+  ctx.strokeStyle = tc('#cbd5e1');
   ctx.lineWidth = 2;
   ctx.stroke();
 
   // Primary Test Monitor (JUnit Test Suite Results & Progress Pill)
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = SCENE_INK;
   ctx.fillRect(x - 52, y - 24, 48, 27);
   // Emerald Green Verified Test Runner Banner
   ctx.fillStyle = '#059669';
@@ -1375,9 +1624,9 @@ function draw3DModernQALab(
   ctx.fillRect(x - 48, y - 2, 22, 2.5);
 
   // Secondary Device Simulator Viewport
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = SCENE_INK;
   ctx.fillRect(x + 4, y - 24, 48, 27);
-  ctx.fillStyle = '#1e293b';
+  ctx.fillStyle = SCENE_INK_SOFT;
   ctx.fillRect(x + 8, y - 20, 40, 19);
   ctx.fillStyle = theme;
   ctx.fillRect(x + 12, y - 16, 32, 11);
@@ -1385,13 +1634,13 @@ function draw3DModernQALab(
   // Mobile Device Testing Stand with Smartphone
   const phoneX = x + 44;
   const phoneY = y + 4;
-  ctx.fillStyle = '#475569';
+  ctx.fillStyle = tc('#475569');
   ctx.fillRect(phoneX - 5, phoneY - 8, 10, 16);
   ctx.fillStyle = theme;
   ctx.fillRect(phoneX - 4, phoneY - 7, 8, 14);
 
   // Keyboard with coral glow
-  ctx.fillStyle = '#1e293b';
+  ctx.fillStyle = SCENE_INK_SOFT;
   ctx.fillRect(x - 26, y + 8, 52, 15);
   ctx.fillStyle = '#e11d48';
   ctx.fillRect(x - 22, y + 10, 44, 2.5);
@@ -1401,11 +1650,11 @@ function draw3DModernQALab(
 }
 
 function drawDeskCoffeeMug(ctx: CanvasRenderingContext2D, x: number, y: number, tick: number) {
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = tc('#ffffff');
   ctx.beginPath();
   ctx.arc(x, y, 5.5, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#cbd5e1';
+  ctx.strokeStyle = tc('#cbd5e1');
   ctx.lineWidth = 1;
   ctx.stroke();
 
@@ -1438,6 +1687,7 @@ function draw3DCharacters(
   hoveredId: string | null,
   selectedId: string | null,
   avatarCanvases: Map<string, HTMLCanvasElement>,
+  events: NormalizedEvent[],
   tick: number
 ) {
   agents.forEach((agent) => {
@@ -1454,13 +1704,32 @@ function draw3DCharacters(
       posY = activeHandoff.fromPos.y + (midY - activeHandoff.fromPos.y) * Math.sin(progress * Math.PI);
     }
 
+    const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id) && !isMockEvent(e));
+    let latestAgentEvent: NormalizedEvent | null = null;
+    if (agentEvents.length > 0) {
+      latestAgentEvent = agentEvents.reduce((latest, curr) => {
+        const tLatest = new Date(latest.timestamp).getTime();
+        const tCurr = new Date(curr.timestamp).getTime();
+        return tCurr >= tLatest ? curr : latest;
+      }, agentEvents[0]);
+    }
+
+    const isRecentEvent = latestAgentEvent
+      ? (Date.now() - new Date(latestAgentEvent.timestamp).getTime() < 15000)
+      : false;
+
+    const hasActiveTelemetry = isRecentEvent && Boolean(
+      latestAgentEvent && ['file_modified', 'command_executing', 'tool_executing', 'tool_started', 'test_result', 'agent_handoff'].includes(latestAgentEvent.type)
+    );
+
     const isHovered = hoveredId === agent.id;
     const isSelected = selectedId === agent.id;
     const isIdle =
-      agent.status === 'available' ||
+      !hasActiveTelemetry &&
+      (agent.status === 'available' ||
       agent.status === 'idle' ||
       agent.status === 'waiting' ||
-      (!agent.currentTask && agent.status !== 'working');
+      (!agent.currentTask && agent.status !== 'working' && agent.status !== 'coding' && agent.status !== 'testing'));
 
     // 1. Draw 3D Character Avatar (Retina Crisp)
     drawSingle3DCharacter(ctx, posX, posY, agent, isIdle, isHovered, isSelected, avatarCanvases, tick);
@@ -1469,7 +1738,8 @@ function draw3DCharacters(
     draw3DCleanNameBadge(ctx, posX, posY, agent, isIdle);
 
     // 3. Speech Bubble: ONLY display when hovered, receiving handoff, OR actively performing work
-    if (activeHandoff && activeHandoff.toId === agent.id) {
+    const isMockHandoff = isMockTask(activeHandoff?.taskTitle) || (activeHandoff?.taskTitle && isMockEvent({ type: '', payload: { details: activeHandoff.taskTitle } } as any));
+    if (activeHandoff && activeHandoff.toId === agent.id && !isMockHandoff) {
       let shortTask = activeHandoff.taskTitle || 'Task Handover';
       if (shortTask.includes(':')) {
         const parts = shortTask.split(':');
@@ -1477,9 +1747,40 @@ function draw3DCharacters(
       }
       if (shortTask.length > 25) shortTask = shortTask.slice(0, 23) + '...';
       draw3DSpeechBubble(ctx, posX, posY - 62, `📥 Receiving: "${shortTask}"`, '#f59e0b', false);
+    } else if (hasActiveTelemetry && latestAgentEvent) {
+      const p = latestAgentEvent.payload || {};
+      let bubbleText = '';
+      if (latestAgentEvent.type === 'file_modified') {
+        const rawFile = p.file || p.filePath || agent.currentFile || 'Code';
+        const cleanFileName = rawFile.split('/').pop() || rawFile;
+        bubbleText = `📝 Editing: ${cleanFileName}`;
+      } else if (latestAgentEvent.type === 'command_executing') {
+        const rawCmd = p.command || 'terminal';
+        const cleanCommand = rawCmd.length > 25 ? rawCmd.substring(0, 22) + '...' : rawCmd;
+        bubbleText = `⚡ Running: ${cleanCommand}`;
+      } else if (latestAgentEvent.type === 'tool_executing' || latestAgentEvent.type === 'tool_started') {
+        const toolName = p.tool || agent.lastTool || 'Tool';
+        bubbleText = `🔧 Tool: ${toolName}`;
+      } else if (latestAgentEvent.type === 'test_result') {
+        bubbleText = (p.testsFailed && p.testsFailed > 0) ? '✗ Tests Failed' : '✓ Tests Passed';
+      } else if (latestAgentEvent.type === 'agent_handoff') {
+        let shortTask = p.task || p.taskTitle || 'Task Handover';
+        if (shortTask.includes(':')) {
+          const parts = shortTask.split(':');
+          if (parts[1] && parts[1].trim().length > 3) shortTask = parts[1].trim();
+        }
+        if (shortTask.length > 25) shortTask = shortTask.slice(0, 23) + '...';
+        bubbleText = `📥 Receiving: "${shortTask}"`;
+      } else {
+        bubbleText = agent.activityMessage || `${agent.role} • ${agent.status.toUpperCase()}`;
+      }
+      draw3DSpeechBubble(ctx, posX, posY - 62, bubbleText, agent.theme.themeColor, false);
     } else if (isHovered || (!isIdle && agent.activityMessage)) {
+      const isMockMsg = agent.activityMessage && (isMockTask(agent.activityMessage) || isMockEvent({ type: '', payload: { details: agent.activityMessage } } as any));
       const message = isHovered
         ? `${agent.role} • ${agent.status.toUpperCase()}`
+        : isMockMsg
+        ? 'Ready at workstation'
         : agent.activityMessage;
       draw3DSpeechBubble(ctx, posX, posY - 62, message, agent.theme.themeColor, isIdle);
     }
@@ -1518,7 +1819,7 @@ function drawSingle3DCharacter(
   // Selection / Hover Aura Ring
   if (isSelected || isHovered) {
     ctx.save();
-    ctx.strokeStyle = isSelected ? '#6366f1' : agent.theme.themeColor;
+    ctx.strokeStyle = isSelected ? tc('#6366f1') : agent.theme.themeColor;
     ctx.lineWidth = 3;
     ctx.shadowColor = agent.theme.themeColor;
     ctx.shadowBlur = 12;
@@ -1556,11 +1857,11 @@ function drawSingle3DCharacter(
     // Background circle
     ctx.beginPath();
     ctx.arc(x, centerY, avatarRadius + 3, 0, Math.PI * 2);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = tc('#ffffff');
     ctx.fill();
 
     // 3D Rim stroke
-    ctx.strokeStyle = isSelected ? '#6366f1' : agent.theme.themeColor;
+    ctx.strokeStyle = isSelected ? tc('#6366f1') : agent.theme.themeColor;
     ctx.lineWidth = isSelected ? 3.5 : 2.5;
     ctx.stroke();
 
@@ -1640,16 +1941,16 @@ function drawSingle3DCharacter(
 
     // Ceramic Coffee Mug
     ctx.save();
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = tc('#ffffff');
     ctx.beginPath();
     ctx.roundRect(mugX - 6, mugY - 6, 12, 12, 3);
     ctx.fill();
-    ctx.strokeStyle = '#cbd5e1';
+    ctx.strokeStyle = tc('#cbd5e1');
     ctx.lineWidth = 1;
     ctx.stroke();
 
     // Mug Handle
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = tc('#ffffff');
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(mugX + 6, mugY, 3.5, -Math.PI / 2, Math.PI / 2);
@@ -1812,7 +2113,7 @@ function draw3DCleanNameBadge(
   ctx.fill();
 
   // Badge Background
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = tc('#ffffff');
   ctx.beginPath();
   ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 6);
   ctx.fill();
@@ -1828,7 +2129,7 @@ function draw3DCleanNameBadge(
 
   // Agent Name
   ctx.font = 'bold 9.5px Inter, sans-serif';
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = tc('text-900');
   ctx.fillText(shortName, badgeX + 20, badgeY + 14);
 
   // Overhead Task Timer Pill (Displays live active runtime or completed duration right above character)
@@ -1896,7 +2197,7 @@ function draw3DSpeechBubble(
   ctx.fill();
 
   // White bubble with border
-  ctx.fillStyle = isIdle ? '#fefce8' : '#ffffff';
+  ctx.fillStyle = isIdle ? tc('#fefce8') : tc('#ffffff');
   ctx.beginPath();
   ctx.roundRect(bx, by, w, h, 6);
   ctx.fill();
@@ -1909,11 +2210,11 @@ function draw3DSpeechBubble(
   ctx.moveTo(x - 3, by + h);
   ctx.lineTo(x, by + h + 4);
   ctx.lineTo(x + 3, by + h);
-  ctx.fillStyle = isIdle ? '#fefce8' : '#ffffff';
+  ctx.fillStyle = isIdle ? tc('#fefce8') : tc('#ffffff');
   ctx.fill();
 
   // Text
-  ctx.fillStyle = '#334155';
+  ctx.fillStyle = tc('#334155');
   ctx.fillText(display, bx + 9, by + 13);
 }
 
@@ -1953,7 +2254,7 @@ function drawHandoffAnimation(ctx: CanvasRenderingContext2D, handoff: ActiveHand
   ctx.lineWidth = 2;
   ctx.strokeRect(currentX - 12, currentY - 10, 24, 20);
 
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = tc('#ffffff');
   ctx.fillRect(currentX - 8, currentY - 7, 16, 14);
 
   // Golden Floating Banner Above
@@ -1970,7 +2271,7 @@ function drawHandoffAnimation(ctx: CanvasRenderingContext2D, handoff: ActiveHand
 
   ctx.font = 'bold 10px JetBrains Mono, monospace';
   const bw = ctx.measureText(bannerText).width + 20;
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = tc('#ffffff');
   ctx.beginPath();
   ctx.roundRect(currentX - bw / 2, currentY - 34, bw, 22, 6);
   ctx.fill();
