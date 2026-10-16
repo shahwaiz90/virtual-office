@@ -422,10 +422,11 @@ export const App: React.FC = () => {
       />
       */}
 
-      {/* Preferences & Voice Settings Modal */}
+      {/* Preferences Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        onOpenIntegrations={() => setIsIntegrationsOpen(true)}
         projectPath={projectPath || state?.workflow?.projectPath}
         onOpenChangeDirectory={() => setIsChangeDirectoryOpen(true)}
       />
