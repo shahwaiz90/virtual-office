@@ -4,8 +4,9 @@ const { eventBus } = require('../server/eventBus');
 
 console.log('🧪 Starting Custom agents.json Dynamic Deliverables Test...\n');
 
-// 1. Simulate exact agents loaded from mystcbusiness-android/.agents/agents.json
+// 1. Simulate exact agents loaded from enterprise-android/.agents/agents.json
 eventBus.clearState();
+eventBus.isDemoRunning = true;
 eventBus.agents.clear();
 
 const customAndroidAgents = [

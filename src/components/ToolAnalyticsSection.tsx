@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ToolUsageStat, SkillUsageStat, RoleInvocationStat, FileChangeRecord, Agent } from '../types/office';
+import { ToolUsageStat, SkillUsageStat, RoleInvocationStat, FileChangeRecord, AgentCommunication, Agent } from '../types/office';
 import {
   Wrench,
   Clock,
@@ -13,18 +13,24 @@ import {
   Users,
   Sparkles,
   FileCode,
+  MessageSquare,
+  ArrowRight,
+  CornerDownRight,
   Search,
   Copy,
   Check,
   ChevronDown,
   ChevronUp,
+  Volume2,
 } from 'lucide-react';
+import { voiceService } from '../services/voiceService';
 
 interface ToolAnalyticsSectionProps {
   toolStats: ToolUsageStat[];
   skillStats: SkillUsageStat[];
   roleStats: RoleInvocationStat[];
   fileChanges?: FileChangeRecord[];
+  communications?: AgentCommunication[];
   agents: Agent[];
 }
 
@@ -33,14 +39,17 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
   skillStats,
   roleStats,
   fileChanges = [],
+  communications = [],
   agents,
 }) => {
-  const [activeTab, setActiveTab] = useState<'tools' | 'skills' | 'roles' | 'files'>('tools');
+  const [activeTab, setActiveTab] = useState<'tools' | 'skills' | 'roles' | 'files' | 'communications'>('tools');
   const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>('all');
   const [fileActionFilter, setFileActionFilter] = useState<'all' | 'created' | 'modified' | 'refactored'>('all');
   const [fileSearchQuery, setFileSearchQuery] = useState<string>('');
+  const [commSearchQuery, setCommSearchQuery] = useState<string>('');
   const [expandedFileIds, setExpandedFileIds] = useState<Set<string>>(new Set());
   const [copiedFileId, setCopiedFileId] = useState<string | null>(null);
+  const [copiedCommId, setCopiedCommId] = useState<string | null>(null);
 
   const filteredToolStats = selectedAgentFilter === 'all'
     ? toolStats
@@ -64,6 +73,24 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
       const matchSummary = (fc.summary || '').toLowerCase().includes(q);
       const matchAgent = fc.agentName.toLowerCase().includes(q);
       if (!matchPath && !matchName && !matchSummary && !matchAgent) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const filteredCommunications = communications.filter((c) => {
+    if (selectedAgentFilter !== 'all' && c.fromAgentId !== selectedAgentFilter && c.toAgentId !== selectedAgentFilter) {
+      return false;
+    }
+    if (commSearchQuery.trim()) {
+      const q = commSearchQuery.toLowerCase();
+      const matchMsg = c.message.toLowerCase().includes(q);
+      const matchTitle = (c.taskTitle || '').toLowerCase().includes(q);
+      const matchKey = (c.taskKey || '').toLowerCase().includes(q);
+      const matchFrom = c.fromAgentName.toLowerCase().includes(q);
+      const matchTo = c.toAgentName.toLowerCase().includes(q);
+      if (!matchMsg && !matchTitle && !matchKey && !matchFrom && !matchTo) {
         return false;
       }
     }
@@ -125,92 +152,183 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
   };
 
   return (
-    <section className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 space-y-6">
+    <section className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-3.5 sm:p-5 md:p-6 space-y-4 sm:space-y-6">
       {/* Header & View Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600 shadow-xs">
-            <BarChart2 className="w-5 h-5" />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-slate-100">
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600 shadow-xs shrink-0">
+            <BarChart2 className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-extrabold text-slate-900 tracking-tight">Delivery Intelligence & Analytics</h2>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">Delivery Intelligence & Analytics</h2>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
                 Live Audit
               </span>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-[11px] sm:text-xs text-slate-500 truncate">
               Audit tool utilization runtimes, role dispatches, top skills, and real-time code modifications.
             </p>
           </div>
         </div>
 
-        {/* Tab Switcher & Filters */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Analytics Mode Tabs */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold">
-            <button
-              onClick={() => setActiveTab('tools')}
-              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                activeTab === 'tools'
-                  ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
-                  : 'text-slate-600 hover:text-slate-900'
+        {/* Tab Switcher (Horizontally scrollable on mobile) */}
+        <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold overflow-x-auto max-w-full shrink-0 shadow-2xs whitespace-nowrap">
+          <button
+            onClick={() => setActiveTab('tools')}
+            className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+              activeTab === 'tools'
+                ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            <span>Tools</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('skills')}
+            className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+              activeTab === 'skills'
+                ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Top Skills</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('roles')}
+            className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+              activeTab === 'roles'
+                ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Role Invocations</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('files')}
+            className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+              activeTab === 'files'
+                ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <FileCode className="w-3.5 h-3.5" />
+            <span>File Changes</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                activeTab === 'files' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-700'
               }`}
             >
-              <Wrench className="w-3.5 h-3.5" />
-              <span>Tools</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('skills')}
-              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                activeTab === 'skills'
-                  ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
-                  : 'text-slate-600 hover:text-slate-900'
+              {fileChanges.length}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('communications')}
+            className={`px-2.5 sm:px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+              activeTab === 'communications'
+                ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>Agent Comms</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                activeTab === 'communications' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-700'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Top Skills</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('roles')}
-              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                activeTab === 'roles'
-                  ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Role Invocations</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('files')}
-              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                activeTab === 'files'
-                  ? 'bg-white text-indigo-700 shadow-xs font-extrabold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <FileCode className="w-3.5 h-3.5" />
-              <span>File Changes</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  activeTab === 'files' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-700'
-                }`}
-              >
-                {fileChanges.length}
-              </span>
-            </button>
-          </div>
+              {communications.length}
+            </span>
+          </button>
+        </div>
+      </div>
 
-          {/* Role Filter Dropdown (Active for Tools, Skills & Files) */}
-          {(activeTab === 'tools' || activeTab === 'skills' || activeTab === 'files') && (
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs shadow-xs">
-              <Filter className="w-3 h-3 text-slate-400" />
-              <span className="text-[11px] font-semibold text-slate-500 hidden sm:inline">Role:</span>
+      {/* Standby State when no agents are configured */}
+      {agents.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-8 bg-slate-50/60 rounded-xl border border-dashed border-slate-200 text-center my-2">
+          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-2.5">
+            <BarChart2 className="w-5 h-5" />
+          </div>
+          <h4 className="text-sm font-semibold text-slate-700">Analytics On Standby</h4>
+          <p className="text-xs text-slate-500 max-w-sm mt-1">
+            Telemetry metrics, tool executions, and file audits will populate once your agent team is initialized and active.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* KPI Summary Cards (2 cols on mobile, 5 cols on desktop) */}
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3.5">
+        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-indigo-100/60 flex items-center justify-center text-indigo-700 shrink-0">
+            <Zap className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">Total Invocations</div>
+            <div className="text-lg font-black text-slate-900">{totalRoleInvocations} Dispatches</div>
+          </div>
+        </div>
+
+        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-blue-100/60 flex items-center justify-center text-blue-700 shrink-0">
+            <Activity className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">Tool Invocations</div>
+            <div className="text-lg font-black text-blue-700">{totalExecutions} calls</div>
+          </div>
+        </div>
+
+        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-purple-100/60 flex items-center justify-center text-purple-700 shrink-0">
+            <FileCode className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">Files Changed</div>
+            <div className="text-lg font-black text-purple-700">{fileChanges.length} files</div>
+          </div>
+        </div>
+
+        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-emerald-100/60 flex items-center justify-center text-emerald-700 shrink-0">
+            <MessageSquare className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">Agent Dialogues</div>
+            <div className="text-lg font-black text-emerald-700">{communications.length} messages</div>
+          </div>
+        </div>
+
+        <div className="col-span-2 sm:col-span-1 bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-teal-100/60 flex items-center justify-center text-teal-700 shrink-0">
+            <Clock className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">Cumulative Time</div>
+            <div className="text-lg font-black text-teal-700 font-mono">{formatSec(totalExecutionSec)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Dedicated Contextual Filter Toolbar (Permanent, Fixed Height, Stable Alignment) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50/90 border border-slate-200 rounded-2xl p-3 sm:px-4 sm:py-2.5 text-xs shadow-2xs">
+        {/* Left: Filter Controls */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          {activeTab === 'roles' ? (
+            <div className="flex items-center gap-2 text-slate-600 font-semibold py-1">
+              <Users className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Team Roles, Dispatch Frequencies & SLA Adherence Overview</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-2xs w-full sm:w-auto">
+              <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="text-[11px] font-semibold text-slate-500 shrink-0">Role:</span>
               <select
                 value={selectedAgentFilter}
                 onChange={(e) => setSelectedAgentFilter(e.target.value)}
-                className="bg-transparent font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                className="bg-transparent font-bold text-slate-700 focus:outline-none cursor-pointer text-xs w-full sm:w-auto truncate"
               >
                 <option value="all">All Roles & Members</option>
                 {agents.map((ag) => (
@@ -222,15 +340,14 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
             </div>
           )}
 
-          {/* Action Filter & Search (Active for File Changes Tab) */}
           {activeTab === 'files' && (
             <>
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs shadow-xs">
-                <span className="text-[11px] font-semibold text-slate-500 hidden sm:inline">Action:</span>
+              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-2xs">
+                <span className="text-[11px] font-semibold text-slate-500">Action:</span>
                 <select
                   value={fileActionFilter}
                   onChange={(e) => setFileActionFilter(e.target.value as any)}
-                  className="bg-transparent font-semibold text-slate-700 focus:outline-none cursor-pointer"
+                  className="bg-transparent font-bold text-slate-700 focus:outline-none cursor-pointer text-xs"
                 >
                   <option value="all">All Actions</option>
                   <option value="modified">Modified</option>
@@ -239,68 +356,59 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                 </select>
               </div>
 
-              <div className="relative flex items-center">
-                <Search className="w-3 h-3 text-slate-400 absolute left-2.5 pointer-events-none" />
+              <div className="relative flex items-center flex-1 sm:flex-initial w-full sm:w-auto">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Filter files..."
+                  placeholder="Filter by filename or path..."
                   value={fileSearchQuery}
                   onChange={(e) => setFileSearchQuery(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-2.5 py-1 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-32 sm:w-40 transition-all"
+                  className="bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full sm:w-56 shadow-2xs transition-all"
                 />
               </div>
             </>
           )}
+
+          {activeTab === 'communications' && (
+            <div className="relative flex items-center flex-1 sm:flex-initial w-full sm:w-auto">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search dialogue, prompts, task instructions..."
+                value={commSearchQuery}
+                onChange={(e) => setCommSearchQuery(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 w-full sm:w-72 shadow-2xs transition-all"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Right: Counter badge */}
+        <div className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5 self-end sm:self-auto">
+          {activeTab === 'tools' && (
+            <span>Showing <strong className="text-slate-700">{filteredToolStats.length}</strong> of {toolStats.length} tools</span>
+          )}
+          {activeTab === 'skills' && (
+            <span>Showing <strong className="text-slate-700">{filteredSkillStats.length}</strong> of {skillStats.length} skills</span>
+          )}
+          {activeTab === 'roles' && (
+            <span>Tracking <strong className="text-slate-700">{roleStats.length}</strong> active team roles</span>
+          )}
+          {activeTab === 'files' && (
+            <span>Showing <strong className="text-slate-700">{filteredFileChanges.length}</strong> of {fileChanges.length} file changes</span>
+          )}
+          {activeTab === 'communications' && (
+            <span>Showing <strong className="text-slate-700">{filteredCommunications.length}</strong> of {communications.length} dialogues</span>
+          )}
         </div>
       </div>
 
-      {/* KPI Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-4 flex items-center gap-3.5">
-          <div className="w-9 h-9 rounded-lg bg-indigo-100/60 flex items-center justify-center text-indigo-700">
-            <Zap className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Role Invocations</div>
-            <div className="text-xl font-black text-slate-900">{totalRoleInvocations} Dispatches</div>
-          </div>
-        </div>
-
-        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-4 flex items-center gap-3.5">
-          <div className="w-9 h-9 rounded-lg bg-blue-100/60 flex items-center justify-center text-blue-700">
-            <Activity className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Autonomous Tool Calls</div>
-            <div className="text-xl font-black text-blue-700">{totalExecutions} executions</div>
-          </div>
-        </div>
-
-        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-4 flex items-center gap-3.5">
-          <div className="w-9 h-9 rounded-lg bg-purple-100/60 flex items-center justify-center text-purple-700">
-            <FileCode className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Codebase Files Updated</div>
-            <div className="text-xl font-black text-purple-700">{fileChanges.length} files</div>
-          </div>
-        </div>
-
-        <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-4 flex items-center gap-3.5">
-          <div className="w-9 h-9 rounded-lg bg-teal-100/60 flex items-center justify-center text-teal-700">
-            <Clock className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Cumulative Tool Time</div>
-            <div className="text-xl font-black text-teal-700 font-mono">{formatSec(totalExecutionSec)}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* TAB 1: TOOL USAGE BREAKDOWN */}
-      {activeTab === 'tools' && (
-        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-          <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-600 uppercase tracking-wider">
+      {/* Scrollable Tab Content Container (matches LiveLogs scroll pattern) */}
+      <div className="overflow-y-auto max-h-[480px] pr-1 space-y-3">
+        {/* TAB 1: TOOL USAGE BREAKDOWN */}
+        {activeTab === 'tools' && (
+          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-600 uppercase tracking-wider sticky top-0 z-10">
             <div className="flex items-center gap-2">
               <Layers className="w-3.5 h-3.5 text-indigo-600" />
               <span>Tool Name & Operating Role</span>
@@ -399,7 +507,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
       {/* TAB 2: MOST USED SKILLS BREAKDOWN */}
       {activeTab === 'skills' && (
         <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-          <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-600 uppercase tracking-wider">
+          <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-600 uppercase tracking-wider sticky top-0 z-10">
             <div className="flex items-center gap-2">
               <Sparkles className="w-3.5 h-3.5 text-amber-600" />
               <span>Skill Identifier & Purpose</span>
@@ -773,6 +881,221 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB 5: INTER-AGENT COMMUNICATIONS & REAL-TIME DIALOGUES */}
+      {activeTab === 'communications' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1 text-xs text-slate-500">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-700">
+                Showing {filteredCommunications.length} of {communications.length} {communications.length === 1 ? 'dialogue' : 'dialogues'}
+              </span>
+              {selectedAgentFilter !== 'all' && (
+                <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold">
+                  Filter: {agents.find((a) => a.id === selectedAgentFilter)?.name || selectedAgentFilter}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {filteredCommunications.length === 0 ? (
+            <div className="border border-slate-200 rounded-xl p-12 text-center bg-slate-50/50">
+              <MessageSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <div className="text-sm font-bold text-slate-700">No agent dialogues match the current filter</div>
+              <p className="text-xs text-slate-400 mt-1">
+                When agents communicate via subagent delegations (`invoke_subagent`), directives (`send_message`), or task handoffs, their conversations appear here in real-time.
+              </p>
+              {(selectedAgentFilter !== 'all' || commSearchQuery) && (
+                <button
+                  onClick={() => {
+                    setSelectedAgentFilter('all');
+                    setCommSearchQuery('');
+                  }}
+                  className="mt-3 text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                >
+                  Reset all filters
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredCommunications.map((comm) => {
+                const fromColor = getAgentTheme(comm.fromAgentId);
+                const toColor = getAgentTheme(comm.toAgentId);
+                const fromAvatar = getAgentAvatar(comm.fromAgentId);
+                const toAvatar = getAgentAvatar(comm.toAgentId);
+                const isCopied = copiedCommId === comm.id;
+                const timeString = new Date(comm.timestamp).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                });
+
+                return (
+                  <div
+                    key={comm.id}
+                    className="border border-slate-200/90 rounded-2xl overflow-hidden bg-white shadow-xs hover:border-slate-300 transition-all"
+                  >
+                    {/* Communication Dialogue Header */}
+                    <div className="p-3.5 bg-slate-50/70 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      {/* Sender and Recipient with Directional Indicator */}
+                      <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+                        {/* Sender Card */}
+                        <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-xl border border-slate-200/90 shadow-2xs">
+                          {fromAvatar ? (
+                            <img
+                              src={fromAvatar}
+                              alt={comm.fromAgentName}
+                              className="w-5 h-5 rounded-md object-cover border"
+                              style={{ borderColor: fromColor }}
+                            />
+                          ) : (
+                            <div
+                              className="w-5 h-5 rounded-md flex items-center justify-center font-bold text-white text-[10px]"
+                              style={{ backgroundColor: fromColor }}
+                            >
+                              {comm.fromAgentName.charAt(0)}
+                            </div>
+                          )}
+                          <span className="font-extrabold text-slate-800 text-xs truncate max-w-[120px]">
+                            {comm.fromAgentName}
+                          </span>
+                          <span
+                            className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded"
+                            style={{ backgroundColor: `${fromColor}18`, color: fromColor }}
+                          >
+                            {comm.fromAgentRole.split(' ')[0]}
+                          </span>
+                        </div>
+
+                        {/* Direction Arrow */}
+                        <div className="flex items-center text-indigo-500 font-bold shrink-0">
+                          <ArrowRight className="w-4 h-4 animate-pulse" />
+                        </div>
+
+                        {/* Recipient Card */}
+                        <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-xl border border-slate-200/90 shadow-2xs">
+                          {toAvatar ? (
+                            <img
+                              src={toAvatar}
+                              alt={comm.toAgentName}
+                              className="w-5 h-5 rounded-md object-cover border"
+                              style={{ borderColor: toColor }}
+                            />
+                          ) : (
+                            <div
+                              className="w-5 h-5 rounded-md flex items-center justify-center font-bold text-white text-[10px]"
+                              style={{ backgroundColor: toColor }}
+                            >
+                              {comm.toAgentName.charAt(0)}
+                            </div>
+                          )}
+                          <span className="font-extrabold text-slate-800 text-xs truncate max-w-[120px]">
+                            {comm.toAgentName}
+                          </span>
+                          <span
+                            className="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded"
+                            style={{ backgroundColor: `${toColor}18`, color: toColor }}
+                          >
+                            {comm.toAgentRole.split(' ')[0]}
+                          </span>
+                        </div>
+
+                        {/* Task Ref Badge */}
+                        {comm.taskKey && (
+                          <span className="font-mono text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            {comm.taskKey}
+                          </span>
+                        )}
+
+                        {/* Channel Badge */}
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          {comm.channel === 'pr_review'
+                            ? 'PR Review'
+                            : comm.channel === 'qa_handoff'
+                            ? 'QA Verification'
+                            : comm.channel === 'direct_message'
+                            ? 'Directive'
+                            : 'Subagent Handoff'}
+                        </span>
+                      </div>
+
+                      {/* Right: Timestamp & Copy Button */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          {timeString}
+                        </span>
+
+                        {/* Speak Dialogue Button */}
+                        <button
+                          onClick={() => {
+                            const roleKey =
+                              comm.fromAgentRole.toLowerCase().includes('manager') ||
+                              comm.fromAgentRole.toLowerCase().includes('scrum')
+                                ? 'pm'
+                                : comm.fromAgentRole.toLowerCase().includes('lead')
+                                ? 'lead'
+                                : comm.fromAgentRole.toLowerCase().includes('dev')
+                                ? 'developer'
+                                : 'qa';
+                            voiceService.speak(`${comm.fromAgentName} says: ${comm.message}`, roleKey as any);
+                          }}
+                          title="Speak dialogue with agent persona voice"
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white hover:bg-indigo-50/80 border border-slate-200 text-indigo-700 hover:border-indigo-300 transition-colors shadow-2xs active:scale-95 cursor-pointer"
+                        >
+                          <Volume2 className="w-3 h-3 text-indigo-600" />
+                          <span>Speak</span>
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(comm.message);
+                            setCopiedCommId(comm.id);
+                            setTimeout(() => setCopiedCommId(null), 2000);
+                          }}
+                          title="Copy communication text"
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 transition-colors shadow-2xs active:scale-95 cursor-pointer"
+                        >
+                          {isCopied ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-600" />
+                              <span className="text-emerald-700 font-bold">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3 text-slate-400" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Dialogue Body & Task Title */}
+                    <div className="p-4 space-y-2.5">
+                      {comm.taskTitle && (
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+                          <CornerDownRight className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          <span>{comm.taskTitle}</span>
+                        </div>
+                      )}
+
+                      {/* Actual Message Bubble */}
+                      <div className="bg-slate-50/80 border border-slate-200/80 rounded-xl p-3.5 text-xs text-slate-800 leading-relaxed font-sans whitespace-pre-wrap select-text">
+                        {comm.message}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+      </div>
+        </>
       )}
     </section>
   );

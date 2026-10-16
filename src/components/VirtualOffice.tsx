@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Agent, ActiveHandoff } from '../types/office';
+import { Pencil, Sparkles, Users } from 'lucide-react';
 
 interface VirtualOfficeProps {
   agents: Agent[];
@@ -7,12 +8,20 @@ interface VirtualOfficeProps {
   selectedAgentId: string | null;
   onSelectAgent: (agent: Agent) => void;
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
+  onEditAgent?: (agent: Agent) => void;
+  onEditTeam?: () => void;
+  isLoading?: boolean;
 }
 
 interface RoomWorkingState {
   isWorking: boolean;
   label: string;
   workerName?: string;
+  isReceivingHandoff?: boolean;
+  isDelegatingHandoff?: boolean;
+  handoffTaskShortTitle?: string;
+  handoffTaskFullTitle?: string;
+  handoffPartnerName?: string;
 }
 
 /**
@@ -53,6 +62,9 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   selectedAgentId,
   onSelectAgent,
   onCanvasReady,
+  onEditAgent,
+  onEditTeam,
+  isLoading = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
@@ -210,16 +222,119 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     [agents, LOGICAL_HEIGHT]
   );
 
+  // Mobile Touch handler
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas || e.touches.length === 0) return;
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = LOGICAL_WIDTH / rect.width;
+      const scaleY = LOGICAL_HEIGHT / rect.height;
+      const clickX = (touch.clientX - rect.left) * scaleX;
+      const clickY = (touch.clientY - rect.top) * scaleY;
+
+      for (const agent of agents) {
+        const pos = agent.currentPosition || agent.theme.deskPosition;
+        const dist = Math.hypot(clickX - pos.x, clickY - pos.y);
+        if (dist < 75) {
+          onSelectAgent(agent);
+          break;
+        }
+      }
+    },
+    [agents, LOGICAL_HEIGHT, onSelectAgent]
+  );
+
   return (
     <div className="relative w-full bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
-      <canvas
-        ref={canvasRef}
-        onClick={handleCanvasClick}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={() => setHoveredAgentId(null)}
-        className="w-full h-auto cursor-pointer block select-none"
-        style={{ imageRendering: 'auto' }}
-      />
+      {/* Office Floor Header & Station Quick Edit Toolbar */}
+      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-slate-800 flex items-center gap-1.5">
+            🏢 2D Virtual Office Floor
+          </span>
+          <span className="text-[11px] text-slate-500 hidden sm:inline">
+            • {agents.length} Active Workstations
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {agents.length > 0 && (
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden md:inline">
+              Workstations:
+            </span>
+          )}
+          {agents.map((ag) => (
+            <button
+              key={ag.id}
+              onClick={() => onEditAgent ? onEditAgent(ag) : onSelectAgent(ag)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-slate-700 hover:text-indigo-700 font-semibold text-[11px] transition-all shadow-2xs cursor-pointer group"
+              title={`Click to edit ${ag.name} (${ag.role})`}
+            >
+              <span 
+                className="w-1.5 h-1.5 rounded-full" 
+                style={{ backgroundColor: ag.theme?.themeColor || '#4f46e5' }} 
+              />
+              <span className="font-bold">{ag.theme?.badge || ag.badgeText || ag.name.split(' ')[0]}</span>
+              <Pencil className="w-2.5 h-2.5 text-slate-400 group-hover:text-indigo-600 ml-0.5" />
+            </button>
+          ))}
+
+          {onEditTeam && agents.length > 0 && (
+            <button
+              onClick={onEditTeam}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[11px] border shadow-2xs transition-all cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200 ml-1"
+              title="Configure Roles, Platform Templates & Skills"
+            >
+              <Sparkles className="w-3 h-3" />
+              <span>Team Studio</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="relative">
+        <canvas
+          ref={canvasRef}
+          onClick={handleCanvasClick}
+          onTouchStart={handleTouchStart}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHoveredAgentId(null)}
+          className="w-full h-auto cursor-pointer block select-none touch-manipulation"
+          style={{ imageRendering: 'auto' }}
+        />
+
+        {/* Empty State Overlay when no agents are configured */}
+        {!isLoading && agents.length === 0 && (
+          <div className="absolute inset-0 bg-slate-900/15 backdrop-blur-[2px] flex items-center justify-center p-6 z-10 animate-in fade-in duration-200">
+            <div className="bg-white/95 border border-slate-200 shadow-2xl rounded-3xl p-6 sm:p-8 max-w-md w-full text-center flex flex-col items-center gap-3.5 backdrop-blur-xl animate-in zoom-in-95 duration-200">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm">
+                <Users className="w-7 h-7" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-extrabold text-slate-900">
+                  No Agents in Workspace
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed mt-1">
+                  This directory does not have an agent team configured. Create custom roles or select a starter team (Android, iOS, Web Fullstack, DevOps) to staff your virtual office!
+                </p>
+              </div>
+
+              {onEditTeam && (
+                <button
+                  type="button"
+                  onClick={onEditTeam}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/25 active:scale-95 transition-all cursor-pointer mt-1"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Create Roles & Agents</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -641,10 +756,40 @@ function getRoomWorkingState(
 
     if (activeHandoff) {
       if (activeHandoff.fromId === agent.id) {
-        return { isWorking: true, label: 'DELEGATING', workerName: agent.name };
+        const toAgent = agents.find((a) => a.id === activeHandoff.toId);
+        const toName = toAgent?.badgeText || toAgent?.theme?.badge || toAgent?.name || 'Teammate';
+        return {
+          isWorking: true,
+          label: `DELEGATING ➔ ${toName}`,
+          workerName: agent.name,
+          isDelegatingHandoff: true,
+          handoffPartnerName: toName,
+        };
       }
       if (activeHandoff.toId === agent.id) {
-        return { isWorking: true, label: 'RECEIVING TASK', workerName: agent.name };
+        let shortTask = activeHandoff.taskTitle || 'Task Handover';
+        if (shortTask.includes(':')) {
+          const parts = shortTask.split(':');
+          if (parts[1] && parts[1].trim().length > 3) {
+            shortTask = parts[1].trim();
+          }
+        }
+        if (shortTask.length > 24) {
+          shortTask = shortTask.slice(0, 22) + '...';
+        }
+
+        const fromAgent = agents.find((a) => a.id === activeHandoff.fromId);
+        const fromName = fromAgent?.badgeText || fromAgent?.theme?.badge || fromAgent?.name || 'Lead';
+
+        return {
+          isWorking: true,
+          label: `INCOMING: ${shortTask}`,
+          workerName: agent.name,
+          isReceivingHandoff: true,
+          handoffTaskShortTitle: shortTask,
+          handoffTaskFullTitle: activeHandoff.taskTitle,
+          handoffPartnerName: fromName,
+        };
       }
     }
 
@@ -892,29 +1037,32 @@ function drawRoomBox(
 
   // Status Pill on Row 1 (Right Corner)
   if (workingState.isWorking) {
-    const statusText = `⚡ LIVE: ${workingState.label}`;
+    const isReceiving = workingState.isReceivingHandoff;
+    const statusText = isReceiving
+      ? `📥 INCOMING: ${workingState.handoffTaskShortTitle || workingState.label}`
+      : `⚡ LIVE: ${workingState.label}`;
     ctx.font = 'bold 10px Inter, sans-serif';
-    const statusW = ctx.measureText(statusText).width + 22;
+    const statusW = ctx.measureText(statusText).width + 24;
     const statusX = x + w - statusW - 14;
 
     ctx.save();
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = isReceiving ? '#fffbeb' : '#ffffff';
     ctx.beginPath();
     ctx.roundRect(statusX, y + 10, statusW, 22, 6);
     ctx.fill();
-    ctx.strokeStyle = color;
+    ctx.strokeStyle = isReceiving ? '#f59e0b' : color;
     ctx.lineWidth = 1.5;
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 6 * pulse;
+    ctx.shadowColor = isReceiving ? '#f59e0b' : color;
+    ctx.shadowBlur = (isReceiving ? 8 : 6) * pulse;
     ctx.stroke();
 
-    // Pulsing Green Live Indicator
-    ctx.fillStyle = '#10b981';
+    // Pulsing Indicator (Amber for incoming handoff, Green for active work)
+    ctx.fillStyle = isReceiving ? '#f59e0b' : '#10b981';
     ctx.beginPath();
     ctx.arc(statusX + 9, y + 21, 3.5, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = color;
+    ctx.fillStyle = isReceiving ? '#b45309' : color;
     ctx.fillText(statusText, statusX + 17, y + 25);
     ctx.restore();
   } else {
@@ -991,6 +1139,43 @@ function drawRoomBox(
 
   ctx.fillStyle = badgeTextColor;
   ctx.fillText(workTimeText, timerX + 8, timerY + 13);
+
+  // If this office is actively receiving a task handover, display an Inbound Handover Ribbon
+  if (workingState.isReceivingHandoff && workingState.handoffTaskShortTitle) {
+    const bannerH = 22;
+    const bannerY = y + h - bannerH - 10;
+    const bannerX = x + 12;
+    const bannerW = w - 24;
+
+    ctx.save();
+    ctx.fillStyle = '#fffbeb';
+    ctx.shadowColor = '#f59e0b';
+    ctx.shadowBlur = 8 + 4 * pulse;
+    ctx.beginPath();
+    ctx.roundRect(bannerX, bannerY, bannerW, bannerH, 5);
+    ctx.fill();
+
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Pulsing Amber Indicator Dot
+    ctx.fillStyle = '#d97706';
+    ctx.beginPath();
+    ctx.arc(bannerX + 11, bannerY + bannerH / 2, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.font = 'bold 9px Inter, sans-serif';
+    ctx.fillStyle = '#92400e';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(
+      `📥 HANDOVER FROM ${workingState.handoffPartnerName?.toUpperCase() || 'LEAD'}: "${workingState.handoffTaskShortTitle}"`,
+      bannerX + 20,
+      bannerY + bannerH / 2
+    );
+    ctx.restore();
+  }
 }
 
 /* =========================================================================
@@ -1283,8 +1468,16 @@ function draw3DCharacters(
     // 2. Draw Clean Unified Floating Name & Role Badge
     draw3DCleanNameBadge(ctx, posX, posY, agent, isIdle);
 
-    // 3. Speech Bubble: ONLY display when hovered OR actively performing work
-    if (isHovered || (!isIdle && agent.activityMessage)) {
+    // 3. Speech Bubble: ONLY display when hovered, receiving handoff, OR actively performing work
+    if (activeHandoff && activeHandoff.toId === agent.id) {
+      let shortTask = activeHandoff.taskTitle || 'Task Handover';
+      if (shortTask.includes(':')) {
+        const parts = shortTask.split(':');
+        if (parts[1] && parts[1].trim().length > 3) shortTask = parts[1].trim();
+      }
+      if (shortTask.length > 25) shortTask = shortTask.slice(0, 23) + '...';
+      draw3DSpeechBubble(ctx, posX, posY - 62, `📥 Receiving: "${shortTask}"`, '#f59e0b', false);
+    } else if (isHovered || (!isIdle && agent.activityMessage)) {
       const message = isHovered
         ? `${agent.role} • ${agent.status.toUpperCase()}`
         : agent.activityMessage;
@@ -1764,7 +1957,17 @@ function drawHandoffAnimation(ctx: CanvasRenderingContext2D, handoff: ActiveHand
   ctx.fillRect(currentX - 8, currentY - 7, 16, 14);
 
   // Golden Floating Banner Above
-  const bannerText = `📋 HANDOFF: ${handoff.taskTitle}`;
+  const fromStr = handoff.fromName
+    ? (handoff.fromRole ? `${handoff.fromRole} ${handoff.fromName}` : handoff.fromName)
+    : 'Agent';
+  const toStr = handoff.toName
+    ? (handoff.toRole ? `${handoff.toRole} ${handoff.toName}` : handoff.toName)
+    : 'Teammate';
+
+  const bannerText = handoff.fromName && handoff.toName
+    ? `📋 ${fromStr} ➔ ${toStr} | ${handoff.taskTitle}`
+    : `📋 HANDOFF: ${handoff.taskTitle}`;
+
   ctx.font = 'bold 10px JetBrains Mono, monospace';
   const bw = ctx.measureText(bannerText).width + 20;
   ctx.fillStyle = '#ffffff';
@@ -1780,3 +1983,4 @@ function drawHandoffAnimation(ctx: CanvasRenderingContext2D, handoff: ActiveHand
 
   ctx.restore();
 }
+

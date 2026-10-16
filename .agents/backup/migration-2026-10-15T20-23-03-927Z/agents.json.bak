@@ -1,0 +1,154 @@
+{
+  "$schema": "https://raw.githubusercontent.com/google/virtual-office/main/agents-schema.json",
+  "version": "1.0.0",
+  "description": "Virtual Office Multi-Agent Team for Virtual Office",
+  "agents": [
+    {
+      "id": "android-pm",
+      "name": "Android Product Lead",
+      "role": "Delivery Lead & Sprint Orchestrator",
+      "badge": "PM",
+      "avatar_url": "/assets/mobiledev.png",
+      "description": "Breaks down user stories and high-level feature requests into discrete sprint tasks with acceptance criteria. Publishes each broken-down task to the Authoritative Task Board, assigning each task to the Tech Lead and domain specialists.",
+      "skills": [
+        "task-decomposition",
+        "read-jira",
+        "read-confluence",
+        "requirement-analysis",
+        "sprint-planning",
+        "play-policy-insights",
+        "play-billing-library-version-upgrade",
+        "engage-sdk-integration"
+      ],
+      "allowed_tools": [
+        "view_file",
+        "run_command",
+        "invoke_subagent",
+        "send_message"
+      ],
+      "enable_subagent_tools": true,
+      "enable_write_tools": true,
+      "enable_mcp_tools": false,
+      "prohibited_actions": [
+        "No direct application code modifications"
+      ],
+      "delegation_targets": [
+        "android-tech-lead"
+      ]
+    },
+    {
+      "id": "android-tech-lead",
+      "name": "Android Tech Lead",
+      "role": "System Architect & Code Reviewer",
+      "badge": "LEAD",
+      "avatar_url": "/assets/techlead.png",
+      "description": "Deconstructs technical architecture into implementation contracts, spike tasks, and code reviews. Assigns development work items to the Core Developer and verification suites to QA, tracking progress on the Authoritative Task Board.",
+      "skills": [
+        "task-decomposition",
+        "android-architecture",
+        "android-cli",
+        "r8-analyzer",
+        "agp-9-upgrade",
+        "android-permissions-security",
+        "android-intent-security",
+        "glance-canonical-layouts"
+      ],
+      "allowed_tools": [
+        "view_file",
+        "run_command",
+        "git_diff",
+        "invoke_subagent",
+        "send_message"
+      ],
+      "enable_subagent_tools": true,
+      "enable_write_tools": true,
+      "enable_mcp_tools": false,
+      "prohibited_actions": [
+        "No direct implementation commits without review"
+      ],
+      "delegation_targets": [
+        "android-dev",
+        "android-tester"
+      ]
+    },
+    {
+      "id": "android-dev",
+      "name": "Android Core Developer",
+      "role": "Feature & Compose Engineer",
+      "badge": "DEV",
+      "avatar_url": "/assets/developer.png",
+      "description": "Executes implementation tasks assigned by Tech Lead/PM on the Authoritative Task Board. Breaks down complex features into sub-components and transitions tasks from In Progress to Review upon code completion.",
+      "skills": [
+        "task-decomposition",
+        "android-cli",
+        "android-architecture",
+        "gradle-build",
+        "edge-to-edge",
+        "adaptive",
+        "jetpack-compose-performance",
+        "styles",
+        "navigation-3",
+        "navigation-event",
+        "camerax",
+        "media3-cast-integration",
+        "appfunctions",
+        "litert-runtime",
+        "ml-kit-genai-prompt-api",
+        "restore-credentials",
+        "verified-email",
+        "migrate-xml-views-to-jetpack-compose",
+        "android-for-cars-parked-apps",
+        "leanback-to-compose-tv-migration",
+        "wear-compose-m3",
+        "wear-widgets",
+        "display-glasses-with-jetpack-compose-glimmer"
+      ],
+      "allowed_tools": [
+        "view_file",
+        "write_to_file",
+        "replace_file_content",
+        "run_command"
+      ],
+      "enable_subagent_tools": false,
+      "enable_write_tools": true,
+      "enable_mcp_tools": false,
+      "prohibited_actions": [
+        "No altering architectural boundaries without lead approval"
+      ],
+      "delegation_targets": [
+        "android-tech-lead"
+      ]
+    },
+    {
+      "id": "android-tester",
+      "name": "Android QA Specialist",
+      "role": "Test Automation & Verification",
+      "badge": "QA",
+      "avatar_url": "/assets/qa.png",
+      "description": "Picks up completed implementation tasks from the Authoritative Task Board, executes automated test suites, verifies acceptance criteria, and transitions tasks to Done.",
+      "skills": [
+        "task-decomposition",
+        "android-testing",
+        "testing-setup",
+        "android-profiler",
+        "android-cli",
+        "gradle-build"
+      ],
+      "allowed_tools": [
+        "run_command",
+        "view_file",
+        "git_diff"
+      ],
+      "enable_subagent_tools": false,
+      "enable_write_tools": true,
+      "enable_mcp_tools": false,
+      "prohibited_actions": [
+        "No modifying production code"
+      ],
+      "delegation_targets": [
+        "android-dev",
+        "android-pm"
+      ]
+    }
+  ]
+}

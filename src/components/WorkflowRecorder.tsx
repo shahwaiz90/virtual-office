@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Video, Square, Download, Play, X, Share2, Monitor, Layers, Sparkles, Check } from 'lucide-react';
+import { Video, Square, Download, X, Sparkles, Loader2 } from 'lucide-react';
+import { voiceService } from '../services/voiceService';
 
 interface WorkflowRecorderProps {
   canvasElement: HTMLCanvasElement | null;
@@ -12,12 +13,13 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
 }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [recordingMode, setRecordingMode] = useState<'canvas' | 'screen'>('canvas');
-  const [showOptionsDropdown, setShowOptionsDropdown] = useState(false);
   const [recordedVideoUrl, setRecordedVideoUrl] = useState<string | null>(null);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordedMp4Url, setRecordedMp4Url] = useState<string | null>(null);
+  const [recordedMp4Blob, setRecordedMp4Blob] = useState<Blob | null>(null);
+  const [isConvertingMp4, setIsConvertingMp4] = useState<boolean>(false);
+  const [conversionError, setConversionError] = useState<string | null>(null);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -41,19 +43,40 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
   };
 
   const getBestMimeType = () => {
-    const types = [
+    // 1. Check if browser natively supports MP4 recording
+    const mp4Types = [
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4;codecs=avc1',
+      'video/mp4;codecs=h264',
+      'video/mp4',
+    ];
+    for (const t of mp4Types) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) {
+        return { mimeType: t, isNativeMp4: true };
+      }
+    }
+    // 2. Otherwise record WebM and convert automatically to MP4 via server ffmpeg
+    const webmTypes = [
       'video/webm;codecs=vp9,opus',
       'video/webm;codecs=vp9',
       'video/webm;codecs=vp8',
       'video/webm',
-      'video/mp4',
     ];
-    for (const t of types) {
-      if (MediaRecorder.isTypeSupported(t)) {
-        return t;
+    for (const t of webmTypes) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) {
+        return { mimeType: t, isNativeMp4: false };
       }
     }
-    return 'video/webm';
+    return { mimeType: 'video/webm', isNativeMp4: false };
+  };
+
+  const triggerDownload = (url: string, extension: 'mp4' | 'webm') => {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `agent-virtual-office-workflow-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${extension}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const startCanvasRecording = () => {
@@ -64,50 +87,46 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
 
     try {
       // 60 FPS smooth capture directly from Virtual Office canvas
-      const stream = (canvasElement as any).captureStream ? (canvasElement as any).captureStream(60) : null;
-      if (!stream) {
-        alert('Canvas recording is not supported in this browser version. Try Full Screen mode.');
+      const canvasStream = (canvasElement as any).captureStream ? (canvasElement as any).captureStream(60) : null;
+      if (!canvasStream) {
+        alert('Canvas recording is not supported in this browser version.');
         return;
       }
-      streamRef.current = stream;
-      setRecordingMode('canvas');
-      initRecorderWithStream(stream);
+
+      // Create combined stream containing both video frames and agent voice audio
+      const combinedStream = new MediaStream();
+
+      // 1. Add canvas 60fps video tracks
+      canvasStream.getVideoTracks().forEach((track: MediaStreamTrack) => {
+        combinedStream.addTrack(track);
+      });
+
+      // 2. Add real-time agent voice audio track from VoiceService
+      const audioTrack = voiceService.getAudioStreamTrack();
+      if (audioTrack) {
+        combinedStream.addTrack(audioTrack);
+      }
+
+      streamRef.current = combinedStream;
+      initRecorderWithStream(combinedStream);
     } catch (e: any) {
       console.error('Failed to capture canvas stream:', e);
       alert(`Could not start canvas recording: ${e.message}`);
     }
   };
 
-  const startScreenRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          displaySurface: 'browser',
-          frameRate: { ideal: 60, max: 60 },
-        },
-        audio: true,
-      });
-      streamRef.current = stream;
-      setRecordingMode('screen');
-
-      // Stop recording if user clicks browser's native "Stop sharing" bar
-      stream.getVideoTracks()[0].onended = () => {
-        stopRecording();
-      };
-
-      initRecorderWithStream(stream);
-    } catch (e: any) {
-      console.warn('Screen recording cancelled or denied:', e);
-    }
-  };
-
   const initRecorderWithStream = (stream: MediaStream) => {
     recordedChunksRef.current = [];
-    const mimeType = getBestMimeType();
+    setRecordedMp4Blob(null);
+    setRecordedMp4Url(null);
+    setConversionError(null);
+
+    const { mimeType, isNativeMp4 } = getBestMimeType();
 
     const recorder = new MediaRecorder(stream, {
       mimeType,
-      videoBitsPerSecond: 8000000, // High quality 8 Mbps
+      videoBitsPerSecond: 8000000, // High quality 8 Mbps video
+      audioBitsPerSecond: 128000,  // 128 kbps crisp voice audio
     });
 
     recorder.ondataavailable = (event) => {
@@ -116,25 +135,56 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
       }
     };
 
-    recorder.onstop = () => {
-      const blob = new Blob(recordedChunksRef.current, { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      setRecordedBlob(blob);
-      setRecordedVideoUrl(url);
+    recorder.onstop = async () => {
+      const rawBlob = new Blob(recordedChunksRef.current, { type: mimeType });
+      const rawUrl = URL.createObjectURL(rawBlob);
+      setRecordedBlob(rawBlob);
+      setRecordedVideoUrl(rawUrl);
       setShowPreviewModal(true);
-
-      // Trigger automatic video file download
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `agent-virtual-office-workflow-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.webm`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
 
       // Clean up stream tracks
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
+      }
+
+      // If recorded natively as MP4, download directly!
+      if (isNativeMp4) {
+        setRecordedMp4Blob(rawBlob);
+        setRecordedMp4Url(rawUrl);
+        triggerDownload(rawUrl, 'mp4');
+        return;
+      }
+
+      // Convert WebM to Universal MP4 (H.264/AAC for QuickTime, Mac, Windows, Mobile)
+      setIsConvertingMp4(true);
+      try {
+        const response = await fetch('/api/convert-to-mp4', {
+          method: 'POST',
+          headers: { 'Content-Type': mimeType },
+          body: rawBlob,
+        });
+
+        if (response.ok) {
+          const mp4Blob = await response.blob();
+          const mp4Url = URL.createObjectURL(mp4Blob);
+          setRecordedMp4Blob(mp4Blob);
+          setRecordedMp4Url(mp4Url);
+          setIsConvertingMp4(false);
+
+          // Automatically download MP4 so it opens in QuickTime immediately
+          triggerDownload(mp4Url, 'mp4');
+        } else {
+          console.warn('Server MP4 conversion returned non-ok status, falling back to WebM.');
+          setIsConvertingMp4(false);
+          setConversionError('FFmpeg conversion unavailable. Saved as WebM.');
+          triggerDownload(rawUrl, 'webm');
+        }
+      } catch (err: any) {
+        console.warn('MP4 conversion fetch failed, fallback to WebM:', err);
+        setIsConvertingMp4(false);
+        setConversionError('Network issue during MP4 conversion. Saved as WebM.');
+        triggerDownload(rawUrl, 'webm');
       }
     };
 
@@ -142,7 +192,6 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
     mediaRecorderRef.current = recorder;
     setIsRecording(true);
     setRecordingSeconds(0);
-    setShowOptionsDropdown(false);
 
     if (onRecordingStateChange) onRecordingStateChange(true, 0);
 
@@ -167,14 +216,18 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
     if (onRecordingStateChange) onRecordingStateChange(false, recordingSeconds);
   };
 
-  const handleDownloadAgain = () => {
-    if (!recordedVideoUrl) return;
-    const a = document.createElement('a');
-    a.href = recordedVideoUrl;
-    a.download = `agent-virtual-office-workflow-${Date.now()}.webm`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const handleDownloadMp4 = () => {
+    if (recordedMp4Url) {
+      triggerDownload(recordedMp4Url, 'mp4');
+    } else if (recordedVideoUrl && !isConvertingMp4) {
+      triggerDownload(recordedVideoUrl, 'webm');
+    }
+  };
+
+  const handleDownloadWebm = () => {
+    if (recordedVideoUrl) {
+      triggerDownload(recordedVideoUrl, 'webm');
+    }
   };
 
   return (
@@ -182,73 +235,22 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
       {/* Recording Control Button in Header / Toolbar */}
       <div className="relative inline-flex items-center">
         {!isRecording ? (
-          <div className="flex items-center">
-            <button
-              onClick={() => setShowOptionsDropdown((prev) => !prev)}
-              title="Record virtual office workflow and share as video"
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200/90 transition-all shadow-xs hover:border-slate-300 active:scale-95 cursor-pointer"
-            >
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
-              <Video className="w-3.5 h-3.5 text-rose-600" />
-              <span>Record Workflow</span>
-            </button>
-
-            {/* Dropdown for Recording Choice */}
-            {showOptionsDropdown && (
-              <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl border border-slate-200/90 shadow-xl p-2 z-50 animate-in fade-in zoom-in-95 space-y-1">
-                <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
-                  Select Video Capture Mode
-                </div>
-
-                <button
-                  onClick={startCanvasRecording}
-                  className="w-full text-left p-2.5 rounded-xl hover:bg-indigo-50/80 transition-colors flex items-start gap-3 cursor-pointer group"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-indigo-100/70 text-indigo-700 flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-indigo-200/70">
-                    <Layers className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
-                      <span>Virtual Office Canvas (60 FPS)</span>
-                      <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded-full">
-                        Instant
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Captures character walking, animated handoffs, and workstations directly without permission popups.
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  onClick={startScreenRecording}
-                  className="w-full text-left p-2.5 rounded-xl hover:bg-indigo-50/80 transition-colors flex items-start gap-3 cursor-pointer group"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-blue-100/70 text-blue-700 flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-blue-200/70">
-                    <Monitor className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900">
-                      Entire Dashboard Tab
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Captures everything: Virtual Office + Kanban Task Board + File Changes + Live Logs.
-                    </p>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            onClick={startCanvasRecording}
+            title="Start recording Virtual Office canvas (60 FPS MP4)"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200/90 transition-all shadow-xs hover:border-slate-300 active:scale-95 cursor-pointer"
+          >
+            <Video className="w-3.5 h-3.5 text-rose-600" />
+            <span className="hidden sm:inline">Record Workflow</span>
+            <span className="sm:hidden text-xs">Record</span>
+          </button>
         ) : (
           /* Active Recording State Button with Live Timer */
           <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 shadow-sm">
-            <span className="w-3 h-3 rounded-full bg-rose-600 animate-ping shrink-0" />
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-pulse shrink-0" />
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-black text-rose-700 font-mono">
                 REC {formatTime(recordingSeconds)}
-              </span>
-              <span className="text-[10px] text-rose-500 font-semibold uppercase hidden sm:inline">
-                ({recordingMode === 'canvas' ? 'Canvas' : 'Screen'})
               </span>
             </div>
 
@@ -290,41 +292,99 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
             </div>
 
             {/* Video Player */}
-            <div className="p-6 bg-slate-950 flex flex-col items-center justify-center">
+            <div className="p-6 bg-slate-950 flex flex-col items-center justify-center relative">
               <video
-                src={recordedVideoUrl}
+                src={recordedMp4Url || recordedVideoUrl || undefined}
                 controls
                 autoPlay
                 className="w-full max-h-[380px] rounded-xl border border-slate-800 shadow-lg object-contain bg-black"
               />
+
+              {/* MP4 Conversion Overlay Banner */}
+              {isConvertingMp4 && (
+                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-slate-900/95 border border-indigo-500/50 text-white px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md">
+                  <Loader2 className="w-4 h-4 text-indigo-400 animate-spin shrink-0" />
+                  <div className="text-xs">
+                    <span className="font-bold text-indigo-200">Processing MP4...</span>
+                    <span className="text-slate-400 ml-1.5 hidden sm:inline">Optimizing for QuickTime, Mac & mobile</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Modal Footer / Actions */}
             <div className="p-5 bg-slate-50 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
-              <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span>Format: WebM / VP9 High-Definition (Universal)</span>
-                {recordedBlob && (
-                  <span className="font-mono text-slate-400">
-                    ({(recordedBlob.size / 1024 / 1024).toFixed(1)} MB)
-                  </span>
+              <div className="flex items-center gap-2 text-xs font-medium">
+                {isConvertingMp4 ? (
+                  <div className="flex items-center gap-2 text-indigo-600">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Converting to universal MP4 format...</span>
+                  </div>
+                ) : recordedMp4Url ? (
+                  <div className="flex items-center gap-2 text-emerald-700">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                    <span className="font-bold">Format: MP4 (H.264 / QuickTime & Universal)</span>
+                    {recordedMp4Blob && (
+                      <span className="font-mono text-slate-400">
+                        ({(recordedMp4Blob.size / 1024 / 1024).toFixed(1)} MB)
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>
+                    <span>Format: WebM High-Definition</span>
+                    {recordedBlob && (
+                      <span className="font-mono text-slate-400">
+                        ({(recordedBlob.size / 1024 / 1024).toFixed(1)} MB)
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
 
               <div className="flex items-center gap-2.5">
+                {/* Secondary WebM Download (if user specifically wants raw WebM) */}
+                {recordedVideoUrl && (
+                  <button
+                    onClick={handleDownloadWebm}
+                    title="Download raw WebM video file"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all shadow-xs cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-500" />
+                    <span>WebM</span>
+                  </button>
+                )}
+
+                {/* Primary MP4 Download Button */}
                 <button
-                  onClick={handleDownloadAgain}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-all shadow-xs cursor-pointer"
+                  onClick={handleDownloadMp4}
+                  disabled={isConvertingMp4}
+                  title="Download QuickTime & Windows compatible MP4 video"
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ${
+                    isConvertingMp4
+                      ? 'bg-indigo-300 text-white cursor-wait'
+                      : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20 active:scale-95'
+                  }`}
                 >
-                  <Download className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Download Again</span>
+                  {isConvertingMp4 ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Converting MP4...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5 text-white" />
+                      <span>Download MP4</span>
+                    </>
+                  )}
                 </button>
 
                 <button
                   onClick={() => setShowPreviewModal(false)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-sm shadow-indigo-600/20 active:scale-95 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold transition-all cursor-pointer"
                 >
-                  <span>Done</span>
+                  Done
                 </button>
               </div>
             </div>

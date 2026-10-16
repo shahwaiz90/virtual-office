@@ -32,14 +32,19 @@ export interface AgentTheme {
   roomBounds?: { x: number; y: number; w: number; h: number };
   avatarUrl?: string;
   facing: 'north' | 'south' | 'east' | 'west';
+  isPrimary?: boolean;
 }
 
 export interface Agent {
   id: string;
   name: string;
   role: string;
+  isPrimary?: boolean;
+  isSubagent?: boolean;
   avatarUrl?: string;
+  avatar_url?: string;
   aliases: string[];
+  badge?: string;
   badgeText: string;
   activeRoleBadge: string;
   description: string;
@@ -48,6 +53,7 @@ export interface Agent {
   allowedTools: string[];
   prohibitedActions: string[];
   delegationTargets: string[];
+  delegation_targets?: string[];
   theme: AgentTheme;
   status: AgentStatus;
   currentTask: string | null;
@@ -78,7 +84,9 @@ export interface KanbanTask {
   column: TaskColumn;
   skill: string;
   progress: number;
+  createdAt?: string;
   updatedAt: string;
+  logs?: string[];
 }
 
 export interface NormalizedEvent {
@@ -100,7 +108,13 @@ export interface NormalizedEvent {
     fromAgent?: string;
     toAgent?: string;
     handoffFrom?: string;
+    handoffFromName?: string;
+    handoffFromRole?: string;
+    fromBadge?: string;
     handoffTo?: string;
+    handoffToName?: string;
+    handoffToRole?: string;
+    toBadge?: string;
     allowedSkill?: string;
     phase?: string;
     milestone?: string;
@@ -116,6 +130,12 @@ export interface ActiveHandoff {
   id: string;
   fromId: string;
   toId: string;
+  fromName?: string;
+  fromRole?: string;
+  fromBadge?: string;
+  toName?: string;
+  toRole?: string;
+  toBadge?: string;
   fromPos: { x: number; y: number };
   toPos: { x: number; y: number };
   taskTitle: string;
@@ -170,16 +190,34 @@ export interface FileChangeRecord {
   linesAdded?: number;
 }
 
+export interface AgentCommunication {
+  id: string;
+  fromAgentId: string;
+  fromAgentName: string;
+  fromAgentRole: string;
+  toAgentId: string;
+  toAgentName: string;
+  toAgentRole: string;
+  taskTitle?: string;
+  taskKey?: string;
+  message: string;
+  channel?: 'direct_message' | 'subagent_delegation' | 'pr_review' | 'qa_handoff' | 'system';
+  timestamp: string;
+}
+
 export interface OfficeState {
   workflow: {
     id: string;
     projectName?: string;
+    projectPath?: string;
+    platform?: string;
     title: string;
     phase: string;
     startTime: number;
     elapsedSeconds: number;
     milestone: string;
     milestoneAgentId?: string;
+    isDemoRunning?: boolean;
   };
   metrics: {
     totalAgents: number;
@@ -195,6 +233,8 @@ export interface OfficeState {
   skillUsageAnalytics?: SkillUsageStat[];
   roleInvocationAnalytics?: RoleInvocationStat[];
   fileChanges?: FileChangeRecord[];
+  communications?: AgentCommunication[];
   activeHandoff: ActiveHandoff | null;
   connectedViewers: number;
+  isDemoRunning?: boolean;
 }

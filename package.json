@@ -4,6 +4,7 @@
   "description": "Real-time AI Agent Virtual Office visualizer with animated characters, floor plans, live Kanban boards, and delivery intelligence analytics for any software project (iOS, Android, Web, Backend).",
   "main": "server/index.js",
   "bin": {
+    "agents": "bin/agents.js",
     "agent-virtual-office": "bin/cli.js",
     "agent-office": "bin/cli.js"
   },
@@ -21,7 +22,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server/index.js",
-    "launch": "node server/launcher.js"
+    "launch": "node server/launcher.js",
+    "test": "node tests/test_universal_agent_registry.js && node tests/test_universal_agent_registry_e2e.js && node tests/test_conversation_project_isolation.js && node tests/test_conversation_workspace_isolation.js && node tests/test_orchestration_rules.js && node tests/test_standby_and_definitions.js"
   },
   "keywords": [
     "ai-agents",

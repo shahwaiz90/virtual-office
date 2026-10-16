@@ -100,9 +100,9 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({ events, agents }) => {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-wrap items-center gap-2 mb-3">
+      <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 mb-3">
         {/* Search */}
-        <div className="relative flex-1 min-w-[180px]">
+        <div className="relative flex-1 min-w-0 sm:min-w-[180px]">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
@@ -113,39 +113,52 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({ events, agents }) => {
           />
         </div>
 
-        {/* Filter Agent */}
-        <select
-          value={selectedAgent}
-          onChange={(e) => setSelectedAgent(e.target.value)}
-          className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:bg-white transition-colors"
-        >
-          <option value="all">All Agents</option>
-          {agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+        {/* Filters */}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {/* Filter Agent */}
+          <select
+            value={selectedAgent}
+            onChange={(e) => setSelectedAgent(e.target.value)}
+            className="flex-1 sm:flex-initial bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:bg-white transition-colors"
+          >
+            <option value="all">All Agents</option>
+            {agents.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
 
-        {/* Filter Type */}
-        <select
-          value={selectedType}
-          onChange={(e) => setSelectedType(e.target.value)}
-          className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:bg-white transition-colors"
-        >
-          <option value="all">All Event Types</option>
-          <option value="agent_handoff">Delegations & Handoffs</option>
-          <option value="tool_executing">Tool Executions</option>
-          <option value="command_executing">Commands & Terminal</option>
-          <option value="file_modified">File Modifications</option>
-          <option value="test_result">Test Results</option>
-          <option value="milestone_update">Milestone Updates</option>
-        </select>
+          {/* Filter Type */}
+          <select
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value)}
+            className="flex-1 sm:flex-initial bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:bg-white transition-colors"
+          >
+            <option value="all">All Types</option>
+            <option value="agent_handoff">Handoffs</option>
+            <option value="tool_executing">Tools</option>
+            <option value="command_executing">Commands</option>
+            <option value="file_modified">Files</option>
+            <option value="test_result">Tests</option>
+            <option value="milestone_update">Milestones</option>
+          </select>
+        </div>
       </div>
 
       {/* Log Feed Table / List */}
       <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 font-mono text-xs">
-        {filteredEvents.length === 0 ? (
+        {agents.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center p-8 bg-slate-50/60 rounded-xl border border-dashed border-slate-200 text-center">
+            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-2.5">
+              <Terminal className="w-5 h-5" />
+            </div>
+            <h4 className="text-sm font-semibold text-slate-700">Activity Logs On Standby</h4>
+            <p className="text-xs text-slate-500 max-w-sm mt-1">
+              Event telemetry and streaming terminal logs will stream here when agent workflows are active.
+            </p>
+          </div>
+        ) : filteredEvents.length === 0 ? (
           <div className="h-full flex items-center justify-center text-slate-400 italic">
             No matching events found
           </div>
@@ -203,12 +216,12 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({ events, agents }) => {
                   )}
 
                   {/* Event Type */}
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${badgeColor}`}>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 hidden sm:inline-block ${badgeColor}`}>
                     {evt.type}
                   </span>
 
                   {/* Message / summary */}
-                  <span className="text-slate-800 truncate flex-1 text-left font-sans text-xs">
+                  <span className="text-slate-800 truncate flex-1 min-w-0 text-left font-sans text-xs">
                     {evt.payload.details || evt.payload.command || evt.payload.task || 'Activity event'}
                   </span>
                 </div>

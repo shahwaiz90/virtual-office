@@ -1,0 +1,32 @@
+version: 2.0.0
+name: "Virtual Office"
+description: "Universal multi-agent team registry for Virtual Office"
+orchestrator: tech-pm
+default_framework: all
+agents:
+  - id: tech-pm
+    path: definitions/tech-pm.md
+    primary: true
+  - id: android-tech-lead
+    path: definitions/android-tech-lead.md
+  - id: android-dev
+    path: definitions/android-dev.md
+  - id: android-tester
+    path: definitions/android-tester.md
+skills_dir: skills
+adapters:
+  opencode:
+    enabled: true
+    sync_agents_json: true
+    sync_runtime_manifest: true
+    sync_team_rule: true
+  claude:
+    enabled: true
+    target_file: CLAUDE.md
+    sync_config: true
+  codex:
+    enabled: true
+    target_file: AGENTS.md
+  gemini:
+    enabled: true
+    target_file: GEMINI.md

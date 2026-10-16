@@ -1,14 +1,29 @@
 const fs = require('fs');
 const path = require('path');
 
+let runtimeProjectRoot = null;
+
+function setProjectRoot(newPath) {
+  if (newPath) {
+    runtimeProjectRoot = path.resolve(newPath);
+    return runtimeProjectRoot;
+  }
+  return null;
+}
+
 /**
  * Resolves the target project directory from:
+ * 0. Dynamically set runtime project root (via UI or API)
  * 1. CLI argument (--dir, -d, --project)
  * 2. Environment variable (PROJECT_DIR, AGENTS_PROJECT_DIR, AGENTS_DIR)
  * 3. Current working directory (if .agents or agents.json exists, or fallback)
  * 4. Workspace repository root (2 levels up from server/)
  */
 function getProjectRoot() {
+  if (runtimeProjectRoot) {
+    return runtimeProjectRoot;
+  }
+
   // 1. CLI args
   for (let i = 0; i < process.argv.length; i++) {
     const arg = process.argv[i];
@@ -159,23 +174,19 @@ function findAllAgentsConfigFiles(customRoot, explicitConfigPath) {
     }
   }
 
+  // If direct config files exist in target root, return them immediately
+  if (fileSet.size > 0) {
+    return Array.from(fileSet);
+  }
+
   // 2. Deep recursive scan of all folders in root directory
   const scanned = scanForAllAgentsConfigs(root);
   for (const file of scanned) {
     fileSet.add(path.resolve(file));
   }
 
-  // 3. Fallback scan in process.cwd() if different from root
-  if (process.cwd() !== root) {
-    for (const candidate of directCandidates.map((c) => path.join(process.cwd(), path.relative(root, c)))) {
-      if (fs.existsSync(candidate)) {
-        fileSet.add(path.resolve(candidate));
-      }
-    }
-    const scannedCwd = scanForAllAgentsConfigs(process.cwd());
-    for (const file of scannedCwd) {
-      fileSet.add(path.resolve(file));
-    }
+  if (fileSet.size > 0) {
+    return Array.from(fileSet);
   }
 
   return Array.from(fileSet);
@@ -383,6 +394,7 @@ const CURATED_PALETTES = [
  * for ANY arbitrary agent count (4, 6, 8, 10, 12+).
  */
 function generateOfficeSlots(count) {
+  if (!count || count <= 0) return [];
   const total = Math.max(count, 4);
   const leftCount = Math.ceil(total / 2);
   const rightCount = Math.floor(total / 2);
@@ -499,20 +511,56 @@ function deriveAvatarUrl(agentId, agentName, role, index) {
   const normRole = (role || '').toLowerCase();
   const combo = `${normId} ${normRole}`;
 
+  if (combo.includes('design') || combo.includes('ux') || combo.includes('ui') || combo.includes('visual') || combo.includes('creative') || combo.includes('art')) {
+    return '/assets/designer.png';
+  }
+  if (combo.includes('devops') || combo.includes('sre') || combo.includes('cloud') || combo.includes('infra') || combo.includes('platform') || combo.includes('ci')) {
+    return '/assets/devops.png';
+  }
+  if (combo.includes('sec') || combo.includes('security') || combo.includes('compliance') || combo.includes('audit') || combo.includes('privacy') || combo.includes('guard')) {
+    return '/assets/security.png';
+  }
+  if (combo.includes('scrum') || combo.includes('agile') || combo.includes('coach') || combo.includes('kanban') || combo.includes('sprint')) {
+    return '/assets/scrummaster.png';
+  }
+  if (combo.includes('data') || combo.includes('ai') || combo.includes('ml') || combo.includes('analytics') || combo.includes('scientist') || combo.includes('research') || combo.includes('bi')) {
+    return '/assets/dataengineer.png';
+  }
+  if (combo.includes('mobile') || combo.includes('ios') || combo.includes('android') || combo.includes('flutter') || combo.includes('reactnative') || combo.includes('swift') || combo.includes('kotlin')) {
+    return '/assets/mobiledev.png';
+  }
+  if (combo.includes('writer') || combo.includes('doc') || combo.includes('documentation') || combo.includes('content') || combo.includes('techwriter')) {
+    return '/assets/writer.png';
+  }
   if (combo.includes('pm') || combo.includes('projectmanager') || combo.includes('manager') || combo.includes('delivery') || combo.includes('product') || combo.includes('owner')) {
     return '/assets/projectmanager.png';
   }
-  if (combo.includes('techlead') || combo.includes('architect') || combo.includes('lead') || combo.includes('principal') || combo.includes('infra') || combo.includes('devops') || combo.includes('cloud') || combo.includes('sre')) {
+  if (combo.includes('techlead') || combo.includes('architect') || combo.includes('lead') || combo.includes('principal')) {
     return '/assets/techlead.png';
   }
-  if (combo.includes('dev') || combo.includes('developer') || combo.includes('engineer') || combo.includes('author') || combo.includes('code') || combo.includes('software') || combo.includes('frontend') || combo.includes('backend') || combo.includes('mobile') || combo.includes('ios') || combo.includes('android')) {
-    return '/assets/developer.png';
-  }
-  if (combo.includes('test') || combo.includes('qa') || combo.includes('quality') || combo.includes('assurance') || combo.includes('security') || combo.includes('audit') || combo.includes('compliance')) {
+  if (combo.includes('test') || combo.includes('qa') || combo.includes('quality') || combo.includes('assurance')) {
     return '/assets/qa.png';
   }
+  if (combo.includes('dev') || combo.includes('developer') || combo.includes('engineer') || combo.includes('author') || combo.includes('code') || combo.includes('software') || combo.includes('frontend') || combo.includes('backend')) {
+    return '/assets/developer.png';
+  }
 
-  const fallbacks = ['/assets/projectmanager.png', '/assets/techlead.png', '/assets/developer.png', '/assets/qa.png'];
+  const fallbacks = [
+    '/assets/projectmanager.png',
+    '/assets/techlead.png',
+    '/assets/developer.png',
+    '/assets/qa.png',
+    '/assets/designer.png',
+    '/assets/devops.png',
+    '/assets/security.png',
+    '/assets/scrummaster.png',
+    '/assets/dataengineer.png',
+    '/assets/mobiledev.png',
+    '/assets/writer.png',
+    '/assets/architect_female.png',
+    '/assets/frontend_female.png',
+    '/assets/ai_female.png'
+  ];
   return fallbacks[index % fallbacks.length];
 }
 
@@ -601,17 +649,23 @@ function parseFrontmatterAndMarkdown(content, fallbackId) {
           const items = val.replace(/^\[|\]$/g, '').split(',').map((s) => s.replace(/^["']|["']$/g, '').trim()).filter(Boolean);
           if (items.length > 0) result.skills = items;
         }
-      } else if (rawKey === 'delegation_targets' || rawKey === 'delegationtargets' || rawKey === 'delegates_to' || rawKey === 'delegates') {
+      } else if (rawKey === 'delegation_targets' || rawKey === 'delegationtargets' || rawKey === 'delegates_to' || rawKey === 'delegates' || rawKey === 'handoff_to' || rawKey === 'handoffto') {
         currentArrayKey = 'delegation_targets';
         if (val) {
           const items = val.replace(/^\[|\]$/g, '').split(',').map((s) => s.replace(/^["']|["']$/g, '').trim()).filter(Boolean);
-          if (items.length > 0) result.delegation_targets = items;
+          if (items.length > 0) {
+            result.delegation_targets = items;
+            result.handoffTo = items;
+          }
         }
       } else if (rawKey === 'allowed_tools' || rawKey === 'tools') {
         currentArrayKey = 'allowed_tools';
         if (val) {
           const items = val.replace(/^\[|\]$/g, '').split(',').map((s) => s.replace(/^["']|["']$/g, '').trim()).filter(Boolean);
-          if (items.length > 0) result.allowed_tools = items;
+          if (items.length > 0) {
+            result.allowed_tools = items;
+            result.tools = items;
+          }
         }
       } else if (rawKey === 'prohibited_actions') {
         currentArrayKey = 'prohibited_actions';
@@ -619,6 +673,27 @@ function parseFrontmatterAndMarkdown(content, fallbackId) {
           const items = val.replace(/^\[|\]$/g, '').split(',').map((s) => s.replace(/^["']|["']$/g, '').trim()).filter(Boolean);
           if (items.length > 0) result.prohibited_actions = items;
         }
+      } else if (rawKey === 'permissions') {
+        currentArrayKey = 'permissions';
+        if (val) {
+          const items = val.replace(/^\[|\]$/g, '').split(',').map((s) => s.replace(/^["']|["']$/g, '').trim()).filter(Boolean);
+          if (items.length > 0) result.permissions = items;
+        }
+      } else if (rawKey === 'persona') {
+        if (val) result.persona = val;
+        currentArrayKey = null;
+      } else if (rawKey === 'goal') {
+        if (val) result.goal = val;
+        currentArrayKey = null;
+      } else if (rawKey === 'input_contract' || rawKey === 'inputcontract') {
+        if (val) result.inputContract = val;
+        currentArrayKey = null;
+      } else if (rawKey === 'output_contract' || rawKey === 'outputcontract') {
+        if (val) result.outputContract = val;
+        currentArrayKey = null;
+      } else if (rawKey === 'reports_to' || rawKey === 'reportsto') {
+        if (val) result.reportsTo = val;
+        currentArrayKey = null;
       } else if (rawKey === 'badge') {
         if (val) result.badge = val;
         currentArrayKey = null;
@@ -701,16 +776,6 @@ function discoverAgentsFromFolders(customRoot) {
     const full = path.join(root, c);
     if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
       candidateDirs.add(full);
-    }
-  }
-
-  // Also check candidate directories in current working directory if different
-  if (process.cwd() !== root) {
-    for (const c of candidateDirNames) {
-      const full = path.join(process.cwd(), c);
-      if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
-        candidateDirs.add(full);
-      }
     }
   }
 
@@ -882,25 +947,27 @@ function discoverAgents(customProjectDir, explicitConfigPath) {
     }
   }
 
-  // 2. Discover agents from agents/ or .agents/ folders (individual .json, .yaml, .md, or subdirectories)
-  const folderAgents = discoverAgentsFromFolders(root);
-  let folderAddedCount = 0;
-  for (const agent of folderAgents) {
-    if (!agent || !agent.id) continue;
-    if (!seenAgentIds.has(agent.id)) {
-      seenAgentIds.add(agent.id);
-      rawAgents.push(agent);
-      folderAddedCount++;
+  // 2. Discover agents from agents/ or .agents/ folders ONLY if no agents were found in agents.json config files
+  if (rawAgents.length === 0) {
+    const folderAgents = discoverAgentsFromFolders(root);
+    let folderAddedCount = 0;
+    for (const agent of folderAgents) {
+      if (!agent || !agent.id) continue;
+      if (!seenAgentIds.has(agent.id)) {
+        seenAgentIds.add(agent.id);
+        rawAgents.push(agent);
+        folderAddedCount++;
+      }
+    }
+
+    if (folderAddedCount > 0) {
+      console.info(`[AgentDiscovery] Discovered ${folderAddedCount} agents from agents folder(s).`);
     }
   }
 
-  if (folderAddedCount > 0) {
-    console.info(`[AgentDiscovery] Discovered ${folderAddedCount} agents from agents folder(s).`);
-  }
-
   if (rawAgents.length === 0) {
-    console.info(`[AgentDiscovery] No agents config found. Using default 4-role team template.`);
-    rawAgents = DEFAULT_FALLBACK_AGENTS;
+    console.info(`[AgentDiscovery] No agents config found in: ${root}. Returning 0 agents.`);
+    return [];
   }
 
   // Generate dynamic, non-overlapping office slots for this exact team size
@@ -933,6 +1000,9 @@ function discoverAgents(customProjectDir, explicitConfigPath) {
     const skillSearchDir = agent._originConfig ? path.join(root, path.dirname(agent._originConfig)) : root;
     const skillObjects = (agent.skills || []).map((skillName) => readSkillMetadata(skillName, skillSearchDir));
 
+    const isPrimary = Boolean(agent.is_primary !== undefined ? agent.is_primary : (agent.isPrimary !== undefined ? agent.isPrimary : index === 0));
+    const primaryAgentId = rawAgents.find(a => a.is_primary || a.isPrimary)?.id || rawAgents[0]?.id || null;
+
     return {
       id: agent.id,
       name: agent.name,
@@ -940,21 +1010,30 @@ function discoverAgents(customProjectDir, explicitConfigPath) {
       origin: agent._originConfig || 'root',
       aliases: agent.aliases || [],
       badgeText: theme.badge,
+      badge: theme.badge,
       activeRoleBadge: agent.active_role_badge || `🎭 **Active Role**: **${agent.name}** (\`${agent.id}\`)`,
       description: agent.description,
       skills: skillObjects,
       skillIds: agent.skills || [],
       allowedTools: agent.allowed_tools || [],
+      enable_subagent_tools: agent.enable_subagent_tools !== undefined ? agent.enable_subagent_tools : (agent.allowed_tools || []).includes('invoke_subagent'),
+      enable_write_tools: agent.enable_write_tools !== undefined ? agent.enable_write_tools : (agent.allowed_tools || []).some(t => ['write_to_file', 'replace_file_content', 'run_command', 'git_diff'].includes(t)),
+      enable_mcp_tools: agent.enable_mcp_tools !== undefined ? agent.enable_mcp_tools : false,
       prohibitedActions: agent.prohibited_actions || [],
-      delegationTargets: agent.delegation_targets || [],
-      theme,
+      delegationTargets: agent.delegation_targets || agent.delegationTargets || [],
+      delegation_targets: agent.delegation_targets || agent.delegationTargets || [],
+      isPrimary,
+      is_primary: isPrimary,
+      isSubagent: !isPrimary,
+      is_subagent: !isPrimary,
+      theme: { ...theme, isPrimary },
       avatarUrl,
       status: 'available',
       currentTask: null,
       currentFile: null,
       lastTool: null,
       delegatedBy: null,
-      parentAgent: index === 0 ? null : (rawAgents[0] ? rawAgents[0].id : null),
+      parentAgent: isPrimary ? null : primaryAgentId,
       currentPosition: { ...theme.deskPosition },
       targetPosition: { ...theme.deskPosition },
       activityMessage: 'Ready at workstation',
@@ -976,6 +1055,7 @@ module.exports = {
   findAllAgentsConfigFiles,
   findSkillsDirectory,
   getProjectRoot,
+  setProjectRoot,
   PROJECT_ROOT,
   DEFAULT_FALLBACK_AGENTS,
 };

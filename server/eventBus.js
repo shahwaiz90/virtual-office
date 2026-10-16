@@ -1,6 +1,7 @@
 const EventEmitter = require('events');
 const path = require('path');
 const { discoverAgents, getProjectRoot } = require('./agentDiscovery');
+const { OrchestrationRules } = require('./orchestrationRules');
 
 class EventBus extends EventEmitter {
   constructor() {
@@ -12,9 +13,9 @@ class EventBus extends EventEmitter {
     const root = getProjectRoot();
     this.projectName = path.basename(root) || 'Active Project';
     this.workflowId = `WORKFLOW-${this.projectName.toUpperCase().replace(/[^A-Z0-9]/g, '-') || 'MAIN'}`;
-    this.workflowTitle = `${this.projectName} Engineering Delivery`;
-    this.currentPhase = 'Standby & Listening';
-    this.latestMilestone = 'Virtual Office initialized. Agents seated at workstations, listening for commands.';
+    this.workflowTitle = `${this.projectName} • Standby`;
+    this.currentPhase = 'Standby & Ready';
+    this.latestMilestone = `Virtual Office ready on ${this.projectName}. Run commands in terminal or prompt agents to begin.`;
     this.latestMilestoneAgentId = 'project-manager';
 
     // Initialize agents
@@ -23,20 +24,61 @@ class EventBus extends EventEmitter {
 
     // Clean initial Kanban state (awaits active agent tasks or demo trigger)
     this.tasks = new Map();
+    this.isDemoRunning = false;
+    this.clearedAt = Date.now();
 
     // Active handoff in progress (for animation synchronization)
     this.activeHandoff = null;
+    this.handoffTimeout = null;
 
     // Clean Analytics Maps (populated dynamically as tools/skills are invoked)
     this.toolUsageMap = new Map();
     this.skillUsageMap = new Map();
     this.roleInvocationMap = new Map();
     this.fileChanges = [];
+    this.communications = [];
+    this.agentBusyTimers = new Map();
     this.initStandbyRoleAnalytics();
     this.initDefaultFileChanges();
+    this.initDefaultCommunications();
+  }
+
+  setAgentBusyTimer(agentId, callback, delayMs = 4000) {
+    if (this.agentBusyTimers.has(agentId)) {
+      clearTimeout(this.agentBusyTimers.get(agentId));
+    }
+    const timer = setTimeout(() => {
+      this.agentBusyTimers.delete(agentId);
+      callback();
+    }, delayMs);
+    this.agentBusyTimers.set(agentId, timer);
+  }
+
+  clearAgentBusyTimer(agentId) {
+    if (this.agentBusyTimers.has(agentId)) {
+      clearTimeout(this.agentBusyTimers.get(agentId));
+      this.agentBusyTimers.delete(agentId);
+    }
+  }
+
+  clearHandoff() {
+    if (this.handoffTimeout) {
+      clearTimeout(this.handoffTimeout);
+      this.handoffTimeout = null;
+    }
+    this.activeHandoff = null;
+  }
+
+  clearAllAgentBusyTimers() {
+    for (const timer of this.agentBusyTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.agentBusyTimers.clear();
+    this.clearHandoff();
   }
 
   initAgents() {
+    this.agents.clear();
     const discovered = discoverAgents();
     for (const a of discovered) {
       this.agents.set(a.id, a);
@@ -60,183 +102,68 @@ class EventBus extends EventEmitter {
   }
 
   loadDemoTasks() {
-    const agentList = Array.from(this.agents.values());
-    if (agentList.length === 0) return;
-
-    const pmAgent = agentList.find((a) => (a.id + ' ' + (a.role || '')).toLowerCase().match(/pm|manager|owner/)) || agentList[0];
-    const leadAgent = agentList.find((a) => (a.id + ' ' + (a.role || '')).toLowerCase().match(/lead|architect/)) || agentList[1] || agentList[0];
-    const devAgent = agentList.find((a) => (a.id + ' ' + (a.role || '')).toLowerCase().match(/dev|author|code/)) || agentList[2] || agentList[0];
-    const testerAgent = agentList.find((a) => (a.id + ' ' + (a.role || '')).toLowerCase().match(/test|qa/)) || agentList[3] || agentList[0];
-
-    const pmId = pmAgent.id;
-    const pmRole = pmAgent.role || pmAgent.name;
-    const leadId = leadAgent.id;
-    const leadRole = leadAgent.role || leadAgent.name;
-    const devId = devAgent.id;
-    const devRole = devAgent.role || devAgent.name;
-    const testerId = testerAgent.id;
-    const testerRole = testerAgent.role || testerAgent.name;
-
-    const initialTasks = [
-      // 1. Intake & Sizing (Broken down by Stakeholder Intake -> PM)
-      {
-        id: 'TASK-1',
-        key: `${pmAgent.badge || 'PM'}-101`,
-        title: 'Ingest Ticket & Scope Requirements',
-        description: 'Auto-ingest backlog issue, analyze constraints, and produce engineering specification',
-        assignedTo: pmId,
-        delegatedBy: 'stakeholder-intake',
-        delegatedByRole: 'Project Stakeholder',
-        column: 'done',
-        skill: 'requirement-analysis',
-        progress: 100,
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: 'TASK-2',
-        key: `${pmAgent.badge || 'PM'}-101`,
-        title: 'Sprint Minute Estimation (<10m SLA)',
-        description: 'Calculate granular minute estimations for Lead, Dev, and QA under 10m SLA',
-        assignedTo: pmId,
-        delegatedBy: pmId,
-        delegatedByRole: pmRole,
-        column: 'done',
-        skill: 'sprint-planning',
-        progress: 100,
-        updatedAt: new Date().toISOString(),
-      },
-
-      // 2. Technical Architecture & Component Scoping (PM -> Technical Lead)
-      {
-        id: 'TASK-3',
-        key: `${leadAgent.badge || 'LEAD'}-101`,
-        title: 'Architecture Boundaries & Interface Contracts',
-        description: 'Establish clean data layer contracts, state immutability, and boundary interfaces',
-        assignedTo: leadId,
-        delegatedBy: pmId,
-        delegatedByRole: pmRole,
-        column: 'done',
-        skill: 'architecture',
-        progress: 100,
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: 'TASK-4',
-        key: `${leadAgent.badge || 'LEAD'}-101`,
-        title: 'Pre-map Impacted Modules & Direct File Paths',
-        description: 'Analyze call graphs to pre-map files in architecture plan so Dev avoids repo searches',
-        assignedTo: leadId,
-        delegatedBy: pmId,
-        delegatedByRole: pmRole,
-        column: 'done',
-        skill: 'impact-analysis',
-        progress: 100,
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: 'TASK-5',
-        key: `${leadAgent.badge || 'LEAD'}-101`,
-        title: 'Identify Business Rules & Author Unit Test Specs',
-        description: 'Identify decision trees, edge cases, and define 100% required AAA unit test specs',
-        assignedTo: leadId,
-        delegatedBy: pmId,
-        delegatedByRole: pmRole,
-        column: 'in_progress',
-        skill: 'tech-lead-planning',
-        progress: 80,
-        updatedAt: new Date().toISOString(),
-      },
-
-      // 3. Feature Implementation & Unit Test Authoring (Technical Lead -> Developer)
-      {
-        id: 'TASK-6',
-        key: `${devAgent.badge || 'DEV'}-101`,
-        title: 'Data Layer: Immutability DTOs & Service Client',
-        description: 'Implement core domain DTOs with state immutability and repository caching',
-        assignedTo: devId,
-        delegatedBy: leadId,
-        delegatedByRole: leadRole,
-        column: 'in_progress',
-        skill: 'feature-implementation',
-        progress: 55,
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: 'TASK-7',
-        key: `${devAgent.badge || 'DEV'}-101`,
-        title: 'Domain Provider: Business Logic Rules Engine',
-        description: 'Implement domain feature provider orchestrating repository results and rule logic',
-        assignedTo: devId,
-        delegatedBy: leadId,
-        delegatedByRole: leadRole,
-        column: 'assigned',
-        skill: 'feature-implementation',
-        progress: 0,
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: 'TASK-8',
-        key: `${devAgent.badge || 'DEV'}-101`,
-        title: 'Author 100% of Specified AAA Unit Tests',
-        description: 'Implement unit test specs defined in architecture plan following AAA convention',
-        assignedTo: devId,
-        delegatedBy: leadId,
-        delegatedByRole: leadRole,
-        column: 'assigned',
-        skill: 'unit-tests',
-        progress: 0,
-        updatedAt: new Date().toISOString(),
-      },
-
-      // 4. Code & Architecture Review (Developer -> Technical Lead)
-      {
-        id: 'TASK-9',
-        key: 'REV-101',
-        title: '10-Point Architectural Quality Gate Audit',
-        description: 'Audit immutability, test coverage, and boundary compliance before handing to QA',
-        assignedTo: leadId,
-        delegatedBy: devId,
-        delegatedByRole: devRole,
-        column: 'review',
-        skill: 'code-review',
-        progress: 25,
-        updatedAt: new Date().toISOString(),
-      },
-
-      // 5. Test Suite Verification (Technical Lead -> QA Tester)
-      {
-        id: 'TASK-10',
-        key: `${testerAgent.badge || 'QA'}-101`,
-        title: 'Execute Automated Test Suite & Regression Audit',
-        description: 'Run unit test suite, verify 100% tests pass, and audit regression integrity',
-        assignedTo: testerId,
-        delegatedBy: leadId,
-        delegatedByRole: leadRole,
-        column: 'testing',
-        skill: 'test-automation',
-        progress: 0,
-        updatedAt: new Date().toISOString(),
-      },
-
-      // 6. Stakeholder Delivery & Sign-Off (QA Tester -> Project Manager)
-      {
-        id: 'TASK-11',
-        key: 'REL-101',
-        title: 'Compile Delivery Sign-Off Report',
-        description: 'Broadcast final delivery sign-off report with artifact diffs and SLA summary',
-        assignedTo: pmId,
-        delegatedBy: testerId,
-        delegatedByRole: testerRole,
-        column: 'backlog',
-        skill: 'pm-reporting',
-        progress: 0,
-        updatedAt: new Date().toISOString(),
-      },
-    ];
-
+    if (this.agents.size === 0) return;
+    const initialTasks = OrchestrationRules.getInitialDemoTasks(this.agents);
     for (const t of initialTasks) {
       this.tasks.set(t.id, t);
     }
+  }
+
+  /**
+   * Deconstructs a high-level feature goal into 4 sequenced tasks across the team
+   * using OrchestrationRules and registers them live on the Authoritative Task Board.
+   */
+  breakdownAndAssignTasks(goal, assignerId) {
+    if (!goal || typeof goal !== 'string') return [];
+    const cleanGoal = goal.trim();
+    if (this.agents.size === 0) return [];
+
+    const { pm, lead } = OrchestrationRules.resolveTeamRoles(this.agents);
+    const decomposed = OrchestrationRules.decomposeSprintGoal(cleanGoal, this.agents);
+
+    // Store in tasks map
+    for (const task of decomposed) {
+      this.tasks.set(task.id, task);
+    }
+
+    // Set lead & dev activity
+    lead.status = 'working';
+    lead.currentTask = decomposed[0].title;
+    lead.activityMessage = `Breaking down & architecting: ${cleanGoal}`;
+
+    // Record inter-agent communication
+    this.recordCommunication({
+      fromAgentId: pm.id,
+      fromAgentName: pm.name,
+      fromAgentRole: pm.role,
+      toAgentId: lead.id,
+      toAgentName: lead.name,
+      toAgentRole: lead.role,
+      taskKey: decomposed[0].key,
+      taskTitle: decomposed[0].title,
+      message: `Decomposed feature goal "${cleanGoal}" into 4 sprint deliverables on the Authoritative Task Board. Assigning Architecture Spike to Tech Lead.`,
+      channel: 'subagent_delegation',
+      timestamp: new Date().toISOString(),
+    });
+
+    this.recordRoleInvocation(pm.id, 8);
+    this.recordRoleInvocation(lead.id, 12);
+    this.recordSkillUsage('task-decomposition', pm.id, 15);
+    this.recordSkillUsage('task-decomposition', lead.id, 15);
+
+    // Update workflow title & phase
+    this.workflowTitle = `${this.projectName} • ${cleanGoal.slice(0, 32)}`;
+    this.currentPhase = 'Sprint Execution';
+    this.latestMilestone = `Task Decomposed & Assigned: ${cleanGoal}`;
+    this.latestMilestoneAgentId = pm.id;
+
+    // Broadcast state update to all visualizers
+    this.broadcast({
+      type: 'SYNC_STATE',
+      data: this.getStateSnapshot(),
+    });
+
+    return decomposed;
   }
 
   initDefaultToolAnalytics() {
@@ -385,166 +312,8 @@ class EventBus extends EventEmitter {
 
   initDefaultFileChanges() {
     this.fileChanges = [];
-    const agentList = Array.from(this.agents.values());
-    const findAgent = (q, fallbackIdx) => {
-      const match = agentList.find(
-        (a) =>
-          (a.id && a.id.toLowerCase().includes(q)) ||
-          (a.role && a.role.toLowerCase().includes(q))
-      );
-      return match || agentList[fallbackIdx % (agentList.length || 1)] || { id: 'developer', name: 'Developer', role: 'Software Engineer' };
-    };
-
-    const dev = findAgent('dev', 2);
-    const lead = findAgent('lead', 1);
-    const tester = findAgent('test', 3);
-
-    const now = Date.now();
-    const records = [
-      {
-        id: 'fc-1',
-        filePath: 'app/src/main/java/com/stc/business/ui/screens/CompanyProfileScreen.kt',
-        fileName: 'CompanyProfileScreen.kt',
-        action: 'modified',
-        agentId: dev.id,
-        agentName: dev.name,
-        agentRole: dev.role,
-        timestamp: new Date(now - 120000).toISOString(),
-        summary: 'Added reactive company data state binding and walkthrough overlay anchor point',
-        instruction: 'Bind ViewModel StateFlow to Compose UI and inject WalkthroughTooltip anchor',
-        linesAdded: 38,
-        contentPreview: `@Composable
-fun CompanyProfileScreen(
-    viewModel: CompanyProfileViewModel = hiltViewModel(),
-    onNavigateBack: () -> Unit
-) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val scaffoldState = rememberScaffoldState()
-
-    Scaffold(
-        scaffoldState = scaffoldState,
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.company_profile_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
-    ) { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-            when (val state = uiState) {
-                is CompanyUiState.Loading -> CircularProgressIndicator(Modifier.align(Alignment.Center))
-                is CompanyUiState.Success -> {
-                    CompanyContent(
-                        company = state.company,
-                        modifier = Modifier.walkthroughAnchor("company_card_step")
-                    )
-                }
-                is CompanyUiState.Error -> ErrorBanner(message = state.message)
-            }
-        }
-    }
-}`,
-      },
-      {
-        id: 'fc-2',
-        filePath: 'app/src/main/java/com/stc/business/ui/components/WalkThroughOverlay.kt',
-        fileName: 'WalkThroughOverlay.kt',
-        action: 'created',
-        agentId: dev.id,
-        agentName: dev.name,
-        agentRole: dev.role,
-        timestamp: new Date(now - 240000).toISOString(),
-        summary: 'Created full-screen walkthrough spotlight mask with smooth alpha transitions',
-        instruction: 'Implement WalkThroughOverlay with canvas clip path and pulse animation',
-        linesAdded: 45,
-        contentPreview: `@Composable
-fun WalkThroughOverlay(
-    activeStep: WalkThroughStep?,
-    onDismiss: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    if (activeStep == null) return
-
-    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.08f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
-
-    Canvas(modifier = modifier.fillMaxSize().clickable { onDismiss() }) {
-        val targetRect = activeStep.bounds ?: return@Canvas
-        drawRect(color = Color.Black.copy(alpha = 0.65f))
-        drawCircle(
-            color = Color.Transparent,
-            radius = (targetRect.maxDimension / 2f + 16.dp.toPx()) * pulseScale,
-            center = targetRect.center,
-            blendMode = BlendMode.Clear
-        )
-    }
-}`,
-      },
-      {
-        id: 'fc-3',
-        filePath: 'app/src/test/java/com/stc/business/ui/screens/CompanyProfileViewModelTest.kt',
-        fileName: 'CompanyProfileViewModelTest.kt',
-        action: 'created',
-        agentId: tester.id,
-        agentName: tester.name,
-        agentRole: tester.role,
-        timestamp: new Date(now - 360000).toISOString(),
-        summary: 'Authored AAA unit tests for ViewModel StateFlow emission and error recovery',
-        instruction: 'Add unit tests ensuring CompanyUiState emits Success and handles network exceptions',
-        linesAdded: 32,
-        contentPreview: `@OptIn(ExperimentalCoroutinesApi::class)
-class CompanyProfileViewModelTest {
-    @get:Rule val mainDispatcherRule = MainDispatcherRule()
-    private val repository = mockk<CompanyRepository>()
-
-    @Test
-    fun \`when repository succeeds uiState emits Success with company data\`() = runTest {
-        val fakeCompany = Company(id = "comp_99", name = "STC Business Solutions")
-        coEvery { repository.fetchCompanyDetails("comp_99") } returns Result.success(fakeCompany)
-
-        val viewModel = CompanyProfileViewModel(repository)
-        viewModel.loadCompany("comp_99")
-
-        viewModel.uiState.test {
-            assertEquals(CompanyUiState.Loading, awaitItem())
-            val success = awaitItem() as CompanyUiState.Success
-            assertEquals("STC Business Solutions", success.company.name)
-        }
-    }
-}`,
-      },
-      {
-        id: 'fc-4',
-        filePath: 'docs/architecture/walkthrough-component-spec.md',
-        fileName: 'walkthrough-component-spec.md',
-        action: 'modified',
-        agentId: lead.id,
-        agentName: lead.name,
-        agentRole: lead.role,
-        timestamp: new Date(now - 480000).toISOString(),
-        summary: 'Pre-mapped UI anchor coordinates, boundary contracts, and unit test specifications',
-        instruction: 'Define interface contract for WalkThroughCoordinator and state machine',
-        linesAdded: 25,
-        contentPreview: `### Walkthrough Component Architecture Specification
-- **Coordinator**: \`WalkThroughCoordinator\` observes global user progression.
-- **State Machine**: Unidirectional flow: \`Idle\` -> \`Active(step)\` -> \`Transitioning\` -> \`Completed\`.
-- **Spotlight Bounds**: Screen-relative \`Rect\` measured via \`onGloballyPositioned\` modifier.
-- **Testing Contract**: 100% coverage on state transitions and back-press dismissal.`,
-      },
-    ];
-
+    if (this.agents.size === 0) return;
+    const records = OrchestrationRules.getDefaultFileChanges(this.agents);
     for (const rec of records) {
       this.recordFileChange(rec);
     }
@@ -552,6 +321,7 @@ class CompanyProfileViewModelTest {
 
   recordFileChange(change) {
     if (!change || !change.filePath) return;
+    if (this.isBeforeReset(change.timestamp)) return;
     const fName = change.fileName || path.basename(change.filePath);
     const content = change.contentPreview || change.codeContent || change.replacementContent || '';
     const record = {
@@ -580,6 +350,51 @@ class CompanyProfileViewModelTest {
       this.fileChanges.unshift(record);
       if (this.fileChanges.length > 200) {
         this.fileChanges.pop();
+      }
+    }
+    return record;
+  }
+
+  initDefaultCommunications() {
+    this.communications = [];
+    if (this.agents.size === 0) return;
+    const records = OrchestrationRules.getDefaultCommunications(this.agents);
+    for (const rec of records) {
+      this.recordCommunication(rec);
+    }
+  }
+
+  recordCommunication(comm) {
+    if (!comm || (!comm.message && !comm.taskTitle)) return;
+    if (this.isBeforeReset(comm.timestamp)) return;
+    const fromAgent = this.agents.get(comm.fromAgentId) || { id: comm.fromAgentId, name: comm.fromAgentName || 'Agent', role: comm.fromAgentRole || 'AI Agent' };
+    const toAgent = this.agents.get(comm.toAgentId) || { id: comm.toAgentId, name: comm.toAgentName || 'Agent', role: comm.toAgentRole || 'AI Agent' };
+
+    const record = {
+      id: comm.id || `comm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      fromAgentId: fromAgent.id,
+      fromAgentName: fromAgent.name,
+      fromAgentRole: fromAgent.role,
+      toAgentId: toAgent.id,
+      toAgentName: toAgent.name,
+      toAgentRole: toAgent.role,
+      taskTitle: comm.taskTitle || comm.task || 'Task Delegation',
+      taskKey: comm.taskKey || comm.key || 'TASK',
+      message: comm.message || comm.details || '',
+      channel: comm.channel || 'subagent_delegation',
+      timestamp: comm.timestamp || new Date().toISOString(),
+    };
+
+    // Avoid duplicate rapid recordings of the exact same message
+    const existingIdx = this.communications.findIndex(
+      (c) => c.fromAgentId === record.fromAgentId && c.toAgentId === record.toAgentId && c.message === record.message
+    );
+    if (existingIdx !== -1) {
+      this.communications[existingIdx] = record;
+    } else {
+      this.communications.unshift(record);
+      if (this.communications.length > 200) {
+        this.communications.pop();
       }
     }
     return record;
@@ -622,9 +437,21 @@ class CompanyProfileViewModelTest {
   }
 
   /**
+   * Returns true when a source timestamp predates the last user reset.
+   * Watchers backfill recent transcript history (last ~20KB) when they attach to a
+   * conversation, so without this guard old activity reappears right after Reset.
+   */
+  isBeforeReset(ts) {
+    if (!this.clearedAt || !ts) return false;
+    const ms = typeof ts === 'number' ? ts : Date.parse(ts);
+    return Number.isFinite(ms) && ms < this.clearedAt;
+  }
+
+  /**
    * Normalized event emission
    */
   emitEvent(rawEvent) {
+    if (rawEvent && this.isBeforeReset(rawEvent.timestamp)) return null;
     const eventId = rawEvent.eventId || `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const timestamp = rawEvent.timestamp || new Date().toISOString();
     const agentId = rawEvent.agentId || 'project-manager';
@@ -687,10 +514,25 @@ class CompanyProfileViewModelTest {
       const toId = payload.toAgent || payload.handoffTo;
       const taskTitle = payload.task || payload.taskTitle || 'Task Delegation';
 
-      const fromAgent = this.agents.get(fromId);
-      const toAgent = this.agents.get(toId);
+      const agentList = Array.from(this.agents.values());
+      const fromAgent =
+        this.agents.get(fromId) ||
+        agentList.find((a) => a.name === fromId || a.id.toLowerCase() === (fromId || '').toLowerCase());
+      const toAgent =
+        this.agents.get(toId) ||
+        agentList.find((a) => a.name === toId || a.id.toLowerCase() === (toId || '').toLowerCase());
 
       if (fromAgent && toAgent) {
+        payload.handoffFrom = fromAgent.name;
+        payload.handoffFromName = fromAgent.name;
+        payload.handoffFromRole = fromAgent.role;
+        payload.fromBadge = fromAgent.badge || 'PM';
+        payload.handoffTo = toAgent.name;
+        payload.handoffToName = toAgent.name;
+        payload.handoffToRole = toAgent.role;
+        payload.toBadge = toAgent.badge || 'LEAD';
+        payload.taskTitle = taskTitle;
+
         fromAgent.status = 'delegating';
         fromAgent.activityMessage = `Handing off: ${taskTitle} to ${toAgent.name}`;
         toAgent.status = 'waiting';
@@ -698,8 +540,14 @@ class CompanyProfileViewModelTest {
 
         this.activeHandoff = {
           id: `handoff_${Date.now()}`,
-          fromId,
-          toId,
+          fromId: fromAgent.id,
+          toId: toAgent.id,
+          fromName: fromAgent.name,
+          fromRole: fromAgent.role,
+          fromBadge: fromAgent.badge || 'PM',
+          toName: toAgent.name,
+          toRole: toAgent.role,
+          toBadge: toAgent.badge || 'LEAD',
           fromPos: { ...fromAgent.currentPosition },
           toPos: { ...toAgent.theme.deskPosition },
           taskTitle,
@@ -709,13 +557,28 @@ class CompanyProfileViewModelTest {
         };
 
         // Complete handoff after animation period
-        setTimeout(() => {
+        if (this.handoffTimeout) {
+          clearTimeout(this.handoffTimeout);
+        }
+        this.handoffTimeout = setTimeout(() => {
+          this.handoffTimeout = null;
           if (this.activeHandoff && this.activeHandoff.id.startsWith('handoff_')) {
             this.activeHandoff = null;
             if (toAgent) {
               toAgent.status = 'working';
               toAgent.activityMessage = `Accepted task: ${taskTitle}`;
               toAgent.currentTask = taskTitle;
+
+              if (!this.isDemoRunning) {
+                this.setAgentBusyTimer(toAgent.id, () => {
+                  if (!this.isDemoRunning && toAgent.status === 'working') {
+                    toAgent.status = 'available';
+                    toAgent.currentTask = null;
+                    toAgent.activityMessage = 'Ready at workstation';
+                    this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+                  }
+                }, 4500);
+              }
             }
             if (fromAgent) {
               fromAgent.status = 'available';
@@ -734,6 +597,21 @@ class CompanyProfileViewModelTest {
         if (payload.allowedSkill) {
           this.recordSkillUsage(payload.allowedSkill, toId, 15);
         }
+
+        // Record inter-agent communication dialogue
+        this.recordCommunication({
+          fromAgentId: fromId,
+          fromAgentName: fromAgent.name,
+          fromAgentRole: fromAgent.role,
+          toAgentId: toId,
+          toAgentName: toAgent.name,
+          toAgentRole: toAgent.role,
+          taskTitle,
+          taskKey: payload.key || 'TASK',
+          message: payload.details || payload.task || `Handed over ${taskTitle}`,
+          channel: OrchestrationRules.inferChannel(fromId, toId, payload.channel),
+          timestamp: event.timestamp || new Date().toISOString(),
+        });
       }
     }
 
@@ -762,6 +640,16 @@ class CompanyProfileViewModelTest {
           agent.lastTool = payload.tool || agent.lastTool;
           agent.activityMessage = `Running tool: ${payload.tool || 'Action'}`;
           this.recordToolUsage(agentId, payload.tool || 'tool_execution', 5);
+
+          // Auto-revert back to available standby state
+          this.setAgentBusyTimer(agentId, () => {
+            if (!this.isDemoRunning && (agent.status === 'working' || agent.status === 'coding')) {
+              agent.status = 'available';
+              agent.currentTask = null;
+              agent.activityMessage = 'Ready at workstation';
+              this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+            }
+          }, 4000);
           break;
 
         case 'command_executing':
@@ -771,6 +659,16 @@ class CompanyProfileViewModelTest {
             const cmdName = payload.command ? payload.command.split(' ')[0] : 'terminal_command';
             this.recordToolUsage(agentId, cmdName, 8);
           }
+
+          // Auto-revert back to available standby state
+          this.setAgentBusyTimer(agentId, () => {
+            if (!this.isDemoRunning && (agent.status === 'working' || agent.status === 'coding' || agent.status === 'testing')) {
+              agent.status = 'available';
+              agent.currentTask = null;
+              agent.activityMessage = 'Ready at workstation';
+              this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+            }
+          }, 4000);
           break;
 
         case 'file_modified':
@@ -778,6 +676,16 @@ class CompanyProfileViewModelTest {
           agent.currentFile = payload.file;
           agent.activityMessage = `Editing: ${payload.file ? payload.file.split('/').pop() : 'Codebase'}`;
           this.recordToolUsage(agentId, payload.tool || 'replace_file_content', 6);
+
+          // Auto-revert back to available standby state
+          this.setAgentBusyTimer(agentId, () => {
+            if (!this.isDemoRunning && (agent.status === 'coding' || agent.status === 'working')) {
+              agent.status = 'available';
+              agent.currentTask = null;
+              agent.activityMessage = 'Ready at workstation';
+              this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+            }
+          }, 4000);
           break;
 
         case 'planning_started':
@@ -795,7 +703,7 @@ class CompanyProfileViewModelTest {
             agent.taskDurationSec = dur;
             agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
           }
-          setTimeout(() => {
+          this.setAgentBusyTimer(agent.id, () => {
             if (agent.status === 'celebrating') {
               agent.status = 'available';
               agent.activityMessage = 'Ready at workstation';
@@ -817,7 +725,7 @@ class CompanyProfileViewModelTest {
               agent.taskDurationSec = dur;
               agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
             }
-            setTimeout(() => {
+            this.setAgentBusyTimer(agent.id, () => {
               if (agent.status === 'celebrating') {
                 agent.status = 'available';
                 agent.activityMessage = 'Ready at workstation';
@@ -854,11 +762,32 @@ class CompanyProfileViewModelTest {
       });
     }
 
-    // 6. Update or auto-create Kanban tasks
-    if (payload.taskId) {
-      if (!this.tasks.has(payload.taskId)) {
-        this.tasks.set(payload.taskId, {
-          id: payload.taskId,
+    // 6. Update or auto-create Kanban tasks (aggregating micro-actions into high-level sprint deliverables)
+    let targetTaskId = payload.taskId;
+    if (targetTaskId && !this.tasks.has(targetTaskId)) {
+      if (
+        targetTaskId.startsWith('TASK-FILE-') ||
+        targetTaskId.startsWith('TASK-CMD-') ||
+        targetTaskId.startsWith('TASK-REQ-')
+      ) {
+        const isTest = (payload.file && payload.file.toLowerCase().includes('test')) || (payload.command && (payload.command.includes('test') || payload.command.includes('gradle')));
+        const isDoc = payload.file && (payload.file.endsWith('.md') || payload.file.endsWith('.yaml') || payload.file.endsWith('.json'));
+        if (isTest && this.tasks.has('DELIV-3')) {
+          targetTaskId = 'DELIV-3';
+        } else if (isDoc && this.tasks.has('DELIV-1')) {
+          targetTaskId = 'DELIV-1';
+        } else if (this.tasks.has('DELIV-2')) {
+          targetTaskId = 'DELIV-2';
+        } else if (this.tasks.has('DELIV-1')) {
+          targetTaskId = 'DELIV-1';
+        }
+      }
+    }
+
+    if (targetTaskId) {
+      if (!this.tasks.has(targetTaskId)) {
+        this.tasks.set(targetTaskId, {
+          id: targetTaskId,
           key: payload.key || 'TASK-1',
           title: payload.task || 'Active Task',
           description: payload.details || 'Task executing in workspace',
@@ -871,7 +800,7 @@ class CompanyProfileViewModelTest {
           updatedAt: new Date().toISOString(),
         });
       }
-      const task = this.tasks.get(payload.taskId);
+      const task = this.tasks.get(targetTaskId);
       if (task) {
         if (payload.column) {
           task.column = payload.column;
@@ -885,7 +814,7 @@ class CompanyProfileViewModelTest {
               agent.taskDurationSec = dur;
               agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
             }
-            setTimeout(() => {
+            this.setAgentBusyTimer(agent.id, () => {
               if (agent.status === 'celebrating') {
                 agent.status = 'available';
                 agent.activityMessage = 'Ready at workstation';
@@ -936,9 +865,20 @@ class CompanyProfileViewModelTest {
     }
   }
 
+  consolidateTasks() {
+    const microPrefixes = ['TASK-FILE-', 'TASK-CMD-', 'TASK-REQ-'];
+    for (const id of Array.from(this.tasks.keys())) {
+      if (microPrefixes.some((p) => id.startsWith(p))) {
+        this.tasks.delete(id);
+      }
+    }
+  }
+
   getStateSnapshot() {
+    this.consolidateTasks();
     const agentsList = Array.from(this.agents.values());
-    const tasksList = Array.from(this.tasks.values());
+    const hasAgents = agentsList.length > 0;
+    const tasksList = hasAgents ? Array.from(this.tasks.values()) : [];
 
     const activeCount = agentsList.filter(a => a.status !== 'available' && a.status !== 'waiting').length;
     const waitingCount = agentsList.filter(a => a.status === 'available' || a.status === 'waiting').length;
@@ -949,29 +889,37 @@ class CompanyProfileViewModelTest {
       workflow: {
         id: this.workflowId,
         projectName: this.projectName,
+        projectPath: getProjectRoot(),
+        platform: process.platform,
         title: this.workflowTitle,
         phase: this.currentPhase,
         startTime: this.workflowStartTime,
         elapsedSeconds: Math.floor((Date.now() - this.workflowStartTime) / 1000),
         milestone: this.latestMilestone,
         milestoneAgentId: this.latestMilestoneAgentId || 'project-manager',
+        isDemoRunning: this.isDemoRunning || false,
+        hasAgents,
       },
+      hasCustomAgentsConfig: hasAgents,
       metrics: {
         totalAgents: agentsList.length,
-        activeAgents: activeCount,
-        waitingAgents: waitingCount,
-        completedTasks,
-        failedTasks,
+        activeAgents: hasAgents ? activeCount : 0,
+        waitingAgents: hasAgents ? waitingCount : 0,
+        completedTasks: hasAgents ? completedTasks : 0,
+        failedTasks: hasAgents ? failedTasks : 0,
         totalTasks: tasksList.length,
       },
       agents: agentsList,
       tasks: tasksList,
-      toolUsageAnalytics: Array.from(this.toolUsageMap.values()).sort((a, b) => b.totalDurationSec - a.totalDurationSec),
-      skillUsageAnalytics: Array.from(this.skillUsageMap.values()).sort((a, b) => b.count - a.count),
-      roleInvocationAnalytics: Array.from(this.roleInvocationMap.values()).sort((a, b) => b.invocations - a.invocations),
-      fileChanges: this.fileChanges,
-      activeHandoff: this.activeHandoff,
+      toolUsageAnalytics: hasAgents ? Array.from(this.toolUsageMap.values()).sort((a, b) => b.totalDurationSec - a.totalDurationSec) : [],
+      skillUsageAnalytics: hasAgents ? Array.from(this.skillUsageMap.values()).sort((a, b) => b.count - a.count) : [],
+      roleInvocationAnalytics: hasAgents ? Array.from(this.roleInvocationMap.values()).sort((a, b) => b.invocations - a.invocations) : [],
+      fileChanges: hasAgents ? this.fileChanges : [],
+      communications: hasAgents ? this.communications : [],
+      activeHandoff: hasAgents ? this.activeHandoff : null,
       connectedViewers: this.wsClients.size,
+      isDemoRunning: this.isDemoRunning || false,
+      events: hasAgents ? this.events.slice(0, 60) : [],
     };
   }
 
@@ -990,7 +938,12 @@ class CompanyProfileViewModelTest {
     this.initDefaultSkillAnalytics();
     this.roleInvocationMap = new Map();
     this.initDefaultRoleAnalytics();
+    // Demo seed records are intentionally backdated; don't let the reset cutoff drop them.
+    const savedClearedAt = this.clearedAt;
+    this.clearedAt = 0;
     this.initDefaultFileChanges();
+    this.initDefaultCommunications();
+    this.clearedAt = savedClearedAt;
     this.activeHandoff = null;
     this.broadcast({
       type: 'SYNC_STATE',
@@ -1002,18 +955,88 @@ class CompanyProfileViewModelTest {
     return this.loadDemoWorkflow(workflowTitle);
   }
 
-  clearState() {
-    this.events = [];
+  resetForProject(projectDir, newAgents) {
+    this.clearedAt = Date.now();
+    this.isDemoRunning = false;
+    this.clearAllAgentBusyTimers();
+    if (this.handoffTimeout) {
+      clearTimeout(this.handoffTimeout);
+      this.handoffTimeout = null;
+    }
+
+    // Clear previous project's tasks, events, and analytics
     this.tasks = new Map();
+    this.events = [];
     this.toolUsageMap = new Map();
     this.skillUsageMap = new Map();
     this.fileChanges = [];
+    this.communications = [];
+    this.activeHandoff = null;
+
+    // Update workspace identity
+    this.projectName = path.basename(projectDir) || 'Active Project';
+    this.workflowId = `WORKFLOW-${this.projectName.toUpperCase().replace(/[^A-Z0-9]/g, '-') || 'MAIN'}`;
+    this.workflowTitle = `${this.projectName} • Standby`;
+    this.currentPhase = 'Standby (Ready)';
+    this.latestMilestone = `Switched workspace to: ${this.projectName}. Ready for AI agent tasks.`;
+    this.workflowStartTime = Date.now();
+
+    // Update discovered agents
+    this.agents.clear();
+    const agentsList = Array.isArray(newAgents) ? newAgents : discoverAgents(projectDir);
+    for (const a of agentsList) {
+      a.status = 'available';
+      a.currentTask = null;
+      a.currentFile = null;
+      a.activityMessage = 'Ready at workstation';
+      a.taskStartedAt = null;
+      a.taskCompletedAt = null;
+      a.taskDurationSec = null;
+      this.agents.set(a.id, a);
+    }
+
+    if (this.agents.size > 0) {
+      this.latestMilestoneAgentId = this.agents.keys().next().value;
+      this.latestMilestone = `Switched workspace to: ${this.projectName}. Ready for AI agent tasks.`;
+    } else {
+      this.latestMilestoneAgentId = null;
+      this.latestMilestone = `⚠️ No agents found in ${this.projectName}. Click "Setup Team" to create your roles & agents.`;
+    }
+
+    // Initialize clean standby analytics
+    this.initStandbyRoleAnalytics();
+
+    // Broadcast full clean snapshot
+    this.broadcast({
+      type: 'SYNC_STATE',
+      data: this.getStateSnapshot(),
+    });
+  }
+
+  clearState() {
+    // Reset cutoff: anything that happened before this moment is history and must not
+    // be replayed into memory by the transcript/log tailers (see isBeforeReset()).
+    this.clearedAt = Date.now();
+    this.events = [];
+    this.tasks = new Map();
+    this.isDemoRunning = false;
+    this.roleInvocationMap = new Map();
+    this.toolUsageMap = new Map();
+    this.skillUsageMap = new Map();
+    this.fileChanges = [];
+    this.communications = [];
+    if (this.handoffTimeout) {
+      clearTimeout(this.handoffTimeout);
+      this.handoffTimeout = null;
+    }
     this.activeHandoff = null;
     this.workflowStartTime = Date.now();
-    this.currentPhase = 'Standby & Listening';
-    this.latestMilestone = 'Office state cleared. Standing by for new agent tasks.';
-    this.latestMilestoneAgentId = 'project-manager';
+    this.workflowTitle = 'Standby (No active tasks)';
+    this.currentPhase = 'Awaiting Sprint Tasks';
+    this.latestMilestone = `👉 Standby on ${this.projectName || 'workspace'}: Ready for agent tasks or click "Sprint Demo".`;
+    this.latestMilestoneAgentId = this.agents.size > 0 ? this.agents.keys().next().value : 'project-manager';
 
+    this.clearAllAgentBusyTimers();
     for (const [id, agent] of this.agents.entries()) {
       agent.status = 'available';
       agent.currentTask = null;

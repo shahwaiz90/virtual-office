@@ -17,6 +17,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { getProjectRoot, findAgentsConfigFile } = require('./agentDiscovery');
+const { findOrAllocatePort, openInBrowser, isPortAvailable } = require('./instanceRegistry');
 
 // Parse CLI Flags
 function parseArgs() {
@@ -118,39 +119,6 @@ function ensureFrontendBuilt(forceBuild = false) {
   }
 }
 
-function openInBrowser(targetUrl) {
-  console.log(`🌐 Launching dashboard at ${targetUrl}...`);
-  const platform = os.platform();
-
-  try {
-    if (platform === 'darwin') {
-      // macOS: Prefer Google Chrome, fallback to default browser
-      try {
-        execSync(`open -a "Google Chrome" "${targetUrl}"`, { stdio: 'ignore' });
-        console.log('✅ Google Chrome opened successfully.');
-        return true;
-      } catch (errChrome) {
-        execSync(`open "${targetUrl}"`, { stdio: 'ignore' });
-        console.log('✅ Opened in default browser.');
-        return true;
-      }
-    } else if (platform === 'win32') {
-      // Windows
-      execSync(`start "" "${targetUrl}"`, { stdio: 'ignore' });
-      console.log('✅ Opened in Windows browser.');
-      return true;
-    } else {
-      // Linux / Unix
-      execSync(`xdg-open "${targetUrl}"`, { stdio: 'ignore' });
-      console.log('✅ Opened in default Linux browser.');
-      return true;
-    }
-  } catch (errDefault) {
-    console.warn(`⚠️ Could not automatically launch browser. Please navigate to: ${targetUrl}`);
-    return false;
-  }
-}
-
 async function verifyBrowserReadiness(port, projectDir) {
   console.log('🔍 Discovering agent configurations and server readiness...');
   return new Promise((resolve) => {
@@ -188,8 +156,44 @@ async function main() {
     process.exit(0);
   }
 
-  const { port, projectDir, openBrowser, forceBuild } = options;
+  const { port: requestedPort, projectDir, openBrowser, forceBuild } = options;
+
+  ensureFrontendBuilt(forceBuild);
+
+  // Automatic Port Discovery & Allocation:
+  // - If port 3000 is already watching the SAME project directory, reuse it and open the browser tab.
+  // - If occupied by an instance watching a DIFFERENT project directory, find next available port (3001, 3002...) and bind.
+  const portResult = await findOrAllocatePort(projectDir, requestedPort);
+  const port = portResult.port;
   const url = `http://localhost:${port}`;
+
+  if (portResult.action === 'reuse') {
+    console.log(`\n=======================================================`);
+    console.log(`🏢 AI AGENT VIRTUAL OFFICE VISUALIZER`);
+    console.log(`📁 Project Target : ${projectDir}`);
+    console.log(`🔌 Port (Reused)  : ${port}`);
+    console.log(`⚡ Existing instance already watching this project!`);
+    console.log(`=======================================================\n`);
+
+    if (openBrowser) {
+      openInBrowser(url);
+    }
+
+    await verifyBrowserReadiness(port, projectDir);
+
+    console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`✅ REUSED EXISTING VIRTUAL OFFICE INSTANCE`);
+    console.log(`📍 Dashboard : ${url}`);
+    console.log(`📡 WebSocket : ws://localhost:${port}/ws`);
+    console.log(`📁 Project   : ${projectDir}`);
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+
+    process.exit(0);
+  }
+
+  if (portResult.occupiedPreferred) {
+    console.log(`⚡ Port ${portResult.occupiedPreferred} in use by another instance/app. Automatically allocated port ${port} for: ${projectDir}`);
+  }
 
   // Export target project directory to environment
   process.env.PROJECT_DIR = projectDir;
@@ -206,8 +210,6 @@ async function main() {
   }
   console.log(`🔌 Port           : ${port}`);
   console.log(`=======================================================\n`);
-
-  ensureFrontendBuilt(forceBuild);
 
   const alreadyRunning = await isServerRunning(port);
   if (!alreadyRunning) {
@@ -226,8 +228,8 @@ async function main() {
 
     // Wait for server to come up
     let attempts = 0;
-    while (attempts < 20) {
-      await new Promise((r) => setTimeout(r, 300));
+    while (attempts < 25) {
+      await new Promise((r) => setTimeout(r, 250));
       if (await isServerRunning(port)) break;
       attempts++;
     }

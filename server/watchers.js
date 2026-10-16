@@ -1,21 +1,21 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const cp = require('child_process');
 const chokidar = require('chokidar');
 const { eventBus } = require('./eventBus');
 const { getProjectRoot } = require('./agentDiscovery');
 
-const PROJECT_ROOT = getProjectRoot();
-
 /**
- * Validates whether a file path or directory strictly belongs to active PROJECT_ROOT
+ * Validates whether a file path or directory strictly belongs to the currently active project root
  */
 function isPathInProject(targetPath) {
   if (!targetPath) return false;
-  if (!PROJECT_ROOT) return true;
+  const root = getProjectRoot();
+  if (!root) return true;
   try {
     const normTarget = path.resolve(targetPath).toLowerCase();
-    const normRoot = path.resolve(PROJECT_ROOT).toLowerCase();
+    const normRoot = path.resolve(root).toLowerCase();
     return (
       normTarget === normRoot ||
       normTarget.startsWith(normRoot + path.sep.toLowerCase()) ||
@@ -27,6 +27,183 @@ function isPathInProject(targetPath) {
 }
 
 const conversationProjectMatch = new Map();
+let transcriptPollInterval = null;
+
+/**
+ * Cleans extracted URI from SQLite metadata or buffer scan:
+ * - Strips trailing non-printable / binary protobuf tag/length bytes (e.g. z\ufffd, B\ufffd, control chars)
+ * - Strips trailing punctuation, brackets, quotes, or markdown artifacts (e.g. `))`, `]`)
+ * - Safely decodes URL-encoded sequences (%20, etc.)
+ * - Normalizes Windows drive letters and leading POSIX slashes
+ */
+function cleanExtractedUri(rawUri) {
+  if (!rawUri || typeof rawUri !== 'string') return '';
+
+  // 1. Strip trailing non-printable, replacement, or control characters
+  let s = rawUri.replace(/[\x00-\x1f\x7f-\xff\ufffd]+$/g, '');
+
+  // 2. Strip trailing markdown or punctuation artifacts like ), ], }, >, ;, ', ", etc.
+  s = s.replace(/[)\]}>"'\s,;:?#]+$/g, '');
+
+  // 3. Strip trailing malformed percent sequences (e.g. single % or %X at end of string)
+  s = s.replace(/%[0-9a-fA-F]?$/g, '');
+
+  // 4. Safely decode URL-encoded components
+  try {
+    s = decodeURIComponent(s);
+  } catch {
+    s = s.replace(/%[^0-9a-fA-F]{0,2}$/g, '');
+    try {
+      s = decodeURIComponent(s);
+    } catch {
+      // Keep s as is if decoding fails
+    }
+  }
+
+  s = s.trim();
+
+  // 5. Re-strip any trailing non-path or replacement characters revealed after decoding
+  s = s.replace(/[\x00-\x1f\x7f-\xff\ufffd)\]}>"'\s,;:?#]+$/g, '');
+
+  // 6. Normalize leading slash / Windows drive letter
+  s = s.replace(/^\/([a-zA-Z]:)/, '$1');
+  if (process.platform !== 'win32' && !s.startsWith('/')) {
+    s = '/' + s;
+  }
+
+  // 7. Check if stripping a single trailing character (such as protobuf ASCII tag byte 'B', 'z', 'J') matches project root
+  if (!isPathInProject(s) && s.length > 2) {
+    const stripped = s.slice(0, -1);
+    if (isPathInProject(stripped)) {
+      return stripped;
+    }
+  }
+
+  return s;
+}
+
+/**
+ * Resolves the workspace directory for an Antigravity conversation by inspecting its SQLite DB.
+ * Returns:
+ *   true: if conversation workspace matches current project root
+ *   false: if conversation workspace belongs to a different project
+ *   undefined: if conversation DB or workspace URI could not be determined
+ */
+function resolveConversationProject(convId, depth = 0) {
+  if (!convId || typeof convId !== 'string' || depth > 3) return undefined;
+
+  if (conversationProjectMatch.has(convId)) {
+    return conversationProjectMatch.get(convId);
+  }
+
+  const homeDir = os.homedir();
+  const possibleDbPaths = [
+    path.join(homeDir, '.gemini/antigravity/conversations', `${convId}.db`),
+    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'gemini/antigravity/conversations', `${convId}.db`) : null,
+    path.join(homeDir, '.config/antigravity/conversations', `${convId}.db`),
+  ].filter(Boolean);
+
+  let dbPath = null;
+  for (const candidate of possibleDbPaths) {
+    if (fs.existsSync(candidate)) {
+      dbPath = candidate;
+      break;
+    }
+  }
+
+  if (!dbPath) {
+    return undefined;
+  }
+
+  const extractedUris = [];
+
+  // 1. Primary: Fast SQLite query of trajectory_metadata_blob
+  try {
+    const raw = cp.execFileSync(
+      'sqlite3',
+      [dbPath, "SELECT quote(data) FROM trajectory_metadata_blob WHERE id='main';"],
+      { encoding: 'utf8', timeout: 1500, stdio: ['pipe', 'pipe', 'ignore'] }
+    );
+    const hex = raw.trim().replace(/^X'|'$/g, '');
+    if (hex) {
+      const decodedStr = Buffer.from(hex, 'hex').toString('utf8');
+      const matches = [...decodedStr.matchAll(/file:\/\/\/([^\x00-\x1f\x7f"<>\x27\n\r]+)/g)];
+      for (const m of matches) {
+        extractedUris.push(m[1]);
+      }
+    }
+  } catch (err) {
+    // sqlite3 CLI execution error or timeout
+  }
+
+  // 2. Fallback: Direct buffer scan (up to 1MB)
+  if (extractedUris.length === 0) {
+    try {
+      const stats = fs.statSync(dbPath);
+      const readSize = Math.min(stats.size, 1024 * 1024);
+      const fd = fs.openSync(dbPath, 'r');
+      const buf = Buffer.alloc(readSize);
+      fs.readSync(fd, buf, 0, readSize, 0);
+      fs.closeSync(fd);
+      const text = buf.toString('utf8');
+      const matches = [...text.matchAll(/file:\/\/\/([^\x00-\x1f\x7f"<>\x27\n\r]+)/g)];
+      for (const m of matches) {
+        extractedUris.push(m[1]);
+      }
+    } catch (err) {
+      // ignore buffer read errors
+    }
+  }
+
+  if (extractedUris.length === 0) {
+    return undefined;
+  }
+
+  let sawParentFalse = false;
+
+  for (const rawUri of extractedUris) {
+    const cleanPath = cleanExtractedUri(rawUri);
+    if (!cleanPath) continue;
+
+    // Check if URI points to a subagent transcript in the brain directory
+    const brainMatch = cleanPath.match(/[/\\]\.?gemini[/\\]antigravity[/\\]brain[/\\]([a-f0-9-]+)/i);
+    if (brainMatch && brainMatch[1] && brainMatch[1] !== convId) {
+      const parentResult = resolveConversationProject(brainMatch[1], depth + 1);
+      if (parentResult === true) {
+        conversationProjectMatch.set(convId, true);
+        return true;
+      }
+      if (parentResult === false) {
+        sawParentFalse = true;
+      }
+    }
+
+    // Direct project workspace path
+    if (isPathInProject(cleanPath)) {
+      conversationProjectMatch.set(convId, true);
+      return true;
+    }
+  }
+
+  // If ANY extracted URI matched, it returned true above.
+  // If parent affiliation was confirmed false, or if extracted URIs exist and NONE match isPathInProject:
+  if (sawParentFalse || extractedUris.length > 0) {
+    conversationProjectMatch.set(convId, false);
+    return false;
+  }
+
+  return undefined;
+}
+
+function hashString(str) {
+  if (!str) return 0;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
 
 /**
  * Normalizes skill string/object into clean Title Case
@@ -200,9 +377,9 @@ function ensureRoleDeliverables(featureTitle = '') {
       assignedTo: leadAgent.id,
       delegatedBy: leadDelegator.id,
       delegatedByRole: leadDelegator.role || leadDelegator.name,
-      column: 'in_progress',
+      column: 'backlog',
       skill: leadArchSkill,
-      progress: 40,
+      progress: 0,
     },
     {
       id: 'DELIV-2',
@@ -212,7 +389,7 @@ function ensureRoleDeliverables(featureTitle = '') {
       assignedTo: devAgent.id,
       delegatedBy: devDelegator.id,
       delegatedByRole: devDelegator.role || devDelegator.name,
-      column: 'assigned',
+      column: 'backlog',
       skill: devFeatSkill,
       progress: 0,
     },
@@ -224,7 +401,7 @@ function ensureRoleDeliverables(featureTitle = '') {
       assignedTo: testerAgent.id,
       delegatedBy: testerDelegator.id,
       delegatedByRole: testerDelegator.role || testerDelegator.name,
-      column: 'assigned',
+      column: 'backlog',
       skill: testerVerifySkill,
       progress: 0,
     },
@@ -254,11 +431,13 @@ function ensureRoleDeliverables(featureTitle = '') {
     },
   ];
 
+  const now = new Date().toISOString();
   for (const d of deliverables) {
     if (!eventBus.tasks.has(d.id)) {
       eventBus.tasks.set(d.id, {
         ...d,
-        updatedAt: new Date().toISOString(),
+        createdAt: d.createdAt || now,
+        updatedAt: d.updatedAt || now,
       });
     }
   }
@@ -280,27 +459,31 @@ function ensureRoleDeliverables(featureTitle = '') {
         column: 'backlog',
         skill,
         progress: 0,
-        updatedAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
       });
     }
   }
 }
 
+eventBus.ensureRoleDeliverables = ensureRoleDeliverables;
+
 /**
  * Resolves scratch task directory across varied project layouts
  */
 function resolveScratchTaskDir() {
+  const root = getProjectRoot();
   const candidates = [
-    path.join(PROJECT_ROOT, '.agents/scratch/task'),
-    path.join(PROJECT_ROOT, 'scratch/task'),
-    path.join(PROJECT_ROOT, '.agents/scratch'),
-    path.join(PROJECT_ROOT, 'scratch'),
-    path.join(PROJECT_ROOT, '.opencode'),
+    path.join(root, '.agents/scratch/task'),
+    path.join(root, 'scratch/task'),
+    path.join(root, '.agents/scratch'),
+    path.join(root, 'scratch'),
+    path.join(root, '.opencode'),
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
   }
-  return path.join(PROJECT_ROOT, '.agents/scratch/task');
+  return path.join(root, '.agents/scratch/task');
 }
 
 /**
@@ -338,11 +521,12 @@ function resolveTranscriptPath() {
   }
 
   // 2. Check local project transcript
+  const root = getProjectRoot();
   const localCandidates = [
-    path.join(PROJECT_ROOT, '.agents/transcript.jsonl'),
-    path.join(PROJECT_ROOT, '.system_generated/logs/transcript.jsonl'),
-    path.join(PROJECT_ROOT, '.opencode/transcript.jsonl'),
-    path.join(PROJECT_ROOT, '.claude/transcripts/transcript.jsonl'),
+    path.join(root, '.agents/transcript.jsonl'),
+    path.join(root, '.system_generated/logs/transcript.jsonl'),
+    path.join(root, '.opencode/transcript.jsonl'),
+    path.join(root, '.claude/transcripts/transcript.jsonl'),
   ];
   for (const candidate of localCandidates) {
     if (fs.existsSync(candidate)) return candidate;
@@ -356,6 +540,7 @@ function resolveTranscriptPath() {
  */
 function resolveOpenCodeLogPath() {
   const homeDir = os.homedir();
+  const root = getProjectRoot();
   const candidates = [
     // Standard Linux & macOS path
     path.join(homeDir, '.local/share/opencode/log/opencode.log'),
@@ -365,8 +550,8 @@ function resolveOpenCodeLogPath() {
     process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'opencode/log/opencode.log') : null,
     process.env.APPDATA ? path.join(process.env.APPDATA, 'opencode/log/opencode.log') : null,
     // Project-level opencode log
-    path.join(PROJECT_ROOT, '.opencode/opencode.log'),
-    path.join(PROJECT_ROOT, '.opencode/logs/opencode.log'),
+    path.join(root, '.opencode/opencode.log'),
+    path.join(root, '.opencode/logs/opencode.log'),
   ].filter(Boolean);
 
   for (const candidate of candidates) {
@@ -375,11 +560,56 @@ function resolveOpenCodeLogPath() {
 
   return null;
 }
-
-const SCRATCH_TASK_DIR = resolveScratchTaskDir();
 const activeTranscriptWatchers = new Map();
 let opencodeByteOffset = 0;
 const debouncedFiles = new Map();
+
+let activeWorkspaceWatcher = null;
+let activeGitWatcher = null;
+let activeScratchWatcher = null;
+
+function closeAllWatchers() {
+  if (activeWorkspaceWatcher) {
+    try { activeWorkspaceWatcher.close(); } catch (e) {}
+    activeWorkspaceWatcher = null;
+  }
+  if (activeGitWatcher) {
+    try { activeGitWatcher.close(); } catch (e) {}
+    activeGitWatcher = null;
+  }
+  if (activeScratchWatcher) {
+    try { activeScratchWatcher.close(); } catch (e) {}
+    activeScratchWatcher = null;
+  }
+  for (const [filePath] of activeTranscriptWatchers.entries()) {
+    try { fs.unwatchFile(filePath); } catch (e) {}
+  }
+  activeTranscriptWatchers.clear();
+  debouncedFiles.clear();
+  conversationProjectMatch.clear();
+}
+
+/**
+ * Resets all active log and transcript offsets to current file ends.
+ * Called when the user clicks Reset/Clear State so historical lines are not re-read.
+ */
+function resetWatchersOffsets() {
+  const opencodeLogPath = resolveOpenCodeLogPath();
+  if (opencodeLogPath && fs.existsSync(opencodeLogPath)) {
+    try {
+      opencodeByteOffset = fs.statSync(opencodeLogPath).size;
+    } catch (e) {}
+  }
+  for (const [filePath, state] of activeTranscriptWatchers.entries()) {
+    try {
+      if (fs.existsSync(filePath)) {
+        state.offset = fs.statSync(filePath).size;
+      }
+    } catch (e) {}
+  }
+  debouncedFiles.clear();
+  conversationProjectMatch.clear();
+}
 
 /**
  * Initializes all monitors:
@@ -388,26 +618,39 @@ const debouncedFiles = new Map();
  * 3. OpenCode Log Monitor (watches OpenCode tool invocations)
  * 4. Antigravity / Agent Transcript Tailer
  */
-function setupWatchers() {
+function setupWatchers(newRoot) {
+  closeAllWatchers();
+
+  const currentRoot = getProjectRoot();
   console.log('[Watchers] Initializing real-time file, git, and agent monitors...');
-  console.log(`[Watchers] Target Project Root: ${PROJECT_ROOT}`);
+  console.log(`[Watchers] Target Project Root: ${currentRoot}`);
+
+  // When switching directory, advance OpenCode log offset to current end
+  // so historical commands from the old project are not replayed!
+  const opencodeLogPath = resolveOpenCodeLogPath();
+  if (opencodeLogPath && fs.existsSync(opencodeLogPath)) {
+    try {
+      const stats = fs.statSync(opencodeLogPath);
+      opencodeByteOffset = stats.size;
+    } catch (e) {}
+  }
 
   // 1. Universal Workspace Watcher
-  const workspaceWatcher = setupWorkspaceWatcher();
+  activeWorkspaceWatcher = setupWorkspaceWatcher();
 
   // 2. Git Activity Watcher
-  setupGitWatcher();
+  activeGitWatcher = setupGitWatcher();
 
   // 3. OpenCode Log Tailer
   setupOpenCodeLogTailer();
 
   // 4. Scratch Task Watcher
-  setupScratchWatcher();
+  activeScratchWatcher = setupScratchWatcher();
 
   // 5. Transcript Tailer
   setupTranscriptTailer();
 
-  return { workspaceWatcher };
+  return { workspaceWatcher: activeWorkspaceWatcher };
 }
 
 /**
@@ -415,6 +658,7 @@ function setupWatchers() {
  * Automatically detects code edits, new test suites, docs, and configs created by OpenCode or any agent
  */
 function setupWorkspaceWatcher() {
+  const currentRoot = getProjectRoot();
   const ignoredPatterns = [
     /(^|[\/\\])\../, // hidden dot files (handled selectively)
     /node_modules/,
@@ -436,7 +680,7 @@ function setupWorkspaceWatcher() {
   ];
 
   try {
-    const workspaceWatcher = chokidar.watch(PROJECT_ROOT, {
+    const workspaceWatcher = chokidar.watch(currentRoot, {
       persistent: true,
       ignoreInitial: true,
       depth: 6,
@@ -455,7 +699,7 @@ function setupWorkspaceWatcher() {
     });
     workspaceWatcher.on('add', (filePath) => scheduleWorkspaceChange(filePath, 'created'));
     workspaceWatcher.on('change', (filePath) => scheduleWorkspaceChange(filePath, 'modified'));
-    console.log(`[Watchers] Workspace file monitor active on ${PROJECT_ROOT}`);
+    console.log(`[Watchers] Workspace file monitor active on ${currentRoot}`);
     return workspaceWatcher;
   } catch (err) {
     console.warn('[Watchers] Workspace watcher initialization failed:', err.message);
@@ -480,7 +724,7 @@ function handleWorkspaceFileChange(filePath, action) {
   const norm = filePath.replace(/\\/g, '/');
   const fileName = path.basename(filePath);
   const ext = path.extname(filePath).toLowerCase();
-  const relPath = path.relative(PROJECT_ROOT, filePath).replace(/\\/g, '/');
+  const relPath = path.relative(getProjectRoot(), filePath).replace(/\\/g, '/');
 
   // Handle scratch tasks explicitly
   if (relPath.includes('scratch/') || relPath.includes('.agents/scratch/')) {
@@ -532,9 +776,32 @@ function handleWorkspaceFileChange(filePath, action) {
     ext === '.yml' ||
     ext === '.toml';
 
+  let contentPreview = '';
+  try {
+    if (fs.existsSync(filePath) && fs.statSync(filePath).size < 300000) {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const lines = raw.split('\n');
+      contentPreview = lines.slice(0, 60).join('\n');
+    }
+  } catch (e) {}
+
+  let assignedAgent = isTest ? testerAgent : (isDocOrPlan || isConfig ? leadAgent : devAgent);
+
+  const hasActiveWorkflow = eventBus.tasks.size > 0 || eventBus.isDemoRunning;
+  if (!hasActiveWorkflow) {
+    // Project is in Standby mode. Record file change in history, but do not generate sprint deliverables.
+    eventBus.recordFileChange({
+      filePath: relPath,
+      fileName,
+      action: action === 'unlink' ? 'deleted' : 'modified',
+      contentPreview,
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+
   ensureRoleDeliverables();
 
-  let assignedAgent = devAgent;
   let taskId = 'DELIV-2';
   let column = 'in_progress';
   let phase = 'Implementation';
@@ -547,7 +814,11 @@ function handleWorkspaceFileChange(filePath, action) {
     phase = 'Verification';
     progress = 70;
     const testTask = eventBus.tasks.get('DELIV-3');
-    if (testTask) testTask.description = `Authoring and executing test suites around ${fileName}`;
+    if (testTask) {
+      testTask.column = 'testing';
+      testTask.progress = Math.max(testTask.progress || 0, 70);
+      testTask.description = `Authoring and executing test suites around ${fileName}`;
+    }
   } else if (isDocOrPlan || isConfig) {
     assignedAgent = leadAgent;
     taskId = 'DELIV-1';
@@ -555,11 +826,19 @@ function handleWorkspaceFileChange(filePath, action) {
     phase = 'Architecture & Planning';
     progress = 50;
     const archTask = eventBus.tasks.get('DELIV-1');
-    if (archTask) archTask.description = `Refining architectural boundaries and specs in ${fileName}`;
+    if (archTask && archTask.column !== 'done') {
+      archTask.column = 'in_progress';
+      archTask.progress = Math.max(archTask.progress || 0, 50);
+      archTask.description = `Refining architectural boundaries and specs in ${fileName}`;
+    }
   } else {
     // Normal code edit
     const devTask = eventBus.tasks.get('DELIV-2');
-    if (devTask) devTask.description = `Implementing and refactoring changes in ${fileName}`;
+    if (devTask) {
+      devTask.column = 'in_progress';
+      devTask.progress = Math.max(devTask.progress || 0, 65);
+      devTask.description = `Implementing and refactoring changes in ${fileName}`;
+    }
     const archTask = eventBus.tasks.get('DELIV-1');
     if (archTask && archTask.column !== 'done') {
       archTask.column = 'done';
@@ -568,15 +847,6 @@ function handleWorkspaceFileChange(filePath, action) {
   }
 
   const activeTask = eventBus.tasks.get(taskId);
-
-  let contentPreview = '';
-  try {
-    if (fs.existsSync(filePath) && fs.statSync(filePath).size < 300000) {
-      const raw = fs.readFileSync(filePath, 'utf8');
-      const lines = raw.split('\n');
-      contentPreview = lines.slice(0, 60).join('\n');
-    }
-  } catch (e) {}
 
   eventBus.emitEvent({
     agentId: assignedAgent.id,
@@ -605,7 +875,7 @@ function handleWorkspaceFileChange(filePath, action) {
  * Detects commits and staged changes
  */
 function setupGitWatcher() {
-  const gitDir = path.join(PROJECT_ROOT, '.git');
+  const gitDir = path.join(getProjectRoot(), '.git');
   if (!fs.existsSync(gitDir)) return;
 
   const commitMsgFile = path.join(gitDir, 'COMMIT_EDITMSG');
@@ -721,6 +991,12 @@ function readNewOpenCodeLines(logPath) {
 }
 
 function parseOpenCodeLogLine(line) {
+  const tsMatch = line.match(/timestamp=([^\s]+)/);
+  const lineTimestamp = tsMatch ? tsMatch[1] : null;
+  if (lineTimestamp && eventBus.isBeforeReset(lineTimestamp)) {
+    return; // Dropped: line occurred before last office reset
+  }
+
   const cwdMatch = line.match(/cwd=([^\s]+)/);
   const activeCwd = cwdMatch ? cwdMatch[1].replace(/["']/g, '') : null;
   if (activeCwd && !isPathInProject(activeCwd)) {
@@ -742,6 +1018,7 @@ function parseOpenCodeLogLine(line) {
     eventBus.emitEvent({
       agentId: assigned.id,
       type: 'tool_executing',
+      timestamp: lineTimestamp || new Date().toISOString(),
       payload: {
         tool: toolName,
         task: `Executing ${toolName}`,
@@ -774,35 +1051,46 @@ function parseOpenCodeLogLine(line) {
     const assigned = isTest ? testerAgent : devAgent;
 
     if (isTest) {
-      ensureRoleDeliverables();
-      const testTask = eventBus.tasks.get('DELIV-3');
-      if (testTask) {
-        testTask.column = 'testing';
-        testTask.progress = 75;
+      if (eventBus.tasks.size > 0 || eventBus.isDemoRunning) {
+        ensureRoleDeliverables();
+        const devTask = eventBus.tasks.get('DELIV-2');
+        if (devTask && devTask.column === 'in_progress') {
+          devTask.column = 'review';
+          devTask.progress = 90;
+        }
+        const testTask = eventBus.tasks.get('DELIV-3');
+        if (testTask) {
+          testTask.column = 'testing';
+          testTask.progress = 75;
+          testTask.description = `Executing automated test suite: ${baseCmd}`;
+        }
       }
       eventBus.emitEvent({
         agentId: assigned.id,
         type: 'command_executing',
+        timestamp: lineTimestamp || new Date().toISOString(),
         payload: {
           taskId: 'DELIV-3',
-          key: 'TEST-101',
+          key: testTask ? testTask.key : `${testerAgent.badge || 'TEST'}-101`,
           task: testTask ? testTask.title : 'Automated Unit & Regression Test Verification',
           tool: 'run_command',
           command: fullCmd.substring(0, 100),
           details: `Executing test suite: ${baseCmd}`,
           column: 'testing',
+          progress: 75,
           phase: 'Verification',
+          milestone: `${assigned.name} running: ${baseCmd}`,
+          milestoneAgentId: assigned.id,
         },
       });
     } else {
-      // Normal terminal command -> Emits to Live Logs and avatar speech bubble without creating a task card!
       eventBus.emitEvent({
         agentId: assigned.id,
         type: 'command_executing',
+        timestamp: lineTimestamp || new Date().toISOString(),
         payload: {
           tool: 'run_command',
           command: fullCmd.substring(0, 100),
-          task: `Terminal Command`,
           details: `Running: ${fullCmd.substring(0, 80)}`,
         },
       });
@@ -815,11 +1103,12 @@ function parseOpenCodeLogLine(line) {
  */
 function setupScratchWatcher() {
   try {
-    if (!fs.existsSync(SCRATCH_TASK_DIR)) {
-      fs.mkdirSync(SCRATCH_TASK_DIR, { recursive: true });
+    const scratchDir = resolveScratchTaskDir();
+    if (!fs.existsSync(scratchDir)) {
+      fs.mkdirSync(scratchDir, { recursive: true });
     }
 
-    const scratchWatcher = chokidar.watch(SCRATCH_TASK_DIR, {
+    const scratchWatcher = chokidar.watch(scratchDir, {
       persistent: true,
       ignoreInitial: true,
       depth: 4,
@@ -830,15 +1119,17 @@ function setupScratchWatcher() {
     });
     scratchWatcher.on('add', (filePath) => handleScratchFileChange(filePath, 'created'));
     scratchWatcher.on('change', (filePath) => handleScratchFileChange(filePath, 'updated'));
+    return scratchWatcher;
   } catch (err) {
     console.warn('[Watchers] Could not initialize scratch directory watcher:', err.message);
+    return null;
   }
 }
 
 function handleScratchFileChange(filePath, action) {
   const norm = filePath.replace(/\\/g, '/');
   const fileName = path.basename(filePath);
-  const relPath = path.relative(PROJECT_ROOT, filePath).replace(/\\/g, '/');
+  const relPath = path.relative(getProjectRoot(), filePath).replace(/\\/g, '/');
 
   const pmAgent = getResolvedAgent('pm', 0);
   const leadAgent = getResolvedAgent('lead', 1);
@@ -935,33 +1226,12 @@ function setupTranscriptTailer() {
   // 1. Initial scan of all active conversations
   scanAndWatchTranscripts(brainDir);
 
-  // 2. Watch brain directory with chokidar for new conversation folders
-  if (brainDir && fs.existsSync(brainDir)) {
-    try {
-      const brainWatcher = chokidar.watch(brainDir, {
-        depth: 3,
-        persistent: true,
-        ignoreInitial: true,
-      });
-
-      brainWatcher.on('error', (err) => {
-        console.warn('[Watchers] Brain watcher non-fatal error:', err.message);
-      });
-
-      brainWatcher.on('all', (event, targetPath) => {
-        if (targetPath.endsWith('transcript.jsonl')) {
-          attachTranscriptTail(targetPath);
-        }
-      });
-    } catch (e) {
-      console.warn('[Watchers] Chokidar brain watcher warning:', e.message);
-    }
+  // 2. Periodic rescan every 4 seconds to discover newly started conversations safely without FD exhaustion
+  if (!transcriptPollInterval) {
+    transcriptPollInterval = setInterval(() => {
+      scanAndWatchTranscripts(brainDir);
+    }, 4000);
   }
-
-  // Periodic rescan every 4 seconds to discover newly started conversations
-  setInterval(() => {
-    scanAndWatchTranscripts(brainDir);
-  }, 4000);
 }
 
 function scanAndWatchTranscripts(brainDir) {
@@ -969,11 +1239,12 @@ function scanAndWatchTranscripts(brainDir) {
   const candidates = [];
 
   // Local workspace transcripts
+  const root = getProjectRoot();
   const localCandidates = [
-    path.join(PROJECT_ROOT, '.agents/transcript.jsonl'),
-    path.join(PROJECT_ROOT, '.system_generated/logs/transcript.jsonl'),
-    path.join(PROJECT_ROOT, '.opencode/transcript.jsonl'),
-    path.join(PROJECT_ROOT, '.claude/transcripts/transcript.jsonl'),
+    path.join(root, '.agents/transcript.jsonl'),
+    path.join(root, '.system_generated/logs/transcript.jsonl'),
+    path.join(root, '.opencode/transcript.jsonl'),
+    path.join(root, '.claude/transcripts/transcript.jsonl'),
   ];
   for (const c of localCandidates) {
     if (fs.existsSync(c)) candidates.push(c);
@@ -993,6 +1264,10 @@ function scanAndWatchTranscripts(brainDir) {
         const now = Date.now();
         for (const entry of entries) {
           if (!entry.isDirectory()) continue;
+          const convId = entry.name;
+          if (resolveConversationProject(convId) === false) {
+            continue;
+          }
           const candidate = path.join(bDir, entry.name, '.system_generated/logs/transcript.jsonl');
           if (fs.existsSync(candidate)) {
             const stats = fs.statSync(candidate);
@@ -1017,22 +1292,41 @@ function scanAndWatchTranscripts(brainDir) {
 }
 
 function attachTranscriptTail(filePath) {
-  if (activeTranscriptWatchers.has(filePath)) return;
-  if (!fs.existsSync(filePath)) return;
+  if (!filePath || !fs.existsSync(filePath)) return;
 
   try {
-    const stats = fs.statSync(filePath);
-    // Start tailing from recent bytes to catch active turns (last 20KB)
     const parentDir = path.dirname(filePath);
     const grandParent = path.dirname(parentDir);
     const convId = grandParent.includes('.system_generated')
       ? path.basename(path.dirname(grandParent))
       : path.basename(parentDir);
 
+    // Upfront workspace isolation:
+    // If filePath is inside project root, it definitively belongs to this project.
+    if (isPathInProject(filePath)) {
+      if (convId) conversationProjectMatch.set(convId, true);
+    } else if (convId) {
+      const match = resolveConversationProject(convId);
+      if (match === false) {
+        conversationProjectMatch.set(convId, false);
+        if (activeTranscriptWatchers.has(filePath)) {
+          try { fs.unwatchFile(filePath); } catch (e) {}
+          activeTranscriptWatchers.delete(filePath);
+        }
+        return; // Discard foreign project conversation immediately
+      }
+    }
+
+    if (activeTranscriptWatchers.has(filePath)) return;
+
+    const stats = fs.statSync(filePath);
+    // Start tailing from recent bytes to catch active turns (last 20KB),
+    // or from the current end of file if office state was cleared/reset.
+    const initialOffset = eventBus.clearedAt ? stats.size : Math.max(0, stats.size - 20000);
     const state = {
       filePath,
       convId,
-      offset: Math.max(0, stats.size - 20000),
+      offset: initialOffset,
     };
     activeTranscriptWatchers.set(filePath, state);
 
@@ -1093,6 +1387,12 @@ function cleanStringVal(val) {
 }
 
 function parseTranscriptStep(step, convId = '') {
+  // If step occurred before the office reset, drop it immediately so historical steps are not replayed into memory!
+  const stepTimestamp = step.created_at || step.timestamp || null;
+  if (stepTimestamp && eventBus.isBeforeReset(stepTimestamp)) {
+    return;
+  }
+
   const content = typeof step.content === 'string' ? step.content : '';
   const toolCalls = step.tool_calls || [];
 
@@ -1127,30 +1427,137 @@ function parseTranscriptStep(step, convId = '') {
     }
   }
 
-  // 2. User Input Prompt -> PM creates card ONLY if conversation belongs to this project
+  // Strict Upfront Verification:
+  // For USER_INPUT (and any other event-generating step), if conversationProjectMatch.get(convId) is not strictly true,
+  // verify workspace affiliation with resolveConversationProject(convId).
+  // If resolved affiliation is false or does not match getProjectRoot(), return immediately and do NOT emit any events or task cards.
+  if (convId && conversationProjectMatch.get(convId) !== true) {
+    const resolvedMatch = resolveConversationProject(convId);
+    if (resolvedMatch !== true) {
+      return;
+    }
+  }
+
+  // 2. Subagent Completion Messages -> Transition open TASK-SUB-* tasks to done (progress: 100)
+  const isSubagentMessage =
+    content.includes('<SYSTEM_MESSAGE>') ||
+    /<SYSTEM_MESSAGE>/i.test(content) ||
+    step.type === 'SYSTEM_MESSAGE' ||
+    (/\[Message\]/i.test(content) && /sender=/i.test(content));
+
+  if (isSubagentMessage) {
+    const isCompletion = /(?:^|[^a-zA-Z])(completed|complete|done|finished)(?:[^a-zA-Z]|$)/i.test(content);
+    if (isCompletion) {
+      let detectedAgentId = null;
+      const senderMatch = content.match(/sender=([^\s\]]+)/i);
+      if (senderMatch) {
+        const senderStr = senderMatch[1].split('/')[0].toLowerCase();
+        const agentList = Array.from(eventBus.agents.values());
+        const matched = agentList.find(
+          (a) => a.id.toLowerCase() === senderStr || a.name.toLowerCase() === senderStr
+        );
+        if (matched) detectedAgentId = matched.id;
+      }
+
+      const subTasksToComplete = [];
+      for (const [tId, task] of eventBus.tasks.entries()) {
+        const isSubTask =
+          (typeof tId === 'string' && tId.startsWith('TASK-SUB-')) ||
+          (task && typeof task.id === 'string' && task.id.startsWith('TASK-SUB-'));
+        if (isSubTask && task && task.column !== 'done') {
+          task.column = 'done';
+          task.progress = 100;
+          task.updatedAt = new Date().toISOString();
+          subTasksToComplete.push(task);
+        }
+      }
+
+      if (subTasksToComplete.length > 0) {
+        for (const task of subTasksToComplete) {
+          eventBus.emitEvent({
+            agentId: detectedAgentId || task.assignedTo || devAgent.id,
+            type: 'subagent_completed',
+            timestamp: step.created_at || new Date().toISOString(),
+            payload: {
+              taskId: task.id,
+              key: task.key,
+              task: task.title,
+              column: 'done',
+              progress: 100,
+              milestone: `🎉 Subagent task completed: ${task.title || task.id}`,
+              milestoneAgentId: detectedAgentId || task.assignedTo || devAgent.id,
+              details: content.substring(0, 150).replace(/\n/g, ' '),
+              phase: 'Execution',
+            },
+          });
+        }
+      } else {
+        eventBus.emitEvent({
+          agentId: detectedAgentId || devAgent.id,
+          type: 'subagent_completed',
+          timestamp: step.created_at || new Date().toISOString(),
+          payload: {
+            phase: 'Execution',
+            milestone: `🎉 Subagent execution completed`,
+            milestoneAgentId: detectedAgentId || devAgent.id,
+            details: content.substring(0, 150).replace(/\n/g, ' '),
+          },
+        });
+      }
+    }
+    if (toolCalls.length === 0) return;
+  }
+
+  // 3. User Input Prompt -> PM creates card ONLY if conversation belongs to this project
   if (step.type === 'USER_INPUT' || step.source === 'USER_EXPLICIT') {
-    const projBase = path.basename(PROJECT_ROOT).toLowerCase();
-    const isAffiliated = (convId && conversationProjectMatch.get(convId) === true) || content.toLowerCase().includes(projBase);
-    if (!isAffiliated) {
-      return; // Filter out prompts from unrelated windows/projects
+    if (convId && conversationProjectMatch.get(convId) === undefined) {
+      resolveConversationProject(convId);
+    }
+    if (!convId || conversationProjectMatch.get(convId) !== true) {
+      return; // Filter out prompts from unverified or foreign workspaces
     }
 
-    const promptText = content.trim();
-    if (promptText && !promptText.startsWith('<') && promptText.length > 2) {
-      const displayTitle = promptText.length > 55 ? promptText.slice(0, 52) + '...' : promptText;
-      const taskId = `TASK-REQ-${Date.now().toString().slice(-4)}`;
+    let promptText = content;
+    const reqMatch = content.match(/<USER_REQUEST>([\s\S]*?)<\/USER_REQUEST>/i);
+    if (reqMatch) {
+      promptText = reqMatch[1];
+    } else {
+      promptText = promptText.replace(/<[^>]+>/g, ' ');
+    }
+    promptText = promptText.replace(/<\/?(?:ADDITIONAL_CONTEXT|CONTEXT_SUMMARY|TASK_INSTRUCTIONS)[^>]*>/gi, '').trim();
+
+    if (promptText && promptText.length > 2) {
+      const firstLine = promptText.split('\n').map((s) => s.trim()).filter(Boolean)[0] || promptText;
+      const displayTitle = firstLine.length > 60 ? firstLine.slice(0, 57) + '...' : firstLine;
+
+      ensureRoleDeliverables(displayTitle);
+      eventBus.workflowTitle = `${eventBus.projectName} • ${displayTitle}`;
+      eventBus.currentPhase = 'Sprint Execution';
+
+      const archTask = eventBus.tasks.get('DELIV-1');
+      if (archTask) {
+        archTask.description = `Scope boundaries, architecture contracts, and implementation plan for: ${displayTitle}`;
+        archTask.column = 'assigned';
+        archTask.updatedAt = new Date().toISOString();
+      }
 
       eventBus.emitEvent({
         agentId: pmAgent.id,
         type: 'agent_active',
+        timestamp: step.created_at || new Date().toISOString(),
         payload: {
-          taskId,
-          key: 'REQ-101',
-          task: `User Request: ${displayTitle}`,
-          column: 'assigned',
+          taskId: 'DELIV-1',
+          key: archTask ? archTask.key : `${leadAgent.badge || 'ARCH'}-101`,
+          task: archTask ? archTask.title : 'Architecture Scope Analysis',
+          column: 'in_progress',
           details: promptText,
+          assignedTo: leadAgent.id,
+          delegatedBy: pmAgent.id,
+          delegatedByRole: pmAgent.role || pmAgent.name,
+          allowedSkill: 'task-decomposition',
+          progress: 35,
           phase: 'Intake & Planning',
-          milestone: `New task delegated: "${displayTitle}"`,
+          milestone: `New task intake: "${displayTitle}"`,
           milestoneAgentId: pmAgent.id,
         },
       });
@@ -1160,31 +1567,27 @@ function parseTranscriptStep(step, convId = '') {
 
   // 3. Detect model completion / delivery announcements
   if (step.type === 'PLANNER_RESPONSE' && content && toolCalls.length === 0) {
-    const isDelivery = /deliver|sign-?off|ready for stakeholder|production ready/i.test(content);
-    const isFixed = /fixed the issue|successfully resolved|all tests passed|tests are green|changes have been verified/i.test(content);
+    const isDelivery = /deliver|sign-?off|ready for stakeholder|production ready|completed the task|finished the work/i.test(content);
+    const isFixed = /fixed the issue|successfully resolved|all tests passed|tests are green|changes have been verified|successfully updated/i.test(content);
 
-    if (isDelivery) {
+    if (isDelivery || isFixed) {
+      for (const [tId, task] of eventBus.tasks.entries()) {
+        if (task.column === 'in_progress' || task.column === 'testing' || task.column === 'review') {
+          task.column = 'done';
+          task.progress = 100;
+          task.updatedAt = new Date().toISOString();
+        }
+      }
+
       eventBus.emitEvent({
-        agentId: pmAgent.id,
-        type: 'task_completed',
+        agentId: isFixed ? testerAgent.id : pmAgent.id,
+        type: isFixed ? 'test_result' : 'task_completed',
+        timestamp: step.created_at || new Date().toISOString(),
         payload: {
           phase: 'Delivered',
           column: 'done',
-          milestone: `🎉 Feature Delivered: ${content.substring(0, 65).replace(/\n/g, ' ')}...`,
-          milestoneAgentId: pmAgent.id,
-          details: content.substring(0, 150),
-        },
-      });
-    } else if (isFixed) {
-      eventBus.emitEvent({
-        agentId: testerAgent.id,
-        type: 'test_result',
-        payload: {
-          testsPassed: 1,
-          testsFailed: 0,
-          column: 'done',
-          milestone: `Verification passed: ${content.substring(0, 65).replace(/\n/g, ' ')}...`,
-          milestoneAgentId: testerAgent.id,
+          milestone: `🎉 ${isFixed ? 'Verification passed' : 'Feature Delivered'}: ${content.substring(0, 65).replace(/\n/g, ' ')}...`,
+          milestoneAgentId: isFixed ? testerAgent.id : pmAgent.id,
           details: content.substring(0, 150),
         },
       });
@@ -1264,26 +1667,26 @@ function parseTranscriptStep(step, convId = '') {
       }
       const fileName = path.basename(targetPath) || targetPath || 'source file';
 
-      ensureRoleDeliverables();
-      const archTask = eventBus.tasks.get('DELIV-1');
-      if (archTask && archTask.column !== 'done') {
-        archTask.column = 'in_progress';
-        archTask.progress = 50;
-        archTask.description = `Analyzing ${fileName} for architectural dependencies`;
+      const hasActiveWorkflow = eventBus.tasks.size > 0 || eventBus.isDemoRunning;
+      if (hasActiveWorkflow) {
+        ensureRoleDeliverables();
+        const archTask = eventBus.tasks.get('DELIV-1');
+        if (archTask && archTask.column !== 'done') {
+          archTask.column = 'in_progress';
+          archTask.progress = Math.max(archTask.progress || 0, 40);
+          archTask.description = `Analyzing boundaries and dependencies in ${fileName}`;
+        }
       }
 
       eventBus.emitEvent({
         agentId: leadAgent.id,
         type: 'tool_executing',
         payload: {
-          taskId: 'DELIV-1',
-          key: archTask ? archTask.key : `${leadAgent.badge || 'ARCH'}-101`,
-          task: archTask ? archTask.title : 'Feature Architecture & Scope Analysis',
+          taskId: hasActiveWorkflow ? 'DELIV-1' : undefined,
           tool: 'view_file',
           file: targetPath,
-          column: 'in_progress',
-          details: `Inspecting ${fileName} for architectural analysis`,
-          phase: 'Architecture & Scoping',
+          details: `Inspecting ${fileName}`,
+          phase: hasActiveWorkflow ? 'Architecture & Spike' : 'Standby Inspection',
         },
       });
     } else if (name === 'write_to_file' || name === 'replace_file_content') {
@@ -1300,26 +1703,69 @@ function parseTranscriptStep(step, convId = '') {
       const contentPreview = codeContent || replacementContent || '';
       const action = name === 'write_to_file' ? (args.Overwrite ? 'modified' : 'created') : 'modified';
 
-      ensureRoleDeliverables();
-      const archTask = eventBus.tasks.get('DELIV-1');
-      if (archTask && archTask.column !== 'done') {
-        archTask.column = 'done';
-        archTask.progress = 100;
-      }
-      const devTask = eventBus.tasks.get('DELIV-2');
-      if (devTask) {
-        devTask.column = 'in_progress';
-        devTask.progress = 65;
-        devTask.description = `Refactoring and implementing changes in ${fileName}`;
+      const isTest = fileName.toLowerCase().includes('test') || targetFile.toLowerCase().includes('test');
+      const isDocOrPlan = fileName.endsWith('.md') || fileName.endsWith('.yaml') || fileName.endsWith('.json') || fileName.endsWith('.rules');
+
+      const hasActiveWorkflow = eventBus.tasks.size > 0 || eventBus.isDemoRunning;
+
+      let targetTaskId = undefined;
+      let assigned = devAgent;
+      let phase = 'Implementation';
+      let column = 'in_progress';
+      let progress = 65;
+
+      if (hasActiveWorkflow) {
+        ensureRoleDeliverables();
+        targetTaskId = 'DELIV-2';
+
+        if (isTest) {
+          targetTaskId = 'DELIV-3';
+          assigned = testerAgent;
+          phase = 'Verification';
+          column = 'testing';
+          progress = 70;
+          const testTask = eventBus.tasks.get('DELIV-3');
+          if (testTask) {
+            testTask.column = 'testing';
+            testTask.progress = Math.max(testTask.progress || 0, 70);
+            testTask.description = `Authoring and executing test suites around ${fileName}`;
+          }
+        } else if (isDocOrPlan) {
+          targetTaskId = 'DELIV-1';
+          assigned = leadAgent;
+          phase = 'Architecture & Planning';
+          progress = 50;
+          const archTask = eventBus.tasks.get('DELIV-1');
+          if (archTask && archTask.column !== 'done') {
+            archTask.column = 'in_progress';
+            archTask.progress = Math.max(archTask.progress || 0, 50);
+            archTask.description = `Refining architectural boundaries and specs in ${fileName}`;
+          }
+        } else {
+          const archTask = eventBus.tasks.get('DELIV-1');
+          if (archTask && archTask.column !== 'done') {
+            archTask.column = 'done';
+            archTask.progress = 100;
+          }
+          const devTask = eventBus.tasks.get('DELIV-2');
+          if (devTask) {
+            devTask.column = 'in_progress';
+            devTask.progress = Math.max(devTask.progress || 0, 65);
+            devTask.description = `Refactoring and implementing changes in ${fileName}`;
+          }
+        }
       }
 
+      const activeTask = eventBus.tasks.get(targetTaskId);
+
       eventBus.emitEvent({
-        agentId: devAgent.id,
+        agentId: assigned.id,
         type: 'file_modified',
+        timestamp: step.created_at || new Date().toISOString(),
         payload: {
-          taskId: 'DELIV-2',
-          key: devTask ? devTask.key : `${devAgent.badge || 'DEV'}-101`,
-          task: devTask ? devTask.title : 'Core Feature Implementation & Refactoring',
+          taskId: targetTaskId,
+          key: activeTask ? activeTask.key : `${assigned.badge || 'DEV'}-101`,
+          task: activeTask ? activeTask.title : 'Core Feature Implementation & Refactoring',
           tool: name,
           file: targetFile,
           fileName,
@@ -1328,9 +1774,12 @@ function parseTranscriptStep(step, convId = '') {
           previousContent: targetContent,
           instruction,
           linesAdded: contentPreview ? contentPreview.split('\n').length : undefined,
-          column: 'in_progress',
+          column,
+          progress,
           details: `${action === 'created' ? 'Created' : 'Edited'} ${fileName}: ${instruction || 'Updated file content'}`,
-          phase: 'Implementation',
+          phase,
+          milestone: `${assigned.name} ${action === 'created' ? 'created' : 'modified'} ${fileName}`,
+          milestoneAgentId: assigned.id,
         },
       });
     } else if (name === 'run_command') {
@@ -1339,21 +1788,23 @@ function parseTranscriptStep(step, convId = '') {
         continue; // Strictly ignore commands executed in other directories
       }
       const cmd = cleanStringVal(typeof args === 'string' ? args : (args.CommandLine || args.cmd || ''));
-      const isTest = cmd.includes('test') || cmd.includes('gradlew test') || cmd.includes('pytest') || cmd.includes('jest');
+      const isTest = cmd.includes('test') || cmd.includes('gradlew test') || cmd.includes('pytest') || cmd.includes('jest') || cmd.includes('vitest');
       const assigned = isTest ? testerAgent : devAgent;
 
       if (isTest) {
-        ensureRoleDeliverables();
-        const devTask = eventBus.tasks.get('DELIV-2');
-        if (devTask && devTask.column === 'in_progress') {
-          devTask.column = 'review';
-          devTask.progress = 90;
-        }
-        const testTask = eventBus.tasks.get('DELIV-3');
-        if (testTask) {
-          testTask.column = 'testing';
-          testTask.progress = 75;
-          testTask.description = `Executing automated test suite across target components`;
+        if (eventBus.tasks.size > 0 || eventBus.isDemoRunning) {
+          ensureRoleDeliverables();
+          const devTask = eventBus.tasks.get('DELIV-2');
+          if (devTask && devTask.column === 'in_progress') {
+            devTask.column = 'review';
+            devTask.progress = 90;
+          }
+          const testTask = eventBus.tasks.get('DELIV-3');
+          if (testTask) {
+            testTask.column = 'testing';
+            testTask.progress = 75;
+            testTask.description = `Executing automated test suite across target components`;
+          }
         }
 
         eventBus.emitEvent({
@@ -1366,19 +1817,18 @@ function parseTranscriptStep(step, convId = '') {
             tool: 'run_command',
             command: cmd,
             column: 'testing',
+            progress: 75,
             details: `Running: ${cmd}`,
             phase: 'Verification',
           },
         });
       } else {
-        // Normal terminal command -> Emits to Live Logs and avatar speech bubble without creating a task card!
         eventBus.emitEvent({
           agentId: assigned.id,
           type: 'command_executing',
           payload: {
             tool: 'run_command',
             command: cmd,
-            task: `Terminal Command`,
             details: `Running: ${cmd}`,
           },
         });
@@ -1390,7 +1840,6 @@ function parseTranscriptStep(step, convId = '') {
         type: 'tool_executing',
         payload: {
           tool: name,
-          task: `Researching: ${q.slice(0, 30)}`,
           details: `Querying: ${q}`,
           phase: 'Architecture & Research',
         },
@@ -1424,12 +1873,13 @@ function parseTranscriptStep(step, convId = '') {
           taskTitle = `Delegate to ${targetAgent.name}: ${roleName}`;
         }
 
-        const taskId = `TASK-SUB-${Date.now().toString().slice(-4)}`;
-        const taskKey = `${targetAgent.badge || 'SUB'}-${Math.floor(Math.random() * 899 + 100)}`;
+        const taskId = `TASK-SUB-${roleName.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+        const taskKey = `${targetAgent.badge || 'SUB'}-${(Math.abs(hashString(roleName)) % 899 + 100)}`;
 
         eventBus.emitEvent({
           agentId: callerAgent.id,
           type: 'agent_handoff',
+          timestamp: step.created_at || new Date().toISOString(),
           payload: {
             taskId,
             key: taskKey,
@@ -1437,7 +1887,7 @@ function parseTranscriptStep(step, convId = '') {
             details: prompt,
             fromAgent: callerAgent.id,
             toAgent: targetAgent.id,
-            assignedTo: targetAgent.id,
+            assignedTo: typeName || targetAgent.id,
             delegatedBy: callerAgent.id,
             delegatedByRole: callerAgent.role || callerAgent.name,
             column: 'in_progress',
@@ -1455,25 +1905,43 @@ function parseTranscriptStep(step, convId = '') {
         if (taskTitle.length > 65) {
           taskTitle = taskTitle.slice(0, 62) + '...';
         }
-        const taskId = `TASK-MSG-${Date.now().toString().slice(-4)}`;
+
+        const agentList = Array.from(eventBus.agents.values());
+        const targetAgent = agentList.find(
+          (a) =>
+            a.id.toLowerCase() === recipient.toLowerCase() ||
+            (a.name && a.name.toLowerCase().includes(recipient.toLowerCase())) ||
+            (a.role && a.role.toLowerCase().includes(recipient.toLowerCase()))
+        ) || devAgent;
+
+        const ts = step.created_at || new Date().toISOString();
+
+        eventBus.recordCommunication({
+          fromAgentId: leadAgent.id,
+          fromAgentName: leadAgent.name,
+          fromAgentRole: leadAgent.role,
+          toAgentId: targetAgent.id,
+          toAgentName: targetAgent.name,
+          toAgentRole: targetAgent.role,
+          taskKey: 'MSG',
+          taskTitle: taskTitle || 'Agent Communication',
+          message: message,
+          channel: 'subagent_delegation',
+          timestamp: ts,
+        });
 
         eventBus.emitEvent({
           agentId: leadAgent.id,
           type: 'agent_handoff',
+          timestamp: ts,
           payload: {
-            taskId,
-            key: 'TASK-MSG',
-            task: taskTitle,
-            details: message,
             fromAgent: leadAgent.id,
-            toAgent: devAgent.id,
-            assignedTo: devAgent.id,
-            delegatedBy: leadAgent.id,
-            delegatedByRole: leadAgent.role || leadAgent.name,
-            column: 'in_progress',
-            allowedSkill: 'agent-messaging',
-            phase: 'Delegation & Communication',
-            milestone: `Task instruction dispatched: "${taskTitle}"`,
+            toAgent: targetAgent.id,
+            task: taskTitle || 'Direct Message',
+            details: message,
+            channel: 'subagent_delegation',
+            phase: 'Communication',
+            milestone: `${leadAgent.name} messaged ${targetAgent.name}: "${taskTitle}"`,
           },
         });
       }
@@ -1483,7 +1951,6 @@ function parseTranscriptStep(step, convId = '') {
         type: 'tool_executing',
         payload: {
           tool: name,
-          task: `Executing ${name}`,
           details: `Invoked tool: ${name}`,
         },
       });
@@ -1493,10 +1960,15 @@ function parseTranscriptStep(step, convId = '') {
 
 module.exports = {
   setupWatchers,
+  resetWatchersOffsets,
   handleScratchFileChange,
   handleWorkspaceFileChange,
   parseTranscriptStep,
   ensureRoleDeliverables,
   getResolvedAgent,
+  resolveConversationProject,
+  conversationProjectMatch,
+  isPathInProject,
+  cleanExtractedUri,
 };
 
