@@ -15,7 +15,7 @@ const { OFFICIAL_SKILLS, TEAM_TEMPLATES, scaffoldSkillsToProject, getAllSkills, 
 const { queryExistingModel } = require('./voiceIntelligence');
 const { AgentRunner } = require('./agentRunner');
 const { autoDiscoverAndRegisterAgents, parseAndRegisterAgents } = require('./agentRuntimeRegistry');
-const { saveRegistry } = require('./registry/canonicalRegistry');
+const { saveRegistry, ensureCanonicalDefinitions } = require('./registry/canonicalRegistry');
 const {
   registerInstance,
   unregisterInstance,
@@ -564,6 +564,9 @@ app.post('/api/project/set-path', (req, res) => {
   cachedFiles = null;
   lastFileScan = 0;
 
+  // Ensure canonical definitions directory and .md files exist in target workspace
+  ensureCanonicalDefinitions(resolved);
+
   // Re-discover agents and perform clean project state reset (wiping old tasks, tools, file changes)
   const newAgents = discoverAgents(resolved);
   eventBus.resetForProject(resolved, newAgents);
@@ -812,6 +815,9 @@ app.post('/api/project/spawn-instance', async (req, res) => {
         error: `Path is a file, not a directory: "${resolved}".`,
       });
     }
+
+    // Ensure canonical definitions directory and .md files exist in target workspace
+    ensureCanonicalDefinitions(resolved);
 
     // Check if an instance is already running for this directory
     const portResult = await findOrAllocatePort(resolved, 3000);
@@ -1397,6 +1403,9 @@ async function startServer(portOverride) {
 
     // Register active instance in ~/.virtual-office/instances.json
     registerInstance(root, portToBind, process.pid);
+
+    // Ensure canonical definitions directory and .md files exist in active workspace
+    ensureCanonicalDefinitions(root);
 
     // Auto-discover and register agents in runtime for initial workspace
     autoDiscoverAndRegisterAgents(root);

@@ -3,7 +3,7 @@ const path = require('path');
 const child_process = require('child_process');
 const { getAllSkills } = require('./officialSkills');
 const { findAgentsConfigFile, findAllAgentsConfigFiles } = require('./agentDiscovery');
-const { hasCanonicalRegistry, loadRegistry } = require('./registry/canonicalRegistry');
+const { hasCanonicalRegistry, loadRegistry, ensureCanonicalDefinitions } = require('./registry/canonicalRegistry');
 
 /**
  * Agent Runtime Registry & Auto-Discovery Hook for AI Agent Virtual Office
@@ -513,6 +513,13 @@ When responding to software requests in this repository:
  * Invoked on Virtual Office initialization, workspace switch, or configuration save.
  */
 function autoDiscoverAndRegisterAgents(projectRoot) {
+  // Ensure canonical definitions exist (.agents/definitions/*.md)
+  try {
+    ensureCanonicalDefinitions(projectRoot);
+  } catch (err) {
+    console.warn(`[AgentRuntimeRegistry] ensureCanonicalDefinitions warning: ${err.message}`);
+  }
+
   const registry = parseAndRegisterAgents(projectRoot);
   if (!registry) {
     return {
@@ -540,4 +547,5 @@ module.exports = {
   buildEnforcedSystemPrompt,
   generateDiscoveryAnchor,
   autoDiscoverAndRegisterAgents,
+  ensureCanonicalDefinitions,
 };

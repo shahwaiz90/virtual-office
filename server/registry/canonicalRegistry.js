@@ -438,10 +438,246 @@ function saveRegistry(registry, projectRoot) {
   };
 }
 
+/**
+ * Ensures that <projectRoot>/.agents/definitions exists and contains at least one .md definition.
+ * If empty or missing, scaffolds canonical definitions from:
+ * 1. Existing registry.yaml / registry.json
+ * 2. Existing agents.json (migrating legacy configuration)
+ * 3. Discovered agents or default fallback team template
+ *
+ * @param {string} projectRoot - Target project directory root
+ * @returns {{ ensured: boolean, count: number }}
+ */
+function ensureCanonicalDefinitions(projectRoot) {
+  if (!projectRoot || !fs.existsSync(projectRoot)) {
+    return { ensured: false, count: 0 };
+  }
+
+  const defsDir = path.join(projectRoot, DEFINITIONS_DIR_REL);
+
+  // 1. Check if <projectRoot>/.agents/definitions exists and contains at least one .md file
+  if (fs.existsSync(defsDir)) {
+    try {
+      const existingFiles = fs.readdirSync(defsDir).filter((f) => f.endsWith('.md'));
+      if (existingFiles.length > 0) {
+        return { ensured: false, count: existingFiles.length };
+      }
+    } catch (_) {}
+  }
+
+  const yamlPath = path.join(projectRoot, REGISTRY_YAML_REL);
+  const jsonPath = path.join(projectRoot, REGISTRY_JSON_REL);
+  const agentsJsonRelPath = path.join(projectRoot, '.agents', 'agents.json');
+
+  // Branch 1: If .agents/registry.yaml or .agents/registry.json exists
+  if (fs.existsSync(yamlPath) || fs.existsSync(jsonPath)) {
+    try {
+      const loaded = loadRegistry(projectRoot);
+      if (loaded && Array.isArray(loaded.agents) && loaded.agents.length > 0) {
+        let allSkills = {};
+        let buildPromptFn = null;
+        try {
+          const { getAllSkills } = require('../officialSkills');
+          allSkills = getAllSkills(projectRoot);
+        } catch (_) {}
+        try {
+          const { buildEnforcedSystemPrompt } = require('../agentRuntimeRegistry');
+          buildPromptFn = buildEnforcedSystemPrompt;
+        } catch (_) {}
+
+        const orchestratorId = loaded.orchestrator || (loaded.agents.find((a) => a.is_primary)?.id) || loaded.agents[0].id;
+        const primaryAgent = loaded.agents.find((a) => a.id === orchestratorId) || loaded.agents[0];
+
+        loaded.agents.forEach((ag) => {
+          if (!ag.instructions && !ag.system_prompt) {
+            if (buildPromptFn) {
+              ag.instructions = buildPromptFn(
+                { ...ag, isPrimary: ag.id === orchestratorId },
+                loaded.agents,
+                allSkills,
+                projectRoot,
+                primaryAgent
+              );
+            } else {
+              ag.instructions = `# Identity & Role: ${ag.name} (\`${ag.id}\`)\n\n${ag.description || ''}`;
+            }
+          }
+        });
+
+        const saveRes = saveRegistry(loaded, projectRoot);
+        return { ensured: true, count: saveRes.agentsCount || loaded.agents.length };
+      }
+    } catch (e) {
+      console.warn(`[canonicalRegistry] ensureCanonicalDefinitions: Error loading existing registry: ${e.message}`);
+    }
+  }
+
+  // Branch 2: Else if .agents/agents.json exists (or findAgentsConfigFile finds one)
+  let legacyConfigPath = fs.existsSync(agentsJsonRelPath) ? agentsJsonRelPath : null;
+  if (!legacyConfigPath) {
+    try {
+      const { findAgentsConfigFile } = require('../agentDiscovery');
+      const found = findAgentsConfigFile(projectRoot);
+      if (found && fs.existsSync(found)) {
+        legacyConfigPath = found;
+      }
+    } catch (_) {}
+  }
+
+  if (legacyConfigPath && fs.existsSync(legacyConfigPath)) {
+    try {
+      const raw = fs.readFileSync(legacyConfigPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      const rawAgents = parsed.agents || [];
+      if (Array.isArray(rawAgents) && rawAgents.length > 0) {
+        let allSkills = {};
+        let buildPromptFn = null;
+        try {
+          const { getAllSkills } = require('../officialSkills');
+          allSkills = getAllSkills(projectRoot);
+        } catch (_) {}
+        try {
+          const { buildEnforcedSystemPrompt } = require('../agentRuntimeRegistry');
+          buildPromptFn = buildEnforcedSystemPrompt;
+        } catch (_) {}
+
+        const primaryAgent = rawAgents[0];
+        const orchestratorId = rawAgents.find((a) => a.is_primary || a.isPrimary)?.id || rawAgents[0].id;
+
+        const agentsToSave = rawAgents.map((ag, idx) => {
+          const isPrimary = ag.id === orchestratorId || (idx === 0 && !rawAgents.some((a) => a.is_primary || a.isPrimary));
+          const tools = ag.allowed_tools || ag.allowedTools || ['view_file'];
+          const normalized = {
+            id: ag.id || `agent-${idx + 1}`,
+            name: ag.name || ag.id || `Agent ${idx + 1}`,
+            role: ag.role || (isPrimary ? 'Primary Orchestrator' : 'Specialist'),
+            badge: ag.badge || (isPrimary ? 'PM' : (ag.name || ag.id || 'AGT').slice(0, 3).toUpperCase()),
+            avatar_url: ag.avatar_url || ag.avatarUrl || (isPrimary ? '/assets/projectmanager.png' : '/assets/developer.png'),
+            description: ag.description || (isPrimary ? 'Primary Orchestrator for project intake and delegation.' : `Subagent responsible for ${ag.role || 'engineering tasks'}`),
+            skills: ag.skills || ag.skillIds || [],
+            allowed_tools: tools,
+            tools: tools,
+            enable_subagent_tools: ag.enable_subagent_tools !== undefined ? ag.enable_subagent_tools : (isPrimary || tools.includes('invoke_subagent')),
+            enable_write_tools: ag.enable_write_tools !== undefined ? ag.enable_write_tools : true,
+            enable_mcp_tools: Boolean(ag.enable_mcp_tools),
+            prohibited_actions: ag.prohibited_actions || ag.prohibitedActions || [],
+            delegation_targets: ag.delegation_targets || ag.delegationTargets || [],
+            handoffTo: ag.delegation_targets || ag.delegationTargets || [],
+            reportsTo: ag.reportsTo !== undefined ? ag.reportsTo : (isPrimary ? 'user' : orchestratorId),
+            is_primary: isPrimary,
+          };
+
+          if (ag.instructions && ag.instructions.trim()) {
+            normalized.instructions = ag.instructions;
+          } else if (ag.system_prompt && ag.system_prompt.trim()) {
+            normalized.instructions = ag.system_prompt;
+          } else if (buildPromptFn) {
+            normalized.instructions = buildPromptFn({ ...normalized, isPrimary }, rawAgents, allSkills, projectRoot, primaryAgent);
+          } else {
+            normalized.instructions = `# ${normalized.name}\n\n${normalized.description}`;
+          }
+
+          return normalized;
+        });
+
+        const canonicalObj = {
+          version: '2.0.0',
+          name: parsed.name || path.basename(projectRoot),
+          description: parsed.description || `Universal multi-agent team registry for ${path.basename(projectRoot)}`,
+          orchestrator: orchestratorId,
+          agents: agentsToSave,
+        };
+
+        const saveRes = saveRegistry(canonicalObj, projectRoot);
+        return { ensured: true, count: saveRes.agentsCount || agentsToSave.length };
+      }
+    } catch (err) {
+      console.warn(`[canonicalRegistry] ensureCanonicalDefinitions failed processing agents.json:`, err.message);
+    }
+  }
+
+  // Branch 3: Else (neither registry.yaml nor agents.json exists)
+  try {
+    const { discoverAgents, DEFAULT_FALLBACK_AGENTS } = require('../agentDiscovery');
+    let discovered = discoverAgents(projectRoot);
+    if (!discovered || discovered.length === 0) {
+      discovered = DEFAULT_FALLBACK_AGENTS || [];
+    }
+
+    if (Array.isArray(discovered) && discovered.length > 0) {
+      let allSkills = {};
+      let buildPromptFn = null;
+      try {
+        const { getAllSkills } = require('../officialSkills');
+        allSkills = getAllSkills(projectRoot);
+      } catch (_) {}
+      try {
+        const { buildEnforcedSystemPrompt } = require('../agentRuntimeRegistry');
+        buildPromptFn = buildEnforcedSystemPrompt;
+      } catch (_) {}
+
+      const orchestratorId = discovered.find((a) => a.is_primary || a.isPrimary)?.id || discovered[0].id;
+      const primaryAgent = discovered.find((a) => a.id === orchestratorId) || discovered[0];
+
+      const agentsToSave = discovered.map((ag, idx) => {
+        const isPrimary = ag.id === orchestratorId || (idx === 0 && !discovered.some((a) => a.is_primary || a.isPrimary));
+        const tools = ag.allowed_tools || ag.allowedTools || ['view_file'];
+        const normalized = {
+          id: ag.id || `agent-${idx + 1}`,
+          name: ag.name || ag.id || `Agent ${idx + 1}`,
+          role: ag.role || (isPrimary ? 'Primary Orchestrator' : 'Specialist'),
+          badge: ag.badge || ag.badgeText || (isPrimary ? 'PM' : (ag.name || ag.id || 'AGT').slice(0, 3).toUpperCase()),
+          avatar_url: ag.avatar_url || ag.avatarUrl || (isPrimary ? '/assets/projectmanager.png' : '/assets/developer.png'),
+          description: ag.description || (isPrimary ? 'Primary Orchestrator for project intake and delegation.' : `Subagent responsible for ${ag.role || 'engineering tasks'}`),
+          skills: ag.skills ? (ag.skills.map((s) => (typeof s === 'string' ? s : s.id || s.name))) : (ag.skillIds || []),
+          allowed_tools: tools,
+          tools: tools,
+          enable_subagent_tools: ag.enable_subagent_tools !== undefined ? ag.enable_subagent_tools : (isPrimary || tools.includes('invoke_subagent')),
+          enable_write_tools: ag.enable_write_tools !== undefined ? ag.enable_write_tools : true,
+          enable_mcp_tools: Boolean(ag.enable_mcp_tools),
+          prohibited_actions: ag.prohibited_actions || ag.prohibitedActions || [],
+          delegation_targets: ag.delegation_targets || ag.delegationTargets || [],
+          handoffTo: ag.delegation_targets || ag.delegationTargets || [],
+          reportsTo: ag.reportsTo !== undefined ? ag.reportsTo : (isPrimary ? 'user' : orchestratorId),
+          is_primary: isPrimary,
+        };
+
+        if (ag.instructions && ag.instructions.trim()) {
+          normalized.instructions = ag.instructions;
+        } else if (ag.system_prompt && ag.system_prompt.trim()) {
+          normalized.instructions = ag.system_prompt;
+        } else if (buildPromptFn) {
+          normalized.instructions = buildPromptFn({ ...normalized, isPrimary }, discovered, allSkills, projectRoot, primaryAgent);
+        } else {
+          normalized.instructions = `# ${normalized.name}\n\n${normalized.description}`;
+        }
+
+        return normalized;
+      });
+
+      const canonicalObj = {
+        version: '2.0.0',
+        name: path.basename(projectRoot),
+        description: `Universal multi-agent team registry for ${path.basename(projectRoot)}`,
+        orchestrator: orchestratorId,
+        agents: agentsToSave,
+      };
+
+      const saveRes = saveRegistry(canonicalObj, projectRoot);
+      return { ensured: true, count: saveRes.agentsCount || agentsToSave.length };
+    }
+  } catch (err) {
+    console.warn(`[canonicalRegistry] ensureCanonicalDefinitions: Error in discovery fallback: ${err.message}`);
+  }
+
+  return { ensured: false, count: 0 };
+}
+
 module.exports = {
   hasCanonicalRegistry,
   loadRegistry,
   saveRegistry,
+  ensureCanonicalDefinitions,
   loadSkillsMap,
   validateRegistry,
   REGISTRY_YAML_REL,

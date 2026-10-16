@@ -53,4 +53,137 @@ try {
   fs.rmSync(testDir, { recursive: true, force: true });
 } catch (e) {}
 
+// 4. ensureCanonicalDefinitions on directory with only agents.json
+const testDirOnlyJson = path.join(__dirname, 'fixtures', 'test-only-json');
+try {
+  fs.rmSync(testDirOnlyJson, { recursive: true, force: true });
+} catch (e) {}
+const jsonAgentsDir = path.join(testDirOnlyJson, '.agents');
+fs.mkdirSync(jsonAgentsDir, { recursive: true });
+fs.writeFileSync(
+  path.join(jsonAgentsDir, 'agents.json'),
+  JSON.stringify({
+    version: '1.0.0',
+    agents: [
+      { id: 'lead-architect', name: 'Lead Architect', role: 'Architect', allowed_tools: ['view_file', 'invoke_subagent'] },
+      { id: 'core-dev', name: 'Core Dev', role: 'Software Engineer', allowed_tools: ['view_file', 'write_to_file'] },
+    ],
+  }, null, 2),
+  'utf8'
+);
+
+const { ensureCanonicalDefinitions } = require('../server/registry/canonicalRegistry');
+const { autoDiscoverAndRegisterAgents } = require('../server/agentRuntimeRegistry');
+
+const resJson = ensureCanonicalDefinitions(testDirOnlyJson);
+assert.strictEqual(resJson.ensured, true, 'Expected ensureCanonicalDefinitions to return ensured=true');
+assert.strictEqual(resJson.count, 2, 'Expected 2 definitions to be created');
+
+const archDef = path.join(testDirOnlyJson, '.agents', 'definitions', 'lead-architect.md');
+const devDef = path.join(testDirOnlyJson, '.agents', 'definitions', 'core-dev.md');
+assert.ok(fs.existsSync(archDef), 'Missing definitions/lead-architect.md');
+assert.ok(fs.existsSync(devDef), 'Missing definitions/core-dev.md');
+assert.ok(fs.existsSync(path.join(testDirOnlyJson, '.agents', 'registry.yaml')), 'Missing .agents/registry.yaml');
+console.log('  ✅ Step 4: ensureCanonicalDefinitions populates definitions/*.md from agents.json');
+
+// 5. Idempotency test: calling ensureCanonicalDefinitions on already populated definitions directory
+fs.appendFileSync(archDef, '\n<!-- custom preserved marker -->\n');
+const resIdempotent = ensureCanonicalDefinitions(testDirOnlyJson);
+assert.strictEqual(resIdempotent.ensured, false, 'Expected ensured=false on already populated definitions');
+assert.strictEqual(resIdempotent.count, 2, 'Expected count=2 matching existing definitions');
+const archContentPreserved = fs.readFileSync(archDef, 'utf8');
+assert.ok(archContentPreserved.includes('<!-- custom preserved marker -->'), 'Expected custom definitions content to be preserved');
+console.log('  ✅ Step 5: ensureCanonicalDefinitions is idempotent and preserves existing definitions');
+
+try {
+  fs.rmSync(testDirOnlyJson, { recursive: true, force: true });
+} catch (e) {}
+
+// 6. ensureCanonicalDefinitions on totally blank directory (no .agents at all)
+const testDirBlank = path.join(__dirname, 'fixtures', 'test-blank-dir');
+try {
+  fs.rmSync(testDirBlank, { recursive: true, force: true });
+} catch (e) {}
+fs.mkdirSync(testDirBlank, { recursive: true });
+
+const resBlank = ensureCanonicalDefinitions(testDirBlank);
+assert.strictEqual(resBlank.ensured, true, 'Expected ensureCanonicalDefinitions to return ensured=true for blank dir');
+assert.ok(resBlank.count > 0, `Expected count > 0 for blank dir fallback, got ${resBlank.count}`);
+
+const blankDefsDir = path.join(testDirBlank, '.agents', 'definitions');
+assert.ok(fs.existsSync(blankDefsDir), 'Expected .agents/definitions to exist in blank dir');
+const blankDefs = fs.readdirSync(blankDefsDir).filter((f) => f.endsWith('.md'));
+assert.strictEqual(blankDefs.length, resBlank.count, 'Defs count on disk must match ensured count');
+console.log('  ✅ Step 6: ensureCanonicalDefinitions scaffolds definitions/*.md for totally blank directory');
+
+try {
+  fs.rmSync(testDirBlank, { recursive: true, force: true });
+} catch (e) {}
+
+// 7. ensureCanonicalDefinitions on directory with registry.yaml but missing definitions
+const testDirYaml = path.join(__dirname, 'fixtures', 'test-yaml-only');
+try {
+  fs.rmSync(testDirYaml, { recursive: true, force: true });
+} catch (e) {}
+const yamlAgentsDir = path.join(testDirYaml, '.agents');
+fs.mkdirSync(yamlAgentsDir, { recursive: true });
+fs.writeFileSync(
+  path.join(yamlAgentsDir, 'registry.yaml'),
+  `version: '2.0.0'
+name: yaml-project
+orchestrator: orchestrator-pm
+agents:
+  - id: orchestrator-pm
+    name: Project Manager
+    primary: true
+  - id: backend-dev
+    name: Backend Developer
+`,
+  'utf8'
+);
+
+const resYaml = ensureCanonicalDefinitions(testDirYaml);
+assert.strictEqual(resYaml.ensured, true, 'Expected ensureCanonicalDefinitions to return ensured=true for yaml-only project');
+assert.strictEqual(resYaml.count, 2, 'Expected 2 definitions created from yaml');
+assert.ok(fs.existsSync(path.join(yamlAgentsDir, 'definitions', 'orchestrator-pm.md')), 'Missing definitions/orchestrator-pm.md');
+assert.ok(fs.existsSync(path.join(yamlAgentsDir, 'definitions', 'backend-dev.md')), 'Missing definitions/backend-dev.md');
+console.log('  ✅ Step 7: ensureCanonicalDefinitions populates definitions/*.md from existing registry.yaml');
+
+try {
+  fs.rmSync(testDirYaml, { recursive: true, force: true });
+} catch (e) {}
+
+// 8. Simulation of /api/project/set-path workflow
+const testDirSetPath = path.join(__dirname, 'fixtures', 'test-set-path-sim');
+try {
+  fs.rmSync(testDirSetPath, { recursive: true, force: true });
+} catch (e) {}
+const setPathAgentsDir = path.join(testDirSetPath, '.agents');
+const setPathEmptyDefs = path.join(setPathAgentsDir, 'definitions');
+fs.mkdirSync(setPathEmptyDefs, { recursive: true }); // directory exists but is completely empty!
+fs.writeFileSync(
+  path.join(setPathAgentsDir, 'agents.json'),
+  JSON.stringify({
+    version: '1.0.0',
+    agents: [
+      { id: 'triage-lead', name: 'Triage Lead', role: 'Support Lead' },
+      { id: 'patch-eng', name: 'Patch Engineer', role: 'Engineer' },
+    ],
+  }, null, 2),
+  'utf8'
+);
+
+// Simulate set-path sequence:
+ensureCanonicalDefinitions(testDirSetPath);
+const autoResult = autoDiscoverAndRegisterAgents(testDirSetPath);
+assert.strictEqual(autoResult.success, true, 'autoDiscoverAndRegisterAgents should succeed');
+assert.strictEqual(autoResult.registry.canonical, true, 'Runtime registry should be loaded from canonical source');
+const populatedDefs = fs.readdirSync(setPathEmptyDefs).filter((f) => f.endsWith('.md'));
+assert.strictEqual(populatedDefs.length, 2, 'Empty definitions directory must now be populated with 2 .md files');
+console.log('  ✅ Step 8: Simulating /api/project/set-path workflow populates empty definitions and loads canonical registry');
+
+try {
+  fs.rmSync(testDirSetPath, { recursive: true, force: true });
+} catch (e) {}
+
 console.log('\n🎉 ALL STANDBY & DEFINITIONS TESTS PASSED (100%)!\n');
