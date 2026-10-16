@@ -104,7 +104,7 @@ export interface KanbanTask {
   result?: string;
 }
 
-export type TaskThreadKind = 'handoff' | 'question' | 'answer' | 'update' | 'decision' | 'result' | 'status';
+export type TaskThreadKind = 'request' | 'handoff' | 'question' | 'answer' | 'update' | 'decision' | 'result' | 'status';
 
 export interface TaskThreadEntry {
   id: string;

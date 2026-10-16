@@ -103,13 +103,36 @@ function isServerRunning(port) {
   });
 }
 
+/** Newest modification time of the UI sources, or 0 when they aren't shipped (installed package). */
+function newestSourceMtime(dir) {
+  let newest = 0;
+  const walk = (p) => {
+    let stat;
+    try {
+      stat = fs.statSync(p);
+    } catch (e) {
+      return;
+    }
+    if (stat.isDirectory()) {
+      for (const name of fs.readdirSync(p)) walk(path.join(p, name));
+    } else {
+      newest = Math.max(newest, stat.mtimeMs);
+    }
+  };
+  for (const rel of ['src', 'index.html', 'vite.config.ts']) walk(path.join(dir, rel));
+  return newest;
+}
+
 function ensureFrontendBuilt(forceBuild = false) {
-  const distHtml = path.resolve(__dirname, '../dist/index.html');
-  if (forceBuild || !fs.existsSync(distHtml)) {
+  const root = path.resolve(__dirname, '..');
+  const distHtml = path.join(root, 'dist', 'index.html');
+  // dist/ is not committed: build when it is missing or older than the UI sources
+  const stale = fs.existsSync(distHtml) && newestSourceMtime(root) > fs.statSync(distHtml).mtimeMs;
+  if (forceBuild || stale || !fs.existsSync(distHtml)) {
     console.log('⚡ Building virtual office frontend assets...');
     try {
       execSync('npx vite build', {
-        cwd: path.resolve(__dirname, '..'),
+        cwd: root,
         stdio: 'inherit',
       });
       console.log('✅ Frontend assets built successfully.');

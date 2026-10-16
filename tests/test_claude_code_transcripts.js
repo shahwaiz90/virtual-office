@@ -120,21 +120,39 @@ try {
     timestamp: new Date().toISOString(),
     message: { stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'Edit', input: { file_path: path.join(testRoot, 'tests/a.test.js'), old_string: 'a', new_string: 'b' } }] },
   };
-  // An interrupted turn: the next prompt closes the previous card (and, with nothing open, rolls the sprint)
-  const prompt3 = { ...prompt, uuid: 'u-3', message: { role: 'user', content: 'Something else' } };
+  // A follow-up prompt in the same conversation goes on that conversation's card, not a new card
+  const cardsBefore = eventBus.tasks.size;
+  const prompt3 = { ...prompt, uuid: 'u-3', message: { role: 'user', content: 'Also make it teal' } };
   handleClaudeEntry(prompt3, state2);
-  assert.strictEqual(card2Obj.column, 'done', 'A new prompt must close the interrupted card');
-  const card3 = state2.promptTaskId;
-  const card3Obj = eventBus.tasks.get(card3);
+  assert.strictEqual(eventBus.tasks.size, cardsBefore, 'A follow-up must not create a card');
+  assert.strictEqual(state2.promptTaskId, card2, 'The follow-up continues the conversation card');
+  const request = card2Obj.thread.find((m) => m.kind === 'request');
+  assert.ok(request && request.text === 'Also make it teal' && request.agentId === 'user', 'The follow-up is on the thread');
+  handleClaudeEntry(
+    { type: 'assistant', timestamp: new Date().toISOString(), message: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Done.' }] } },
+    state2
+  );
+  assert.strictEqual(card2Obj.column, 'done', 'The turn end closes the card');
+
+  // A follow-up after the card was done reopens it; replaying the same prompt adds nothing
+  const prompt4 = { ...prompt, uuid: 'u-4', message: { role: 'user', content: 'One more tweak' } };
+  handleClaudeEntry(prompt4, state2);
+  assert.strictEqual(card2Obj.column, 'in_progress', 'New work reopens the finished card');
+  handleClaudeEntry(prompt4, { convId: 'claude-session-b', promptTaskId: null });
+  assert.strictEqual(card2Obj.thread.filter((m) => m.kind === 'request').length, 2, 'A replayed follow-up is not posted twice');
   handleClaudeEntry(
     { type: 'assistant', timestamp: new Date().toISOString(), message: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Done.' }] } },
     state2
   );
   // With every card done, editing a test file must not reopen any of them
   handleClaudeEntry(testEdit, { convId: 'claude-session-b', promptTaskId: null });
-  assert.strictEqual(card2Obj.column, 'done', 'Interrupted card must stay done');
-  assert.strictEqual(card3Obj.column, 'done', 'Finished card must not be reopened by a test edit');
-  console.log('  ✅ Test 3b Passed: No premature completion, interrupted turns closed, done cards never reopened.\n');
+  assert.strictEqual(card2Obj.column, 'done', 'Finished card must not be reopened by a test edit');
+
+  // A new prompt never starts a sprint by itself, even when every card is done
+  const sprintBefore = eventBus.activeSprintId;
+  handleClaudeEntry({ ...prompt, uuid: 'u-5', message: { role: 'user', content: 'A brand new request' } }, { convId: 'claude-session-e', promptTaskId: null });
+  assert.strictEqual(eventBus.activeSprintId, sprintBefore, 'No automatic sprint rollover');
+  console.log('  ✅ Test 3b Passed: One card per conversation, follow-ups on its thread, no automatic sprints.\n');
 
   // Test 3c: events the host app injects as user turns are not prompts and never become cards
   console.log('▶ Test 3c: Verifying app-injected events create no cards...');

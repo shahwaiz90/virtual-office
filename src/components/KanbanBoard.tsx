@@ -84,7 +84,19 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   });
   const [isStartingSprint, setIsStartingSprint] = useState(false);
   const [isSwitchingSprint, setIsSwitchingSprint] = useState(false);
-  const [hideCompleted, setHideCompleted] = useState(false);
+  // Remembered per browser: with sprints no longer rolling over by themselves, done cards pile up
+  const [hideCompleted, setHideCompleted] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('vo-hide-done') === '1';
+    } catch (e) {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('vo-hide-done', hideCompleted ? '1' : '0');
+    } catch (e) {}
+  }, [hideCompleted]);
 
   // Sync internal sprint info when props update
   useEffect(() => {
