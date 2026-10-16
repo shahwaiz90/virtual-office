@@ -1,6 +1,7 @@
 # 🏢 AI Agent Virtual Office (`agent-virtual-office`)
 
-> **Live 2D Virtual Office Visualizer, Real-Time Kanban Board & Delivery Intelligence Analytics for Autonomous Multi-Agent Workflows (iOS, Android, Web, and Backend).**
+> **The Live Visual Command Center for Autonomous Multi-Agent Software Teams.**  
+> Turn complex multi-agent workflows into an animated 2D virtual office, live Kanban sprint board, inter-agent communication stream, and real-time delivery intelligence dashboard.
 
 [![npm version](https://img.shields.io/npm/v/agent-virtual-office.svg?style=flat-square)](https://www.npmjs.com/package/agent-virtual-office)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
@@ -8,116 +9,173 @@
 
 ---
 
-## 🌟 Overview
+## 💡 What is Virtual Office? (In Simple Terms)
 
-**AI Agent Virtual Office** is an interactive, browser-based visualizer for autonomous AI software engineering teams (Antigravity, Claude, OpenCode, Gemini, Cursor). It brings agent swarms to life on an animated 2D floor plan with character walking, physical task document handoffs, live Kanban board transitions, real-time activity logs, and delivery intelligence analytics with code changes.
+If you have ever used an AI coding assistant, you know how hard it is to track what is happening behind the scenes when multiple AI agents work together. 
 
-Works **plug-and-play across any codebase**: whether you are developing an **Android app (Kotlin)**, **iOS app (Swift)**, **Web app (Next.js / React)**, or **Backend service (Python / Go)**.
+**Virtual Office turns invisible AI teamwork into a visible, physical office:**
+
+Instead of a single AI chatbot answering inside a text box, you staff an **entire software engineering team of AI agents and specialized subagents** (e.g. Scrum Master, Tech Lead, Senior Developer, QA Tester). Each agent has their own desk, role, clear permissions, and assigned skills.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        AI AGENT VIRTUAL OFFICE                         │
+│                                                                        │
+│   👑 Scrum Master (Tech PM)                                            │
+│      └── Decomposes user goal into a 4-stage sprint                    │
+│                                                                        │
+│   🧩 Technical Lead (Architect)                                        │
+│      ├── Plans technical contracts & reviews code                      │
+│      │                                                                 │
+│      ├──► 💻 Core Developer (Android / iOS / Web / Backend)            │
+│      │    └── Implements features using official domain skills         │
+│      │                                                                 │
+│      └──► 🧪 Mobile QA / Tester                                        │
+│           └── Runs test suites & validates acceptance criteria         │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+Whatever custom LLM model or AI platform you use (**Claude**, **OpenAI / Codex**, **Gemini / Antigravity**, **Cursor**, **OpenCode**), Virtual Office watches your agents in real time and visually illustrates:
+1. **Interactive Virtual Office**: Agents walk across the floor, sit at their desks, and physically hand off tasks to one another.
+2. **Live Kanban Board**: Raw AI prompts and subagent handoffs are translated into real-time sprint cards (**Backlog ➔ In Progress ➔ Review ➔ Done**) with creation timestamps.
+3. **Inter-Agent Communications**: See exactly what agents are discussing, why a task was delegated, and the prompt instructions exchanged.
+4. **Skills & Tools Intelligence**: Real-time analytics showing the most used skills, tool calls (file edits, terminal commands, web search), and code changes.
 
 ---
 
-## 🚀 How to Run
+## 🏛️ The 4 Core Pillars
 
-You only need **2 commands** to run the virtual office in any project:
+### 1. 👥 Specialized Agent & Subagent Orchestration
+- **Hierarchy & Clear Roles**: Staff dedicated agents such as **Scrum Master (`tech-pm`)**, **Architect (`tech-lead`)**, **Developers**, and **QA Engineers**.
+- **Top-Level Orchestration**: The Primary Orchestrator receives stakeholder goals and breaks them down into sequenced sprint tasks.
+- **Subagent Delegation with Guardrails**: Agents only communicate along permitted delegation channels with enforced input/output contracts, permissions, and prohibited actions (e.g. preventing Scrum Masters or Testers from writing unauthorized production code).
+
+### 2. 🧰 Official Platform Skills & Custom Extensibility
+Agents are only as good as the domain knowledge they possess. Virtual Office equips agents with curated, official platform skills and makes it easy to add your own:
+
+- **📱 Android & Mobile**: Jetpack Compose Performance, Clean Architecture, CameraX, LiteRT on-device AI, Navigation 3, Edge-to-Edge, Glance Home Widgets, AGP 9 migration.
+- **🍎 iOS & Apple**: Modern SwiftUI patterns, Bounds Safety, Xcode Project Setup, Automated Testing.
+- **🌐 Web & Fullstack**: React / Next.js composition patterns, Modern Web Standards, Vercel performance optimization.
+- **🔬 Tools, APIs & Automation**: Automated Jira & Confluence readers, SQLite project isolation, testing harnesses, and database exploration.
+- **✨ Custom Skills**: Simply drop a markdown file into `.agents/skills/your-skill/SKILL.md` to instantly teach your agent team custom company procedures, APIs, or design systems.
+
+### 3. 🧠 Universal & LLM Agnostic
+Virtual Office doesn't lock you into any single AI provider or model. It supports:
+- **Anthropic Claude** (via `CLAUDE.md` and `.claude/config.json`)
+- **OpenAI / Codex** (via `.codex/instructions.md` and `AGENTS.md`)
+- **Google DeepMind Gemini / Antigravity** (via `GEMINI.md` and runtime rules)
+- **OpenCode & Local Models** (via `.agents/registry.yaml` and `.agents/definitions/*.md`)
+
+With the built-in CLI (`npx agents sync`), any change made to your team roster or skills is automatically compiled across all provider files with zero drift.
+
+### 4. 📊 Real-Time Visual Transparency & Analytics
+Non-technical managers and engineers can see the whole picture at a glance:
+- **Floor Plan Live View**: Animated characters walk to workstations, type on monitors, or gather in the conference lounge.
+- **Authoritative Kanban Board**: Watch tasks move from *Backlog* to *In Progress* to *Review* and *Done*, with exact timestamps and assignee avatars.
+- **Agent Chat & Handoff Stream**: Real-time log of agent dialogues, tool executions, and file edits.
+- **Code Change Inspector**: Dark-theme file diff viewer showing exactly what code was added or modified by each agent.
+- **Voice Intelligence (Siri / Jarvis Mode)**: Ask questions aloud (e.g. *"What is the mobile developer currently working on?"*) and receive real-time voice updates.
+
+---
+
+## 🚀 Quick Start (Zero Setup)
+
+You only need **2 commands** to run Virtual Office in any existing or new project:
 
 ```bash
-# 1. Navigate to your project directory
+# 1. Navigate to your project folder
 cd /path/to/your/project
 
 # 2. Launch the Virtual Office
 npx agent-virtual-office
 ```
 
-That's it! 
-
-The visualizer will:
-1. **Auto-detect your project** and discover your agent team (from `agents.json`, `.agents/` folder, or load a default 4-role team template).
-2. **Start the local server** (default: `http://localhost:3000`).
-3. **Automatically open your browser** directly to your live office.
+That's it! The visualizer will:
+1. **Auto-detect your codebase**: Discovers existing agents from `.agents/`, `agents.json`, or loads a recommended 4-role team template.
+2. **Scaffold agent definitions**: Automatically initializes `.agents/definitions/` so every agent has documented skills, tools, and rules.
+3. **Launch the Dashboard**: Starts the local server (default: `http://localhost:3000`) and opens it directly in your browser (Safari on macOS).
 
 > [!TIP]
-> **Zero Installation Required:** You do **not** need to install anything globally, run `npm init`, or add `package.json` to your project. Your codebase remains 100% clean.
+> **Zero Global Installation Required:** You do **not** need to install anything globally, run `npm init`, or pollute your codebase with extra configuration files.
 
 ---
 
-## 🎮 Key Capabilities
+## 📁 How the Agent Team is Organized
 
-### 1. 🏢 Animated 2D Pixel-Art Floor Plan
-- **Station Quarters**: Dedicated workstations for each configured role with computer monitors, personal storage, status badges, and desk orientation.
-- **Physical Document Handoffs**: Characters walk between rooms and pass animated flying task documents when role delegations occur.
-- **Executive Huddle Lounge**: Central cafe and conference space with armchairs, coffee tables, and team break activities.
-
-### 2. 📋 Authoritative Kanban Board
-- Reactive columns (**Backlog**, **Assigned**, **In Progress**, **Review**, **Testing**, **Done**).
-- Dynamic role deliverables derived directly from configured agents (`ARCH`, `DEV`, `TEST`, `REV`, `REL`).
-- Automatic resolution of board tasks when features are delivered or test suites pass green.
-
-### 3. 📊 Delivery Intelligence & Analytics
-- **File Changes & Updated Content**: Audit every file modified by agents with dynamic role filters, action badges (`Created`, `Modified`, `Refactored`), and an expandable dark-theme code viewer showing the exact code added.
-- **Tool Usage Analytics**: Live breakdown of all autonomous tools executed (`write_to_file`, `replace_file_content`, `view_file`, `run_command`, etc.) with invocation counts and execution times.
-- **Top Skills Breakdown**: Frequency and duration metrics for project skills.
-- **Role Invocations & SLA Adherence**: Real-time tracking of agent dispatches, active work time, and SLA compliance.
-
-### 4. 📜 Real-Time Activity Logs & Terminal Stream
-- Searchable activity stream capturing tool executions, file edits, and handoff events.
-- Filterable by specific agent or event type.
-
----
-
-## ⚙️ Custom Agent Configuration (Optional)
-
-The virtual office works out of the box with zero configuration. If you want to define custom agents, simply provide either:
-
-### Option A: `agents.json` or `.agents/agents.json`
-
-```json
-{
-  "agents": [
-    {
-      "id": "tech-lead",
-      "name": "Technical Architect",
-      "role": "Principal Mobile Architect",
-      "badge": "ARCH",
-      "description": "Designs component boundaries, pre-maps impacted files, and defines test specs.",
-      "skills": ["architecture", "impact-analysis", "code-review"],
-      "allowed_tools": ["view_file", "search_web"],
-      "delegation_targets": ["developer", "tester"]
-    },
-    {
-      "id": "developer",
-      "name": "Feature Developer",
-      "role": "Core Feature Engineer",
-      "badge": "DEV",
-      "description": "Implements domain logic, UI screens, and unit test suites.",
-      "skills": ["feature-implementation", "unit-tests"],
-      "allowed_tools": ["write_to_file", "replace_file_content", "run_command"],
-      "delegation_targets": ["tech-lead"]
-    }
-  ]
-}
-```
-
-### Option B: `.agents/` or `agents/` Directory
-You can also organize agents into individual files inside an `.agents/` or `agents/` folder:
-- **JSON**: `.agents/developer.json`
-- **YAML**: `.agents/architect.yaml`
-- **Markdown with frontmatter**: `.agents/tester.md`
-- **Subdirectories**: `.agents/delivery-pm/agent.json`
-
----
-
-## 🛠️ CLI Options
+Your agent team is stored directly inside your repository in standard, human-readable markdown and YAML:
 
 ```text
-Usage: npx agent-virtual-office [options]
-
-Options:
-  -p, --port <number>    Port to run dashboard on (default: 3000)
-  -d, --dir <path>       Target project directory (default: current working directory)
-  --no-open              Do not automatically open the browser
-  -v, --version          Show version number
-  -h, --help             Show help guide
+your-project/
+├── .agents/
+│   ├── registry.yaml          # Universal Single Source of Truth for your team
+│   ├── definitions/           # 1 Markdown file per agent profile
+│   │   ├── tech-pm.md         # Scrum Master / Primary Orchestrator
+│   │   ├── tech-lead.md       # Technical Architect
+│   │   ├── developer.md       # Core Developer
+│   │   └── tester.md          # QA Engineer
+│   ├── skills/                # Domain skills (Android, iOS, Web, Custom)
+│   │   ├── task-decomposition/
+│   │   ├── android-architecture/
+│   │   └── your-custom-skill/
+│   └── rules/                 # Auto-enforced orchestration guidelines
+├── AGENTS.md                  # Discovery anchor for Codex / Antigravity
+├── CLAUDE.md                  # Formatted instructions for Claude
+└── GEMINI.md                  # Formatted instructions for Gemini CLI
 ```
+
+---
+
+## 🛠️ CLI Commands & Multi-Project Switching
+
+### Run the Dashboard
+```bash
+# Start on a custom port
+npx agent-virtual-office --port 3001
+
+# Watch a specific project path without changing current terminal directory
+npx agent-virtual-office --dir /path/to/other/project
+```
+
+### Universal Agent Registry CLI (`agents`)
+Manage your agent team, validate schemas, or sync provider files via the included CLI:
+
+```bash
+# Compile and sync definitions across AGENTS.md, CLAUDE.md, and GEMINI.md
+npx agents sync
+
+# Validate schema integrity, skills on disk, and detect circular delegation loops
+npx agents validate
+
+# Audit assigned skills and check for missing documentation
+npx agents skills
+
+# Run a complete health check on your project's agent configuration
+npx agents doctor
+```
+
+---
+
+## 🤝 Sharing with Your Team: Frequently Asked Questions
+
+<details>
+<summary><b>Q: Do my teammates need to install anything special to view the office?</b></summary>
+<p>No. Anyone with Node.js installed can simply run <code>npx agent-virtual-office</code> in the project directory. The web visualizer opens automatically in their browser without any login or cloud accounts.</p>
+</details>
+
+<details>
+<summary><b>Q: Can we customize the agents, names, and avatars?</b></summary>
+<p>Yes. You can edit agents directly through the interactive <b>Team Studio</b> in the web interface, or edit the clean markdown files in <code>.agents/definitions/</code>. You can set custom roles, names, badges, allowed tools, and upload avatars.</p>
+</details>
+
+<details>
+<summary><b>Q: What prevents agents from making breaking code changes?</b></summary>
+<p>The 6-category specification enforces strict governance: prohibited actions (e.g. <i>"No modifying production code without tech lead review"</i>), allowed tool whitelists, and defined delegation targets prevent rogue behavior.</p>
+</details>
+
+<details>
+<summary><b>Q: Does this work with private / proprietary codebases?</b></summary>
+<p>Yes, 100%. Virtual Office runs locally on your machine. No code, logs, or project files are sent to external servers or cloud dashboards.</p>
+</details>
 
 ---
 
