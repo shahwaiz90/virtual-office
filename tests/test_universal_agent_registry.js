@@ -184,13 +184,13 @@ This is the instructions body.
 
     // Verify CLAUDE.md content
     const claudeMd = fs.readFileSync(path.join(sandboxDir, 'CLAUDE.md'), 'utf8');
-    assert.ok(claudeMd.includes('PRIMARY ORCHESTRATOR ROUTING: `tech-pm`'));
-    assert.ok(claudeMd.includes('Active Multi-Agent Team Roster'));
+    assert.ok(claudeMd.includes('Route every software request to `tech-pm`'));
+    assert.ok(claudeMd.includes('## Team'));
 
     // Verify GEMINI.md content
     const geminiMd = fs.readFileSync(path.join(sandboxDir, 'GEMINI.md'), 'utf8');
-    assert.ok(geminiMd.includes('PRIMARY AGENT ROUTING: `tech-pm`'));
-    assert.ok(geminiMd.includes('Subagent Delegation Protocol & Schemas'));
+    assert.ok(geminiMd.includes('Route every software request to `tech-pm`'));
+    assert.ok(geminiMd.includes('## Delegation'));
     console.log('  ✅ All provider adapters compiled matching target files.');
   } finally {
     fs.rmSync(sandboxDir, { recursive: true, force: true });

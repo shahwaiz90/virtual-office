@@ -298,8 +298,10 @@ function loadRegistry(projectRoot) {
     ag.goal = ag.goal || '';
 
     // 3. Capabilities (harmonize tools and allowed_tools)
-    const rawTools = ag.tools !== undefined ? ag.tools : ag.allowed_tools;
-    const normalizedTools = Array.isArray(rawTools) ? rawTools : (rawTools ? [rawTools] : ['view_file']);
+    // Either spelling may be present (or one may be an empty default): merge them
+    const asList = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+    const mergedTools = [...new Set([...asList(ag.tools), ...asList(ag.allowed_tools)])];
+    const normalizedTools = mergedTools.length ? mergedTools : ['view_file'];
     ag.tools = normalizedTools;
     ag.allowed_tools = normalizedTools;
 
@@ -312,8 +314,7 @@ function loadRegistry(projectRoot) {
     ag.prohibited_actions = Array.isArray(ag.prohibited_actions) ? ag.prohibited_actions : [];
 
     // 6. Coordination (harmonize handoffTo, delegation_targets, and reportsTo)
-    const rawHandoff = ag.handoffTo !== undefined ? ag.handoffTo : ag.delegation_targets;
-    const normalizedHandoff = Array.isArray(rawHandoff) ? rawHandoff : (rawHandoff ? [rawHandoff] : []);
+    const normalizedHandoff = [...new Set([...asList(ag.handoffTo), ...asList(ag.delegation_targets)])];
     ag.handoffTo = normalizedHandoff;
     ag.delegation_targets = normalizedHandoff;
 
@@ -364,41 +365,34 @@ function saveRegistry(registry, projectRoot) {
     const handoff = ag.handoffTo || ag.delegation_targets || [];
     const isPrimary = Boolean(ag.is_primary || ag.id === registry.orchestrator);
 
-    const frontmatterData = {
-      // 1. Identity
-      id: ag.id,
-      name: ag.name,
-      description: ag.description || '',
-      badge: ag.badge || ag.id.slice(0, 3).toUpperCase(),
-      avatar_url: ag.avatar_url || '/assets/developer.png',
-
-      // 2. Behavior
-      role: ag.role,
-      persona: ag.persona || '',
-      goal: ag.goal || '',
-      is_primary: isPrimary,
-
-      // 3. Capabilities
-      skills: ag.skillIds || (Array.isArray(ag.skills) ? ag.skills.map((s) => (typeof s === 'string' ? s : s.id)) : []),
-      tools,
-      allowed_tools: tools,
-      enable_subagent_tools: Boolean(ag.enable_subagent_tools),
-      enable_write_tools: Boolean(ag.enable_write_tools),
-      enable_mcp_tools: Boolean(ag.enable_mcp_tools),
-
-      // 4. Execution
-      inputContract: ag.inputContract || '',
-      outputContract: ag.outputContract || '',
-
-      // 5. Governance
-      permissions: ag.permissions || [],
-      prohibited_actions: ag.prohibited_actions || [],
-
-      // 6. Coordination
-      reportsTo: ag.reportsTo !== undefined ? ag.reportsTo : (isPrimary ? 'user' : registry.orchestrator),
-      handoffTo: handoff,
-      delegation_targets: handoff,
-    };
+    const skills = ag.skillIds || (Array.isArray(ag.skills) ? ag.skills.map((s) => (typeof s === 'string' ? s : s.id)) : []);
+    const reportsTo = ag.reportsTo !== undefined && ag.reportsTo !== null ? ag.reportsTo : (isPrimary ? 'user' : registry.orchestrator);
+    // Only fields with a value are written; readers treat missing ones as empty, and
+    // `tools`/`delegation_targets` are the single spelling (aliases are resolved on read)
+    const frontmatterData = Object.fromEntries(
+      Object.entries({
+        id: ag.id,
+        name: ag.name,
+        description: ag.description || '',
+        badge: ag.badge || ag.id.slice(0, 3).toUpperCase(),
+        avatar_url: ag.avatar_url || '/assets/developer.png',
+        role: ag.role,
+        persona: ag.persona || '',
+        goal: ag.goal || '',
+        is_primary: isPrimary || undefined,
+        skills,
+        tools,
+        enable_subagent_tools: Boolean(ag.enable_subagent_tools),
+        enable_write_tools: Boolean(ag.enable_write_tools),
+        enable_mcp_tools: Boolean(ag.enable_mcp_tools),
+        inputContract: ag.inputContract || '',
+        outputContract: ag.outputContract || '',
+        permissions: ag.permissions || [],
+        prohibited_actions: ag.prohibited_actions || [],
+        reportsTo,
+        delegation_targets: handoff,
+      }).filter(([, v]) => v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0))
+    );
 
     const bodyContent = ag.instructions || ag.system_prompt || ag.body || '';
     const fileContent = stringifyFrontmatter(frontmatterData, bodyContent);
@@ -407,7 +401,7 @@ function saveRegistry(registry, projectRoot) {
     manifestAgents.push({
       id: ag.id,
       path: `definitions/${ag.id}.md`,
-      ...(frontmatterData.is_primary ? { primary: true } : {}),
+      ...(isPrimary ? { primary: true } : {}),
     });
   });
 

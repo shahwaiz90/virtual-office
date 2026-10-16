@@ -9,39 +9,28 @@
         "id": "tech-pm",
         "name": "Scrum Master",
         "role": "Tech Scrum Master",
-        "persona": "",
-        "goal": "",
         "primary": true,
         "tools": [
-          "view_file",
-          "run_command",
-          "invoke_subagent",
-          "send_message"
-        ],
-        "allowedTools": [
-          "view_file",
-          "run_command",
-          "invoke_subagent",
-          "send_message"
+          "Read",
+          "Grep",
+          "Glob",
+          "Bash"
         ],
         "reportsTo": "user",
-        "handoffTo": [
-          "web-tech-lead"
-        ],
         "delegationTargets": [
           "web-tech-lead"
         ],
         "skills": [
           "kanban-handoff",
           "task-decomposition",
-          "read-jira",
-          "read-confluence",
           "requirement-analysis",
           "sprint-planning",
+          "read-jira",
+          "read-confluence",
           "writing-guidelines"
         ],
-        "inputContract": "Reads the user's requirement. Registers it as a requirement card on the Kanban board before anything else.",
-        "outputContract": "Breaks the requirement into role-specific task cards (parentKey = requirement), each with a brief rephrased for its assignee, acceptance criteria and context. Delegates each by card key only, follows progress on the cards' threads, and closes the requirement card with a summary when all tasks are done.",
+        "inputContract": "The user's request, as the requirement card the portal registered (or register it first).",
+        "outputContract": "Task cards under the requirement (parentKey), each with a brief written for its assignee, acceptance criteria and context, delegated by key. The requirement closes by itself when its tasks are done; post a summary on its thread.",
         "permissions": [],
         "prohibitedActions": [
           "No direct application code modifications"
@@ -51,27 +40,14 @@
         "id": "web-tech-lead",
         "name": "Web Lead",
         "role": "Tech Lead",
-        "persona": "",
-        "goal": "",
         "primary": false,
         "tools": [
-          "view_file",
-          "run_command",
-          "git_diff",
-          "invoke_subagent",
-          "send_message"
-        ],
-        "allowedTools": [
-          "view_file",
-          "run_command",
-          "git_diff",
-          "invoke_subagent",
-          "send_message"
+          "Read",
+          "Grep",
+          "Glob",
+          "Bash"
         ],
         "reportsTo": "tech-pm",
-        "handoffTo": [
-          "web-dev"
-        ],
         "delegationTargets": [
           "web-dev"
         ],
@@ -84,8 +60,8 @@
           "vercel-optimize",
           "modern-web-guidance"
         ],
-        "inputContract": "Reads its assigned card from the Kanban board (GET /api/tasks/<key>?format=md): brief, acceptance criteria, context, parent requirement and thread. Never relies on the delegation prompt for instructions.",
-        "outputContract": "Turns its card into technical implementation cards for the Developer (parentKey = its own card): files, API/data contracts, edge cases and verification steps in each brief. Delegates by card key only, answers questions and reviews results on the cards' threads, then records its own result and moves its card.",
+        "inputContract": "Its card: the product brief, acceptance criteria, context and thread.",
+        "outputContract": "Developer cards under its card, each a technical contract; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review.",
         "permissions": [],
         "prohibitedActions": [
           "No direct unreviewed code pushes to main"
@@ -95,40 +71,28 @@
         "id": "web-dev",
         "name": "Web Dev",
         "role": "Developer",
-        "persona": "",
-        "goal": "",
         "primary": false,
         "tools": [
-          "view_file",
-          "write_to_file",
-          "replace_file_content",
-          "run_command"
+          "Read",
+          "Grep",
+          "Glob",
+          "Bash",
+          "Write",
+          "Edit"
         ],
-        "allowedTools": [
-          "view_file",
-          "write_to_file",
-          "replace_file_content",
-          "run_command"
-        ],
-        "reportsTo": "tech-pm",
-        "handoffTo": [
-          "web-tech-lead"
-        ],
-        "delegationTargets": [
-          "web-tech-lead"
-        ],
+        "reportsTo": "web-tech-lead",
+        "delegationTargets": [],
         "skills": [
           "kanban-handoff",
-          "task-decomposition",
+          "feature-implementation",
           "react-best-practices",
           "composition-patterns",
           "react-view-transitions",
-          "feature-implementation",
           "modern-web-guidance",
           "deploy-to-vercel"
         ],
-        "inputContract": "Reads its assigned card from the Kanban board (GET /api/tasks/<key>?format=md): the technical brief, acceptance criteria, context files and thread. Asks on the card's thread when anything is unclear.",
-        "outputContract": "Implements the card, posts progress and decisions to the card's thread, then records a result (what changed, files touched, how each acceptance criterion is met) and moves the card to review.",
+        "inputContract": "Its card: the technical contract, acceptance criteria, context files and thread. Asks on the thread when anything is unclear.",
+        "outputContract": "The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met.",
         "permissions": [],
         "prohibitedActions": [
           "No breaking architectural contracts"
