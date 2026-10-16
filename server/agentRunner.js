@@ -170,8 +170,35 @@ Return ONLY a JSON array (no markdown, no prose). Each item:
     });
   }
 
+  /** Resolves a dependsOn entry (a card key or an earlier task's title) to its card. */
+  findDependency(ref) {
+    const q = String(ref || '').trim().toLowerCase();
+    if (!q) return null;
+    const all = Array.from(this.eventBus.tasks.values());
+    return all.find((t) => String(t.key || '').toLowerCase() === q || String(t.id || '').toLowerCase() === q)
+      || all.find((t) => String(t.title || '').trim().toLowerCase() === q)
+      || null;
+  }
+
+  /** Dependencies of a card that are not done yet (a missing one counts as open). */
+  openDependencies(task) {
+    return (Array.isArray(task.dependsOn) ? task.dependsOn : [])
+      .map((ref) => ({ ref, card: this.findDependency(ref) }))
+      .filter(({ card }) => !card || card.column !== 'done')
+      .map(({ ref, card }) => (card ? card.key : `${ref} (missing)`));
+  }
+
+  /** Cards an agent can start: open work (not in review/testing/done) whose dependencies are done. */
+  runnableTasks(exclude = new Set()) {
+    return Array.from(this.eventBus.tasks.values()).filter(
+      (t) => ['backlog', 'assigned', 'in_progress'].includes(t.column) && !exclude.has(t.id) && this.openDependencies(t).length === 0
+    );
+  }
+
   /**
-   * Executes a specific task on the Authoritative Task Board using real OpenCode
+   * Executes a specific task on the Authoritative Task Board using real OpenCode.
+   * The card's column is the agent's to set through the board API; a clean exit only
+   * means the agent stopped, so an unmoved card goes to review for its delegator.
    */
   async executeTask(taskId) {
     const task = this.eventBus.tasks.get(taskId);
@@ -181,6 +208,11 @@ Return ONLY a JSON array (no markdown, no prose). Each item:
 
     if (this.currentRunningTaskId === taskId) {
       throw new Error(`Task ${taskId} is already executing.`);
+    }
+
+    const blockedBy = this.openDependencies(task);
+    if (blockedBy.length) {
+      throw new Error(`Task ${task.key || taskId} is blocked by ${blockedBy.join(', ')}.`);
     }
 
     const agent = this.eventBus.agents.get(task.assignedTo) || Array.from(this.eventBus.agents.values())[0];
@@ -212,7 +244,9 @@ INSTRUCTIONS:
 1. Work directly on the real codebase in this project directory.
 2. Read the impacted files, apply the necessary code modifications, create new components or files if required.
 3. If this is a test task, run the test suite and verify pass rate.
-4. Keep all changes clean, minimal, and fully functioning.`;
+4. Keep all changes clean, minimal, and fully functioning.
+5. Your card is http://localhost:3000/api/tasks/${task.key}?format=md. When you finish, move it yourself with
+   POST http://localhost:3000/api/tasks/${task.key}/status {"agentId":"${agent.id}","column":"review" or "done","result":"what you did"}.`;
 
     return new Promise((resolve, reject) => {
       task.logs.push(`[${new Date().toLocaleTimeString()}] Target directory: ${projectRoot}`);
@@ -267,25 +301,18 @@ INSTRUCTIONS:
         this.currentRunningTaskId = null;
 
         if (code === 0) {
-          task.progress = 100;
-          task.logs.push(`[${new Date().toLocaleTimeString()}] ✅ Deliverable successfully completed.`);
-
-          // Transition to next column
-          if (task.title.toLowerCase().includes('spike')) {
-            task.column = 'done';
-            // Unblock implementation task
-            const nextTask = Array.from(this.eventBus.tasks.values()).find((t) => t.column === 'assigned');
-            if (nextTask) nextTask.column = 'in_progress';
-          } else if (task.title.toLowerCase().includes('implementation')) {
+          // Explicit status wins: if the agent moved its card on the board, keep that column
+          const movedByAgent = task.column !== 'in_progress';
+          if (!movedByAgent) {
             task.column = 'review';
-          } else if (task.title.toLowerCase().includes('review')) {
-            task.column = 'testing';
+            task.logs.push(`[${new Date().toLocaleTimeString()}] Agent exited without updating the card; moved to review for ${task.delegatedBy || 'its delegator'}.`);
           } else {
-            task.column = 'done';
+            task.logs.push(`[${new Date().toLocaleTimeString()}] Agent set the card to ${task.column}.`);
           }
+          if (task.column === 'done') task.progress = 100;
 
           agent.status = 'celebrating';
-          agent.activityMessage = `🎉 Completed: ${task.title}`;
+          agent.activityMessage = `Finished: ${task.title} (${task.column})`;
 
           setTimeout(() => {
             if (agent.status === 'celebrating') {
@@ -344,10 +371,19 @@ INSTRUCTIONS:
     }
 
     try {
-      for (const t of allTasks) {
-        if (!this.isPipelineRunning) break;
-        if (t.column === 'done') continue;
-        await this.executeTask(t.id);
+      // Run whatever is unblocked next; a card waiting in review blocks its dependents until it is done
+      const attempted = new Set();
+      while (this.isPipelineRunning) {
+        const next = this.runnableTasks(attempted)[0];
+        if (!next) break;
+        attempted.add(next.id);
+        await this.executeTask(next.id);
+      }
+      const blocked = Array.from(this.eventBus.tasks.values()).filter(
+        (t) => t.column !== 'done' && !attempted.has(t.id) && this.openDependencies(t).length > 0
+      );
+      if (blocked.length) {
+        console.log(`[AgentRunner] Waiting on dependencies: ${blocked.map((t) => `${t.key} ← ${this.openDependencies(t).join(', ')}`).join('; ')}`);
       }
     } catch (err) {
       console.warn('[AgentRunner] Pipeline error:', err.message);
