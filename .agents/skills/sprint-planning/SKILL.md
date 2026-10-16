@@ -1,36 +1,19 @@
 ---
 name: sprint-planning
-description: Plans and sequences the real tasks produced from the user's requirement on the Kanban board — task count, names and order come from the requirement, never from a fixed template.
+description: Sequences the requirement's tasks on the board by real dependencies, keeps the backlog FIFO, and manages sprint folders and the sprint APIs.
 ---
-# Sprint Planning & Task Sequencing
+# Sprint Planning
 
-## Mandatory Backlog-First & Sequential Execution Rule
-- **Always Add to Backlog First**: Whenever the user requests any feature, enhancement, or technical task, **ALWAYS add it to the Backlog (`status: 'backlog'`) on the Authoritative Task Board immediately**.
-- **Zero Interruption of Active Work**: Never interrupt, preempt, or abandon a currently active task (`assigned`, `in_progress`, `review`, or `testing`).
-- **Sequential Execution**: Queue all incoming user feature requests in the `backlog` column and pull & execute them in FIFO / priority order **only after the current task reaches `done`**.
-- **Clean Backlog Registration Even When Idle**: If no task is currently active, still register the new feature in `backlog` first so it is visible on the board before transitioning it into active sprint phases.
+Break work down with `task-decomposition`; move cards with `kanban-handoff`. This skill covers order and sprints.
 
-## Sequencing the Sprint (No Fixed Phases)
-- **Tasks come from the requirement.** Use the `task-decomposition` skill to break the user's requirement into the tasks it actually needs. There is no fixed 4-phase cycle and no fixed task count.
-- **Order by real dependencies.** Put a task after the ones it needs (`dependsOn`). Tasks that don't depend on each other can run in parallel when different agents own them.
-- **Balance the team.** Assign from the real roster (`.agents/agents.json`), respecting each agent's skills, `prohibited_actions` and `delegation_targets`. Never assign to an agent that isn't in the roster.
-- **Review and testing only where they add value**, and only to agents allowed to do them.
+## Sequencing
+- Order by `dependsOn`. Tasks with no dependency between them can run in parallel when different agents own them.
+- Balance work across the roster; don't queue everything on one agent.
+- Every request enters `backlog` first, even when the team is idle. Never preempt active cards; pull the next backlog item when active work is `done`.
 
-## Task Naming (Real, Specific Names)
-- **Name the actual work** in plain English, e.g. `Add sprint picker to Kanban header`, `Save task order in tasks.json`, `Fix typo in Settings title`.
-- **No template prefixes**: do not force `Plan:` / `Build:` / `Review:` / `Test:` onto titles.
-- **No generic placeholders**: never `Task 1`, `Implementation`, `Core Feature`, `Step 2`, and never paste the user's sentence as the title.
-- **Short**: under ~60 characters; put the detail in the description and acceptance criteria.
-
-## Multi-Sprint Directory Architecture (`.agents/sprints/<sprintId>/`)
-- **Master Registry**: `.agents/sprints/index.json` maintains the list of all sprints and points to the `activeSprintId`.
-- **Isolated Sprint Directories**: Every sprint resides in its own isolated folder `.agents/sprints/<sprintId>/` containing:
-  - `tasks.json`: Sprint-specific tasks array and metadata (`sprintId`, `version`, `updatedAt`, `tasks`).
-  - `sprint-plan.md`: Sprint plan, goals, deliverables, and task decomposition table.
-  - `assets/`: Deliverables, mockups, screenshots, and sprint artifacts.
-- **Sprint Management Portal & APIs**:
-  - `GET /api/sprints`: Returns active sprint and list of available sprints.
-  - `POST /api/sprints/start`: Provisions `.agents/sprints/sprint-N/`, sets active pointer, clears active board, and broadcasts `SYNC_STATE`.
-  - `POST /api/sprints/switch`: Switches active sprint in `index.json`, clears board, loads target sprint tasks from `.agents/sprints/<sprintId>/tasks.json`, and broadcasts `SYNC_STATE`.
-
-
+## Sprints
+- `.agents/sprints/index.json` lists sprints and points to `activeSprintId`. Each sprint folder `.agents/sprints/<sprintId>/` holds `tasks.json` (the board), `sprint-plan.md` and `assets/`. These folders are local runtime data and are not committed.
+- `GET /api/sprints`: active sprint and the list.
+- `POST /api/sprints/start`: create the next sprint folder, make it active, clear the board.
+- `POST /api/sprints/switch` with `{"sprintId":"sprint-3"}`: make another sprint active and load its cards.
+- The portal starts a new sprint by itself when a new request arrives and every card on the board is `done`.
