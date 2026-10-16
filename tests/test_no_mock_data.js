@@ -82,6 +82,13 @@ try {
   handleScratchFileChange(scratch, 'change');
   assert.ok(!eventBus.events.slice(0, eventBus.events.length - eventsBefore).some((e) => e.type === 'test_result'), 'A file named "test" is not a test result');
   assert.ok(!['TASK-1', 'TASK-2', 'TASK-3', 'TASK-5', 'TASK-6'].some((id) => eventBus.tasks.has(id)));
+  // An agent's edit already recorded from its transcript is not listed again as an unattributed save
+  fs.mkdirSync(path.join(testRoot, 'src'), { recursive: true });
+  const agentFile = path.join(testRoot, 'src', 'agent-edit.ts');
+  fs.writeFileSync(agentFile, 'export const a = 1;\n');
+  eventBus.recordFileChange({ filePath: 'src/agent-edit.ts', agentId: 'web-dev', agentName: 'Web Dev', contentPreview: 'export const a = 1;' });
+  handleWorkspaceFileChange(agentFile, 'change');
+  assert.strictEqual(eventBus.fileChanges.filter((f) => f.filePath === 'src/agent-edit.ts').length, 1, 'One entry per agent edit');
   console.log('  ✅ Test 3 Passed.\n');
 
   console.log('▶ Test 4: Words in messages never complete cards...');

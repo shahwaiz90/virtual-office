@@ -1363,6 +1363,11 @@ function recordDiskFileChange(filePath, relPath, action) {
     }
   } catch (e) {}
   const deleted = action === 'unlink' || action === 'deleted';
+  // An agent edit already recorded from its transcript is the same save; don't list it again unattributed
+  const recentAgentEdit = eventBus.fileChanges.find(
+    (f) => f.filePath === relPath && f.agentId && Date.now() - new Date(f.timestamp).getTime() < 15000
+  );
+  if (recentAgentEdit && !deleted) return;
   eventBus.recordFileChange({
     filePath: relPath,
     fileName: path.basename(filePath),
@@ -1371,6 +1376,7 @@ function recordDiskFileChange(filePath, relPath, action) {
     summary: `${path.basename(filePath)} ${deleted ? 'deleted' : 'saved'} on disk`,
     timestamp: new Date().toISOString(),
   });
+  eventBus.broadcast({ type: 'STATE_UPDATE', state: eventBus.getStateSnapshot() });
 }
 
 /**
@@ -1864,10 +1870,10 @@ function recordClaudeTokenUsage(entry, state) {
   const found = usageFromEntry(entry);
   if (!found) return;
   if (entry.timestamp && eventBus.isBeforeReset(entry.timestamp)) return;
-  state.seenUsageIds = state.seenUsageIds || new Set();
+  // A message's content blocks are consecutive entries carrying the same usage: count it once
   if (found.messageId) {
-    if (state.seenUsageIds.has(found.messageId)) return;
-    state.seenUsageIds.add(found.messageId);
+    if (state.lastUsageId === found.messageId) return;
+    state.lastUsageId = found.messageId;
   }
   const agentId = state.agentType && eventBus.agents.has(state.agentType) ? state.agentType : getResolvedAgent('pm', 0).id;
   eventBus.recordTokenUsage(agentId, found.usage);
@@ -2437,7 +2443,7 @@ function parseTranscriptStep(step, convId = '') {
         }
         // A dispatch that names a card ("Your task: WEB-103 ...") is about that card, even when this
         // process hasn't loaded it (another sprint, a restart mid-replay); never mint a new card for it
-        const dispatchNamesCard = /\byour task:?\s*[A-Z][A-Z0-9]+-\d+\b/i.test(prompt) || (namedCardKeys.length > 0 && !referencedCard && /\/api\/tasks\//.test(prompt));
+        const dispatchNamesCard = /\b[Yy]our [Tt]ask:?\s*[A-Z][A-Z0-9]+-\d+\b/.test(prompt) || (namedCardKeys.length > 0 && !referencedCard && /\/api\/tasks\//.test(prompt));
         if (!activeHandoffTask && !isInvokingPm && !dispatchNamesCard) {
           // Handoff without a card: put it on the board anyway, with the delegator's own words as the brief
           activeHandoffTask = registerRealAgentTask({

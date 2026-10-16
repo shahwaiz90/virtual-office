@@ -585,6 +585,11 @@ app.post('/api/tasks/register', (req, res) => {
     }
   }
 
+  // Re-registering is also how agents move cards: close parents whose sub-tasks are now finished
+  for (const reg of registered) {
+    if (reg.column === 'done' || reg.column === 'review') taskBoard.reconcileParents(reg);
+  }
+
   // Persist strictly to active sprint folder (.agents/sprints/<activeSprintId>/tasks.json)
   persistActiveSprintTasks(root);
 

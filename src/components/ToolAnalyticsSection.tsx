@@ -135,7 +135,6 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
   const maxSkillCalls = Math.max(1, ...filteredSkillStats.map((s) => s.count));
 
   const totalRoleInvocations = roleStats.reduce((sum, r) => sum + r.invocations, 0);
-  const maxRoleInvocations = Math.max(1, ...roleStats.map((r) => r.invocations));
 
   // Durations are only shown when measured; otherwise they are unknown, not zero
   const formatMeasured = (seconds: number, measured: number | undefined) => (measured ? formatSec(seconds) : '—');

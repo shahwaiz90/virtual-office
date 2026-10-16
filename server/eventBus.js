@@ -1002,17 +1002,7 @@ class EventBus extends EventEmitter {
     }
   }
 
-  consolidateTasks() {
-    const microPrefixes = ['TASK-FILE-', 'TASK-CMD-', 'TASK-REQ-'];
-    for (const id of Array.from(this.tasks.keys())) {
-      if (microPrefixes.some((p) => id.startsWith(p))) {
-        this.tasks.delete(id);
-      }
-    }
-  }
-
   getStateSnapshot() {
-    this.consolidateTasks();
     const agentsList = Array.from(this.agents.values());
     const hasAgents = agentsList.length > 0;
     const tasksList = hasAgents ? Array.from(this.tasks.values()) : [];

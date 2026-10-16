@@ -170,28 +170,32 @@ Return ONLY a JSON array (no markdown, no prose). Each item:
     });
   }
 
-  /** Resolves a dependsOn entry (a card key or an earlier task's title) to its card. */
-  findDependency(ref) {
-    const q = String(ref || '').trim().toLowerCase();
-    if (!q) return null;
+  /** Lookup from a dependsOn reference (card key, id, or an earlier task's title) to its card. */
+  dependencyIndex() {
+    const index = new Map();
     const all = Array.from(this.eventBus.tasks.values());
-    return all.find((t) => String(t.key || '').toLowerCase() === q || String(t.id || '').toLowerCase() === q)
-      || all.find((t) => String(t.title || '').trim().toLowerCase() === q)
-      || null;
+    // Titles first so keys and ids win when both match
+    for (const t of all) if (t.title) index.set(String(t.title).trim().toLowerCase(), t);
+    for (const t of all) {
+      if (t.id) index.set(String(t.id).toLowerCase(), t);
+      if (t.key) index.set(String(t.key).toLowerCase(), t);
+    }
+    return index;
   }
 
   /** Dependencies of a card that are not done yet (a missing one counts as open). */
-  openDependencies(task) {
+  openDependencies(task, index = this.dependencyIndex()) {
     return (Array.isArray(task.dependsOn) ? task.dependsOn : [])
-      .map((ref) => ({ ref, card: this.findDependency(ref) }))
+      .map((ref) => ({ ref, card: index.get(String(ref || '').trim().toLowerCase()) || null }))
       .filter(({ card }) => !card || card.column !== 'done')
       .map(({ ref, card }) => (card ? card.key : `${ref} (missing)`));
   }
 
   /** Cards an agent can start: open work (not in review/testing/done) whose dependencies are done. */
   runnableTasks(exclude = new Set()) {
+    const index = this.dependencyIndex();
     return Array.from(this.eventBus.tasks.values()).filter(
-      (t) => ['backlog', 'assigned', 'in_progress'].includes(t.column) && !exclude.has(t.id) && this.openDependencies(t).length === 0
+      (t) => ['backlog', 'assigned', 'in_progress'].includes(t.column) && !exclude.has(t.id) && this.openDependencies(t, index).length === 0
     );
   }
 

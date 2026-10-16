@@ -286,6 +286,26 @@ function request(port, method, urlPath, body) {
     eventBus.agents.delete('web-tester');
     console.log('  ✅ Test 10 Passed: Requirements close from their sub-tasks; testing is only used with a tester.\n');
 
+    // Test 11: moving cards by re-registering them (as the task-decomposition skill says) also closes parents
+    console.log('▶ Test 11: Re-registered cards close their requirement...');
+    await request(port, 'POST', '/api/tasks/register', {
+      tasks: [
+        { key: 'WEB-701', type: 'requirement', title: 'Dark mode toggle', assignedTo: 'tech-pm', delegatedBy: 'tech-pm', column: 'in_progress' },
+        { key: 'WEB-702', parentKey: 'WEB-701', title: 'Add toggle', brief: 'Build it.', assignedTo: 'web-dev', delegatedBy: 'tech-pm', column: 'in_progress' },
+      ],
+    });
+    await request(port, 'POST', '/api/tasks/register', { tasks: [{ key: 'WEB-702', parentKey: 'WEB-701', title: 'Add toggle', assignedTo: 'web-dev', delegatedBy: 'tech-pm', column: 'done' }] });
+    assert.strictEqual(eventBus.tasks.get('TASK-WEB-701').column, 'done', 'Requirement closes when its only sub-task is re-registered as done');
+
+    // A lowercase word that looks like a key is not a card reference: the handoff still becomes a card
+    parseTranscriptStep({
+      type: 'PLANNER_RESPONSE',
+      content: '',
+      tool_calls: [{ name: 'invoke_subagent', args: { TypeName: 'web-dev', Description: 'Phase two header migration', Prompt: 'Your task: phase-2 migration of the header.' } }],
+    }, 'conv-handoff');
+    assert.ok(Array.from(eventBus.tasks.values()).some((t) => t.title === 'Phase two header migration'), 'Lowercase "phase-2" must not suppress the card');
+    console.log('  ✅ Test 11 Passed.\n');
+
     console.log('🎉 ALL KANBAN HANDOFF CHANNEL TESTS PASSED!');
   } finally {
     server.close();
