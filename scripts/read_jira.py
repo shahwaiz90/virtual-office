@@ -74,6 +74,18 @@ def load_from_shell_profiles():
                 pass
 
 
+def setup_help(product, env_var, flag, example, where):
+    """What to do when the token is missing: every way the script can find it."""
+    return "\n".join([
+        f"ERROR: {product} Personal Access Token not found ({env_var} is not set).",
+        "Set it one of these ways, then run the command again:",
+        f"  1. Project file: add {env_var}=\"<token>\" to .env.local in the project root (gitignored; see .env.example).",
+        f"  2. Shell: export {env_var}=\"<token>\"  (add the line to ~/.zshrc to keep it).",
+        f"  3. One run only: python3 scripts/{example} {flag} <token>",
+        f"Create a token {where[0].lower() + where[1:]}",
+    ])
+
+
 def get_token(cli_token=None):
     load_env_local()
     load_from_shell_profiles()
@@ -81,9 +93,8 @@ def get_token(cli_token=None):
         return cli_token
     token = os.getenv("JIRA_PATH")
     if not token:
-        print("ERROR: Jira Personal Access Token not found.", file=sys.stderr)
-        print("Please export JIRA_PATH in ~/.zshrc or provide --token <token>:", file=sys.stderr)
-        print("  export JIRA_PATH=\"your_jira_personal_access_token\"", file=sys.stderr)
+        print(setup_help("Jira", "JIRA_PATH", "--token", "read_jira.py DXDT-25243",
+                         "In Jira: your avatar > Profile > Personal Access Tokens > Create token."), file=sys.stderr)
         sys.exit(1)
     return token
 

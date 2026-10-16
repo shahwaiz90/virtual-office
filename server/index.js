@@ -1321,6 +1321,12 @@ app.post('/api/terminal/execute', (req, res) => {
 });
 
 // 6. API: Health Check
+// Whether the Jira / Confluence tokens the team's skills need are set (never returns the values)
+app.get('/api/integrations', (req, res) => {
+  const { integrationStatus } = require('./integrations');
+  res.json({ success: true, integrations: integrationStatus(getProjectRoot(), Array.from(eventBus.agents.values())) });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',

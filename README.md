@@ -100,6 +100,25 @@ That's it! The visualizer will:
 
 ---
 
+## 🔑 Jira & Confluence Access (Optional)
+
+The `read-jira` and `read-confluence` skills fetch tickets and pages with `scripts/read_jira.py` and `scripts/read_confluence.py`. Each needs a personal access token in an environment variable:
+
+| Variable | Used by | Where to create the token |
+| :--- | :--- | :--- |
+| `JIRA_PATH` | `read-jira` | Jira > your avatar > Profile > Personal Access Tokens > Create token |
+| `CONFLUENCE_PATH` | `read-confluence` | Confluence > your avatar > Settings > Personal Access Tokens > Create token |
+
+Set them in **one** of these ways:
+
+1. **Project file (recommended):** copy `.env.example` to `.env.local` in the project root and fill in the tokens. `.env.local` is gitignored.
+2. **Shell:** `export JIRA_PATH="<token>"` (add it to `~/.zshrc` to keep it across terminals).
+3. **One run only:** `python3 scripts/read_jira.py DXDT-25243 --token <token>` (`--pat` for Confluence).
+
+Without a token the scripts stop with these instructions, and the portal header shows **`JIRA_PATH not set`** (or `CONFLUENCE_PATH`) while a role on your team uses the skill. The tokens are only sent to your Jira/Confluence server, and the portal never displays them.
+
+---
+
 ## 📁 How the Agent Team is Organized
 
 Your agent team is stored directly inside your repository in standard, human-readable markdown and YAML:
