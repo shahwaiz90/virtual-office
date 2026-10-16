@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { OfficeState } from '../types/office';
-import { Users, Wifi, Mic, Settings, Folder, Pencil, Volume2, VolumeX, RotateCcw, Sun, Moon } from 'lucide-react';
+import { Users, Wifi, Mic, Settings, Folder, Pencil, Volume2, VolumeX, RotateCcw, Sun, Moon, KeyRound } from 'lucide-react';
 import { voiceService } from '../services/voiceService';
 import { getTheme, setTheme, Theme } from '../services/theme';
 
@@ -68,7 +68,29 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const agentCount = state?.agents ? state.agents.length : 0;
-  const jiraConfluenceCount = state?.jiraConfluenceItems ? state.jiraConfluenceItems.length : 0;
+
+  // Tokens the team's read-jira / read-confluence skills need but that aren't set yet
+  const [missingTokens, setMissingTokens] = useState<{ name: string; envVar: string; setup: string }[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const check = () =>
+      fetch('/api/integrations')
+        .then((r) => r.json())
+        .then((json) => {
+          if (cancelled || !json?.integrations) return;
+          const missing = Object.entries(json.integrations as Record<string, { configured: boolean; usedBy: string[]; envVar: string; setup: string }>)
+            .filter(([, v]) => !v.configured && v.usedBy.length > 0)
+            .map(([k, v]) => ({ name: k === 'jira' ? 'Jira' : 'Confluence', envVar: v.envVar, setup: v.setup }));
+          setMissingTokens(missing);
+        })
+        .catch(() => {});
+    check();
+    const timer = setInterval(check, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [agentCount]);
 
   return (
     <header className="bg-surface/95 border-b border-sand-200/90 shadow-2xs backdrop-blur-md sticky top-0 z-40 px-4 sm:px-6 py-2.5 transition-all">
@@ -184,6 +206,16 @@ export const Header: React.FC<HeaderProps> = ({
               {state?.deliverables ? state.deliverables.length : 0}
             </span>
           </button>
+
+          {missingTokens.length > 0 && (
+            <span
+              className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200"
+              title={missingTokens.map((m) => `${m.name}: ${m.setup}`).join('\n')}
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              {missingTokens.map((m) => m.envVar).join(', ')} not set
+            </span>
+          )}
 
           {/* Workflow Recorder */}
           {recorderSlot}
