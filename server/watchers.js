@@ -7,7 +7,7 @@ const { eventBus } = require('./eventBus');
 const { getProjectRoot, discoverAgents } = require('./agentDiscovery');
 const { autoDiscoverAndRegisterAgents } = require('./agentRuntimeRegistry');
 const { listClaudeTranscripts, toTranscriptSteps, usageFromEntry } = require('./claudeTranscripts');
-const { appendThreadEntry, effectiveColumn, rosterHasTester } = require('./taskBoard');
+const { appendThreadEntry, effectiveColumn, rosterHasTester, cleanUpBoard } = require('./taskBoard');
 
 /**
  * Validates whether a file path or directory strictly belongs to the currently active project root
@@ -40,7 +40,8 @@ function toRelativePath(filePath) {
     if (root) {
       const rel = path.relative(root, abs).replace(/\\/g, '/');
       if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
-        return rel;
+        // A file in one of the project's git worktrees is the same project file
+        return rel.replace(/^\.claude\/worktrees\/[^/]+\//, '');
       }
     }
   } catch {}
@@ -1287,6 +1288,11 @@ function syncTasksFromJson(filePath, options = {}) {
       }
       const reg = registerRealAgentTask(t, { skipPersist: true });
       if (reg) registered.push(reg);
+    }
+    const repaired = cleanUpBoard();
+    if (repaired.removed.length || repaired.closed.length) {
+      console.log(`[Watchers] Board repaired: removed ${repaired.removed.join(', ') || 'none'}; closed ${repaired.closed.join(', ') || 'none'}`);
+      persistActiveSprintTasks();
     }
     const snap = eventBus.getStateSnapshot();
     eventBus.broadcast({
