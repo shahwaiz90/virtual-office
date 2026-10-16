@@ -15,7 +15,7 @@ Each role is a Claude Code subagent in `.claude/agents/`.
 ## Dispatching (this session)
 Subagents cannot start subagents, so this session dispatches:
 1. Send the request to `tech-pm` with the Agent tool. It registers the cards and replies with `HANDOFF <KEY> -> <agentId>` lines.
-2. For each HANDOFF line (respecting `dependsOn` on the cards), start that subagent with only: `Your task: <KEY>. Read it with curl -s "http://localhost:3000/api/tasks/<KEY>?format=md" and follow the kanban-handoff skill.`
+2. For each HANDOFF line (respecting `dependsOn` on the cards), start that subagent with only: `Your task: <KEY>. Read it with curl -s "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/<KEY>?format=md" and follow the kanban-handoff skill.`
 3. Repeat for the HANDOFF lines they return until the requirement card is done.
 
 Never paste instructions into a delegation prompt: everything is on the card (see the kanban-handoff skill).

@@ -123,8 +123,8 @@ export const App: React.FC = () => {
     const connectWs = () => {
       // Compute WebSocket URL
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      // In dev with Vite, backend is on 3000
-      const host = window.location.port === '5173' ? 'localhost:3000' : window.location.host;
+      // Same host as the page: in dev the Vite server proxies /ws to the portal (vite.config.ts)
+      const host = window.location.host;
       const wsUrl = `${protocol}//${host}/ws`;
 
       console.log(`[WebSocket] Connecting to ${wsUrl}...`);
@@ -362,6 +362,7 @@ export const App: React.FC = () => {
             activeSprintId={state?.activeSprintId}
             activeSprintPath={state?.activeSprintPath}
             sprints={state?.sprints}
+            portalUrl={state?.workflow?.portalUrl}
           />
         </section>
 

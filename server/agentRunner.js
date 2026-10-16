@@ -248,8 +248,8 @@ INSTRUCTIONS:
 2. Read the impacted files, apply the necessary code modifications, create new components or files if required.
 3. If this is a test task, run the test suite and verify pass rate.
 4. Keep all changes clean, minimal, and fully functioning.
-5. Your card is http://localhost:3000/api/tasks/${task.key}?format=md. When you finish, move it yourself with
-   POST http://localhost:3000/api/tasks/${task.key}/status {"agentId":"${agent.id}","column":"review" or "done","result":"what you did"}.`;
+5. Your card is ${require('./network').portalUrl()}/api/tasks/${task.key}?format=md. When you finish, move it yourself with
+   POST ${require('./network').portalUrl()}/api/tasks/${task.key}/status {"agentId":"${agent.id}","column":"review" or "done","result":"what you did"}.`;
 
     return new Promise((resolve, reject) => {
       task.logs.push(`[${new Date().toLocaleTimeString()}] Target directory: ${projectRoot}`);

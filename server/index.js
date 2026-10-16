@@ -29,10 +29,17 @@ let CURRENT_PORT = parseInt(process.env.PORT || '3000', 10);
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server, path: '/ws' });
+const { LISTEN_HOST, isLocalOrigin, localOnly, corsOptions, setPortalPort } = require('./network');
+// Only pages served from this machine may open the live socket
+const wss = new WebSocket.Server({
+  server,
+  path: '/ws',
+  verifyClient: ({ origin }) => !origin || isLocalOrigin(origin),
+});
 const agentRunner = new AgentRunner(eventBus, getProjectRoot);
 
-app.use(cors());
+app.use(localOnly);
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // 1. API: Discovered Agents
@@ -1328,6 +1335,15 @@ app.get('/api/integrations', (req, res) => {
   res.json({ success: true, integrations: integrationStatus(getProjectRoot(), Array.from(eventBus.agents.values())) });
 });
 
+// Saves a server URL and/or token into the project's .env.local (never echoed back), or clears them
+app.post('/api/integrations/:id/settings', (req, res) => {
+  const { saveSettings, integrationStatus } = require('./integrations');
+  const error = saveSettings(req.params.id, getProjectRoot(), req.body || {});
+  if (error) return res.status(400).json({ success: false, error });
+  const status = integrationStatus(getProjectRoot(), Array.from(eventBus.agents.values()));
+  res.json({ success: true, integration: status[req.params.id] });
+});
+
 // Signs in once with the stored token (sent only to that Jira/Confluence server) and reports the account
 app.post('/api/integrations/:id/test', async (req, res) => {
   const { testConnection } = require('./integrations');
@@ -1680,8 +1696,9 @@ async function startServer(portOverride) {
   }
 
   CURRENT_PORT = portToBind;
+  setPortalPort(portToBind);
 
-  server.listen(portToBind, () => {
+  server.listen(portToBind, LISTEN_HOST, () => {
     console.log(`=======================================================`);
     console.log(`🏢 AI AGENT VIRTUAL OFFICE BACKEND RUNNING`);
     console.log(`📡 URL: http://localhost:${portToBind}`);

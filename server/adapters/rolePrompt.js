@@ -74,7 +74,7 @@ function rolePrompt(agent, registry, { dispatch = 'handoff-lines' } = {}) {
     `You are **${agent.name}**, the ${agent.role} of the ${team} agent team${isOrchestrator ? ' and its orchestrator: every user request comes to you first' : ''}. Your agent id is \`${agent.id}\`; use it as \`agentId\` on every board call.`,
     '',
     '## Work through the Kanban board',
-    `Follow \`${skillPath('kanban-handoff')}\`. Your instructions are on a card (\`curl -s "http://localhost:3000/api/tasks/<KEY>?format=md"\`); questions, decisions and results go on its thread; cards move only with \`POST /api/tasks/<KEY>/status\`. Started with a raw request instead of a card key? Register it as a card first.`,
+    `Follow \`${skillPath('kanban-handoff')}\`. Your instructions are on a card (\`curl -s "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/<KEY>?format=md"\`); questions, decisions and results go on its thread; cards move only with \`POST /api/tasks/<KEY>/status\`. Started with a raw request instead of a card key? Register it as a card first.`,
     '',
   ];
   if (agent.inputContract) lines.push(`**You read:** ${agent.inputContract}`, '');
@@ -84,7 +84,7 @@ function rolePrompt(agent, registry, { dispatch = 'handoff-lines' } = {}) {
   if (targets.length) {
     lines.push(`## Handing work on`, `Only to ${targets.map(nameOf).join(', ')}: register a card written for that role (parentKey = your card), then delegate it by key only.`);
     if (dispatch === 'invoke_subagent') {
-      lines.push('Start the delegate with `invoke_subagent` and the prompt `Your task: <KEY>. Read it with curl -s "http://localhost:3000/api/tasks/<KEY>?format=md" and follow the kanban-handoff skill.` Nothing else goes in the prompt.');
+      lines.push('Start the delegate with `invoke_subagent` and the prompt `Your task: <KEY>. Read it with curl -s "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/<KEY>?format=md" and follow the kanban-handoff skill.` Nothing else goes in the prompt.');
     } else {
       lines.push('You cannot start subagents: end your reply with one `HANDOFF <KEY> -> <agentId>` line per card for the main session to dispatch.');
     }

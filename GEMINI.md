@@ -11,7 +11,7 @@ Route every software request to `tech-pm` (Scrum Master), the orchestrator. It r
 | `web-dev` | Developer | - | `web-tech-lead` | No breaking architectural contracts |
 
 ## Delegation
-Hand work on only along "Hands work to". A delegation prompt carries only the card reference: `Your task: <KEY>. Read it with curl -s "http://localhost:3000/api/tasks/<KEY>?format=md" and follow the kanban-handoff skill.` Everything else (brief, criteria, context, thread, result) is on the card; see `.agents/skills/kanban-handoff/SKILL.md`.
+Hand work on only along "Hands work to". A delegation prompt carries only the card reference: `Your task: <KEY>. Read it with curl -s "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/<KEY>?format=md" and follow the kanban-handoff skill.` Everything else (brief, criteria, context, thread, result) is on the card; see `.agents/skills/kanban-handoff/SKILL.md`.
 
 ## Skills
 - `tech-pm`: [kanban-handoff](.agents/skills/kanban-handoff/SKILL.md), [task-decomposition](.agents/skills/task-decomposition/SKILL.md), [requirement-analysis](.agents/skills/requirement-analysis/SKILL.md), [sprint-planning](.agents/skills/sprint-planning/SKILL.md), [read-jira](.agents/skills/read-jira/SKILL.md), [read-confluence](.agents/skills/read-confluence/SKILL.md), [writing-guidelines](.agents/skills/writing-guidelines/SKILL.md)

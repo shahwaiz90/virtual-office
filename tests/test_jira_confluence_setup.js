@@ -3,7 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { integrationStatus, testConnection } = require('../server/integrations');
+const { integrationStatus, testConnection, saveSettings } = require('../server/integrations');
 
 const root = path.join(__dirname, '..');
 console.log('🧪 Starting Jira & Confluence Setup Test Suite...\n');
@@ -99,6 +99,28 @@ try {
   assert.strictEqual(down.reason, 'unreachable');
   for (const r of [ok, rejected, sso, down]) assert.ok(!JSON.stringify(r).includes('secret-token'), 'Results never include the token');
   console.log('  ✅ Test 3 Passed.\n');
+
+  console.log('▶ Test 4: Settings entered in the portal are saved to .env.local, never echoed back...');
+  const proj2 = fs.mkdtempSync(path.join(os.tmpdir(), 'test-jira-save-'));
+  fs.writeFileSync(path.join(proj2, '.env.local'), 'OTHER_SETTING="keep"\nJIRA_PATH="old-token"\n');
+  assert.strictEqual(saveSettings('jira', proj2, { baseUrl: 'https://jira.acme.test/', token: 'new-token-1234' }), null);
+  const env = fs.readFileSync(path.join(proj2, '.env.local'), 'utf8');
+  assert.ok(env.includes('OTHER_SETTING="keep"'), 'Other settings are kept');
+  assert.ok(env.includes('JIRA_PATH="new-token-1234"') && !env.includes('old-token'), 'The token is replaced, not duplicated');
+  assert.ok(env.includes('JIRA_BASE_URL="https://jira.acme.test"'), 'URL saved without a trailing slash');
+  assert.strictEqual((fs.statSync(path.join(proj2, '.env.local')).mode & 0o077), 0, '.env.local is readable only by the user');
+  assert.ok(fs.readFileSync(path.join(proj2, '.gitignore'), 'utf8').includes('.env.local'), '.env.local is gitignored');
+  const savedStatus = integrationStatus(proj2, team, home).jira;
+  assert.deepStrictEqual([savedStatus.configured, savedStatus.tokenHint], [true, "…1234"]);
+  assert.ok(!JSON.stringify(savedStatus).includes("new-token-1234"), "Status never returns the token");
+  assert.ok(saveSettings('jira', proj2, { baseUrl: 'https://jira.example.com' }), 'Placeholder addresses are rejected');
+  assert.ok(saveSettings('jira', proj2, { baseUrl: 'ftp://jira.acme.test' }), 'Only http(s) URLs');
+  assert.ok(saveSettings('jira', proj2, { token: 'has space' }), 'Tokens with spaces are rejected');
+  assert.ok(saveSettings('jira', proj2, {}), 'Saving nothing is an error');
+  assert.strictEqual(saveSettings('jira', proj2, { clear: true }), null);
+  assert.strictEqual(fs.readFileSync(path.join(proj2, '.env.local'), 'utf8'), 'OTHER_SETTING="keep"\n', 'Clear removes only this integration');
+  fs.rmSync(proj2, { recursive: true, force: true });
+  console.log('  ✅ Test 4 Passed.\n');
 
   console.log('🎉 ALL JIRA & CONFLUENCE SETUP TESTS PASSED!');
 } finally {

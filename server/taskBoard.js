@@ -267,7 +267,7 @@ function normalizeCardDeliverable(item) {
       ...(item.metadata || {}),
       taskKey: task.key,
       parentKey: task.parentKey || undefined,
-      cardUrl: `http://localhost:3000/api/tasks/${task.key}?format=md`,
+      cardUrl: `${require('./network').portalUrl()}/api/tasks/${task.key}?format=md`,
     },
   };
 }

@@ -32,11 +32,9 @@ import { TaskCardDetails } from './TaskCardDetails';
 
 const sanitizeTaskKey = (key?: string) => (key ? String(key).trim().replace(/^[*`#\s]+|[*`#\s]+$/g, '') : '');
 
-// Fixed board API origin: the Vite dev server runs on a different port, so window.location.origin is not used.
-const CARD_LINK_BASE = 'http://localhost:3000';
-
-const buildCardLink = (task: KanbanTask) =>
-  `${CARD_LINK_BASE}/api/tasks/${encodeURIComponent(sanitizeTaskKey(task.key) || task.id)}?format=md`;
+// Links point at the portal server (its address comes from the server: the Vite dev server runs on another port)
+const buildCardLink = (task: KanbanTask, portalUrl?: string) =>
+  `${portalUrl || window.location.origin}/api/tasks/${encodeURIComponent(sanitizeTaskKey(task.key) || task.id)}?format=md`;
 
 interface KanbanBoardProps {
   tasks: KanbanTask[];
@@ -46,6 +44,7 @@ interface KanbanBoardProps {
   sprints?: SprintInfo[];
   onSwitchSprint?: (sprintId: string) => Promise<void> | void;
   onStartSprint?: () => Promise<void> | void;
+  portalUrl?: string;
 }
 
 const COLUMNS: { id: TaskColumn; label: string; color: string; bg: string; border: string; icon: any }[] = [
@@ -65,6 +64,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   sprints,
   onSwitchSprint,
   onStartSprint,
+  portalUrl,
 }) => {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -248,7 +248,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       return;
     }
     clipboard
-      .writeText(buildCardLink(task))
+      .writeText(buildCardLink(task, portalUrl))
       .then(() => {
         setCopiedLinkId(task.id);
         setTimeout(() => setCopiedLinkId(null), 2000);

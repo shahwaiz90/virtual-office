@@ -17,9 +17,10 @@ export default defineConfig({
       ],
     },
     proxy: {
-      '/api': 'http://localhost:3000',
+      // The portal server to develop against (PORT matches the server's)
+      '/api': `http://localhost:${process.env.PORT || 3000}`,
       '/ws': {
-        target: 'ws://localhost:3000',
+        target: `ws://localhost:${process.env.PORT || 3000}`,
         ws: true,
       },
     },
