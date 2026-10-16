@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Script to read Confluence wiki specifications from dm.stc.com.sa/wiki into Markdown.
+Script to read Confluence wiki specifications from your Confluence server into Markdown.
 
 Usage:
+    export CONFLUENCE_BASE_URL="https://confluence.example.com"
     export CONFLUENCE_PATH="your_personal_access_token"
-    python3 android-ai-playbook/scripts/read_confluence.py <URL or Page ID> [-o output.md]
+    python3 scripts/read_confluence.py <URL or Page ID> [-o output.md]
 
 Examples:
-    python3 android-ai-playbook/scripts/read_confluence.py "https://dm.stc.com.sa/wiki/pages/viewpage.action?pageId=421200037"
-    python3 android-ai-playbook/scripts/read_confluence.py 421200037 -o .agents/scratch/spec.md
+    python3 scripts/read_confluence.py "https://confluence.example.com/pages/viewpage.action?pageId=123456"
+    python3 scripts/read_confluence.py 123456 -o .agents/scratch/spec.md
 """
 
 import os
@@ -21,7 +22,9 @@ import urllib.error
 from html.parser import HTMLParser
 from urllib.parse import urlparse, parse_qs
 
-CONFLUENCE_BASE = "https://dm.stc.com.sa/wiki"
+# Set at runtime from --base, a full page URL, or CONFLUENCE_BASE_URL (see get_base)
+CONFLUENCE_BASE = ""
+PLACEHOLDER_HOST = "example.com"
 
 
 def load_env_local():
@@ -65,7 +68,7 @@ def load_from_shell_profiles():
                 with open(fpath, "r", encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
-                        if line.startswith("export ") and ("CONFLUENCE_PATH" in line or "CONFLUENCE_PAT" in line):
+                        if line.startswith("export ") and ("CONFLUENCE_PATH" in line or "CONFLUENCE_PAT" in line or "CONFLUENCE_BASE_URL" in line):
                             parts = line[len("export "):].split("=", 1)
                             if len(parts) == 2:
                                 k = parts[0].strip()
@@ -88,6 +91,24 @@ def setup_help(product, env_var, flag, example, where):
     ])
 
 
+def get_base(cli_base=None, target=""):
+    """Your Confluence server: --base, the server in a full page URL, or CONFLUENCE_BASE_URL."""
+    load_env_local()
+    load_from_shell_profiles()
+    url_match = re.match(r"(https?://.+?)/(?:pages|spaces|display)/", (target or "").strip())
+    base = (cli_base or (url_match.group(1) if url_match else "") or os.getenv("CONFLUENCE_BASE_URL", "")).strip().rstrip("/")
+    if not base or PLACEHOLDER_HOST in base:
+        print("\n".join([
+            "ERROR: Confluence server URL not set (CONFLUENCE_BASE_URL).",
+            "Set it one of these ways, then run the command again:",
+            "  1. Project file: add CONFLUENCE_BASE_URL=\"https://confluence.your-company.com\" to .env.local (see .env.example).",
+            "  2. Shell: export CONFLUENCE_BASE_URL=\"https://confluence.your-company.com\"",
+            "  3. One run only: pass the full page URL, or --base https://confluence.your-company.com",
+        ]), file=sys.stderr)
+        sys.exit(1)
+    return base
+
+
 def get_token(cli_token=None):
     load_env_local()
     load_from_shell_profiles()
@@ -99,7 +120,7 @@ def get_token(cli_token=None):
         or os.getenv("ATLASSIAN_PAT")
     )
     if not token:
-        print(setup_help("Confluence", "CONFLUENCE_PATH", "--pat", "read_confluence.py 421200037",
+        print(setup_help("Confluence", "CONFLUENCE_PATH", "--pat", "read_confluence.py 123456",
                          "In Confluence: your avatar > Settings > Personal Access Tokens > Create token."), file=sys.stderr)
         sys.exit(1)
     return token
@@ -341,7 +362,7 @@ def fetch_confluence_page(page_id, token):
         headers={
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
-            "User-Agent": "mystc-agent/1.0",
+            "User-Agent": "virtual-office-agent/1.0",
         },
     )
     try:
@@ -387,11 +408,14 @@ def main():
     parser = argparse.ArgumentParser(
         description="Fetch and format Confluence Wiki specifications into Markdown."
     )
-    parser.add_argument("target", help="Confluence URL or Page ID (e.g. 421200037)")
+    parser.add_argument("target", help="Confluence URL or Page ID (e.g. 123456)")
+    parser.add_argument("-b", "--base", dest="base", help="Confluence server URL (overrides CONFLUENCE_BASE_URL)")
     parser.add_argument("-t", "--token", "--pat", dest="token", help="Personal Access Token (overrides CONFLUENCE_PATH)")
     parser.add_argument("-o", "--output", dest="output", help="Output markdown file path (defaults to stdout)")
 
     args = parser.parse_args()
+    global CONFLUENCE_BASE
+    CONFLUENCE_BASE = get_base(args.base, args.target)
     token = get_token(args.token)
     page_id = parse_page_id(args.target)
 

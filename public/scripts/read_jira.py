@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Script to read Jira tickets from dm.stc.com.sa into Markdown.
+Script to read Jira tickets from your Jira server into Markdown.
 
 Usage:
+    export JIRA_BASE_URL="https://jira.example.com"
     export JIRA_PATH="your_personal_access_token"
-    python3 android-ai-playbook/scripts/read_jira.py <Ticket Key or URL> [-o output.md]
+    python3 scripts/read_jira.py <Ticket Key or URL> [-o output.md]
 
 Examples:
-    python3 android-ai-playbook/scripts/read_jira.py DXDT-25243
-    python3 android-ai-playbook/scripts/read_jira.py "https://dm.stc.com.sa/browse/DXDT-25243" -o .agents/scratch/DXDT-25243.md
+    python3 scripts/read_jira.py PROJ-123
+    python3 scripts/read_jira.py "https://jira.example.com/browse/PROJ-123" -o .agents/scratch/PROJ-123.md
 """
 
 import os
@@ -19,7 +20,9 @@ import argparse
 import urllib.request
 import urllib.error
 
-JIRA_BASE = "https://dm.stc.com.sa"
+# Set at runtime from --base, a full ticket URL, or JIRA_BASE_URL (see get_base)
+JIRA_BASE = ""
+PLACEHOLDER_HOST = "example.com"
 
 
 def load_env_local():
@@ -63,7 +66,7 @@ def load_from_shell_profiles():
                 with open(fpath, "r", encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
-                        if line.startswith("export ") and "JIRA_PATH" in line:
+                        if line.startswith("export ") and ("JIRA_PATH" in line or "JIRA_BASE_URL" in line):
                             parts = line[len("export "):].split("=", 1)
                             if len(parts) == 2:
                                 k = parts[0].strip()
@@ -74,6 +77,36 @@ def load_from_shell_profiles():
                 pass
 
 
+def setup_help(product, env_var, flag, example, where):
+    """What to do when the token is missing: every way the script can find it."""
+    return "\n".join([
+        f"ERROR: {product} Personal Access Token not found ({env_var} is not set).",
+        "Set it one of these ways, then run the command again:",
+        f"  1. Project file: add {env_var}=\"<token>\" to .env.local in the project root (gitignored; see .env.example).",
+        f"  2. Shell: export {env_var}=\"<token>\"  (add the line to ~/.zshrc to keep it).",
+        f"  3. One run only: python3 scripts/{example} {flag} <token>",
+        f"Create a token {where[0].lower() + where[1:]}",
+    ])
+
+
+def get_base(cli_base=None, target=""):
+    """Your Jira server: --base, the server in a full ticket URL, or JIRA_BASE_URL."""
+    load_env_local()
+    load_from_shell_profiles()
+    url_match = re.match(r"(https?://[^/\s]+)/browse/", (target or "").strip())
+    base = (cli_base or (url_match.group(1) if url_match else "") or os.getenv("JIRA_BASE_URL", "")).strip().rstrip("/")
+    if not base or PLACEHOLDER_HOST in base:
+        print("\n".join([
+            "ERROR: Jira server URL not set (JIRA_BASE_URL).",
+            "Set it one of these ways, then run the command again:",
+            "  1. Project file: add JIRA_BASE_URL=\"https://jira.your-company.com\" to .env.local (see .env.example).",
+            "  2. Shell: export JIRA_BASE_URL=\"https://jira.your-company.com\"",
+            "  3. One run only: pass the full ticket URL, or --base https://jira.your-company.com",
+        ]), file=sys.stderr)
+        sys.exit(1)
+    return base
+
+
 def get_token(cli_token=None):
     load_env_local()
     load_from_shell_profiles()
@@ -81,9 +114,8 @@ def get_token(cli_token=None):
         return cli_token
     token = os.getenv("JIRA_PATH")
     if not token:
-        print("ERROR: Jira Personal Access Token not found.", file=sys.stderr)
-        print("Please export JIRA_PATH in ~/.zshrc or provide --token <token>:", file=sys.stderr)
-        print("  export JIRA_PATH=\"your_jira_personal_access_token\"", file=sys.stderr)
+        print(setup_help("Jira", "JIRA_PATH", "--token", "read_jira.py PROJ-123",
+                         "In Jira: your avatar > Profile > Personal Access Tokens > Create token."), file=sys.stderr)
         sys.exit(1)
     return token
 
@@ -103,7 +135,7 @@ def fetch_jira_issue(issue_key, token):
         headers={
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
-            "User-Agent": "mystc-agent/1.0",
+            "User-Agent": "virtual-office-agent/1.0",
         },
     )
     try:
@@ -191,11 +223,14 @@ def format_jira_issue(data):
 
 def main():
     parser = argparse.ArgumentParser(description="Fetch and format Jira tickets into Markdown.")
-    parser.add_argument("target", help="Jira Ticket Key or Browse URL (e.g. DXDT-25243)")
+    parser.add_argument("target", help="Jira Ticket Key or Browse URL (e.g. PROJ-123)")
+    parser.add_argument("-b", "--base", dest="base", help="Jira server URL (overrides JIRA_BASE_URL)")
     parser.add_argument("-t", "--token", dest="token", help="Personal Access Token (overrides JIRA_PATH)")
     parser.add_argument("-o", "--output", dest="output", help="Output markdown file path (defaults to stdout)")
 
     args = parser.parse_args()
+    global JIRA_BASE
+    JIRA_BASE = get_base(args.base, args.target)
     token = get_token(args.token)
     issue_key = parse_issue_key(args.target)
 
