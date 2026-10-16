@@ -102,8 +102,8 @@ async function queryExistingModel(query, officeState, isDemo = false, timeoutMs 
   // 1. FAST-PATH: Immediate local actions that should not wait for model latency
   if (lower === 'stop' || lower === 'stop demo' || lower === 'stop sprint' || lower === 'pause demo') {
     return {
-      spokenText: 'Stopping sprint demo now and silencing all speech.',
-      displayText: '⏹️ **Stopping Sprint Demo**\nSimulation stopped and audio output silenced.',
+      spokenText: 'Stopping Demo Agentic Workflow now and silencing all speech.',
+      displayText: '⏹️ **Stopping Demo Agentic Workflow**\nSimulation stopped and audio output silenced.',
       action: { type: 'STOP_DEMO' },
       highlightBadge: 'STOP DEMO',
       usedModel: 'fast-path'

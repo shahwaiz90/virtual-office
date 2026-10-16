@@ -1,10 +1,12 @@
 const { eventBus } = require('./eventBus');
 const { OrchestrationRules } = require('./orchestrationRules');
+const { generateGhostAgents } = require('./agentDiscovery');
 
 class DemoSimulator {
   constructor() {
     this.timer = null;
     this.isRunning = false;
+    this.isGhostTeam = false;
     this.stepIndex = 0;
     this.timeouts = [];
   }
@@ -16,6 +18,22 @@ class DemoSimulator {
     eventBus.fileChanges = [];
     eventBus.communications = [];
     this.stepIndex = 0;
+
+    // Check if eventBus.agents.size === 0 (empty workspace with no configured agents)
+    if (eventBus.agents.size === 0) {
+      this.isGhostTeam = true;
+      eventBus.isGhostTeam = true;
+      const ghostAgents = generateGhostAgents();
+      for (const a of ghostAgents) {
+        eventBus.agents.set(a.id, a);
+      }
+    } else {
+      this.isGhostTeam = false;
+      eventBus.isGhostTeam = false;
+    }
+
+    // Reset workflow and load clean initial demo tasks
+    eventBus.resetWorkflow('SCRUM SPRINT-42: User Authentication Story (Definition of Done)');
 
     // Dynamically resolve team roles strictly via OrchestrationRules
     const { pm: pmAgent, lead: leadAgent, dev: devAgent, tester: testerAgent, platformBadge } = OrchestrationRules.resolveTeamRoles(eventBus.agents);
@@ -40,9 +58,6 @@ class DemoSimulator {
     const buildCmd = isAndroid ? './gradlew assembleDebug' : isIos ? 'xcodebuild -scheme App build' : 'npm run build';
     const testCmd = isAndroid ? './gradlew testDebugUnitTest' : isIos ? 'xcodebuild test -scheme App' : 'npm test';
 
-    // Reset workflow and load clean initial demo tasks
-    eventBus.resetWorkflow('SCRUM SPRINT-42: User Authentication Story (Definition of Done)');
-
     // Broadcast demo active state immediately
     eventBus.broadcast({
       type: 'DEMO_STATE',
@@ -58,7 +73,7 @@ class DemoSimulator {
       type: 'milestone_update',
       payload: {
         phase: 'Sprint Planning',
-        milestone: '🏉 SPRINT DEMO STARTED: PM ingesting User Story US-101 into Sprint Backlog.',
+        milestone: '🏉 DEMO AGENTIC WORKFLOW STARTED: PM ingesting User Story US-101 into Sprint Backlog.',
         details: 'Scrum Pipeline: PM -> Tech Lead (Architecture) -> Developer (Implementation) -> Tech Lead (Review & Feedback Loop) -> Developer (Patch & Resubmit) -> Tech Lead (Approved) -> QA (Acceptance Testing) -> PM (Sign-Off).',
       },
     });
@@ -537,16 +552,16 @@ class DemoSimulator {
             payload: {
               fromAgent: testerId,
               toAgent: pmId,
-              task: 'Sprint Demo Acceptance & Delivery Sign-Off',
+              task: 'Demo Agentic Workflow Acceptance & Delivery Sign-Off',
               allowedSkill: 'pm-reporting',
               taskId: 'TASK-5',
               key: 'REL-101',
               column: 'in_progress',
               progress: 80,
-              phase: 'Sprint Demo & Review',
+              phase: 'Demo Agentic Workflow & Review',
               channel: 'qa_handoff',
-              details: `${testerName} handed over certified test report to ${pmName}: "Automated regression suite verified: 18 / 18 Acceptance Criteria tests passed cleanly with 0 regressions. Sprint deliverable certified against DoD and ready for Sprint Demo sign-off."`,
-              milestone: `${testerName} certified acceptance criteria and handed over to ${pmName} for Sprint Demo sign-off.`,
+              details: `${testerName} handed over certified test report to ${pmName}: "Automated regression suite verified: 18 / 18 Acceptance Criteria tests passed cleanly with 0 regressions. Sprint deliverable certified against DoD and ready for Demo Agentic Workflow sign-off."`,
+              milestone: `${testerName} certified acceptance criteria and handed over to ${pmName} for Demo Agentic Workflow sign-off.`,
             },
           });
         },
@@ -576,7 +591,7 @@ class DemoSimulator {
           const t5 = eventBus.tasks.get('TASK-5');
           if (t5) { t5.column = 'done'; t5.progress = 100; }
 
-          // Complete scenario: reset demo flags so UI updates from "Stop Demo" back to "Sprint Demo"
+          // Complete scenario: reset demo flags so UI updates from "Stop Demo" back to "Demo Agentic Workflow"
           this.isRunning = false;
           eventBus.isDemoRunning = false;
           if (eventBus.clearHandoff) {
@@ -584,6 +599,23 @@ class DemoSimulator {
           } else {
             eventBus.activeHandoff = null;
           }
+
+          if (this.isGhostTeam || eventBus.isGhostTeam) {
+            eventBus.agents.clear();
+            this.isGhostTeam = false;
+            eventBus.isGhostTeam = false;
+            eventBus.tasks = new Map();
+            eventBus.fileChanges = [];
+            eventBus.communications = [];
+            eventBus.roleInvocationMap = new Map();
+            eventBus.toolUsageMap = new Map();
+            eventBus.skillUsageMap = new Map();
+            eventBus.workflowTitle = `${eventBus.projectName || 'Virtual Office'} • Standby`;
+            eventBus.currentPhase = 'Standby & Ready';
+            eventBus.latestMilestoneAgentId = null;
+            eventBus.latestMilestone = `⚠️ No agents found in ${eventBus.projectName || 'workspace'}. Click "Setup Team" to create your roles & agents.`;
+          }
+
           eventBus.broadcast({
             type: 'DEMO_STATE',
             isDemo: false,
@@ -592,6 +624,10 @@ class DemoSimulator {
           eventBus.broadcast({
             type: 'STATE_UPDATE',
             state: eventBus.getStateSnapshot(),
+          });
+          eventBus.broadcast({
+            type: 'SYNC_STATE',
+            data: eventBus.getStateSnapshot(),
           });
           console.log('[DemoSimulator] Demonstration scenario completed successfully. Switched isDemo to false.');
         },
@@ -621,28 +657,44 @@ class DemoSimulator {
       eventBus.activeHandoff = null;
     }
 
-    // Reset all agents to ready standby at their workstations
-    for (const [id, agent] of eventBus.agents.entries()) {
-      agent.status = 'available';
-      agent.currentTask = null;
-      agent.currentFile = null;
-      agent.activityMessage = 'Ready at workstation';
-      agent.taskStartedAt = null;
-      agent.taskCompletedAt = null;
-      agent.taskDurationSec = null;
-      if (agent.theme?.deskPosition) {
-        agent.currentPosition = { ...agent.theme.deskPosition };
+    if (this.isGhostTeam || eventBus.isGhostTeam) {
+      eventBus.agents.clear();
+      this.isGhostTeam = false;
+      eventBus.isGhostTeam = false;
+      eventBus.tasks = new Map();
+      eventBus.fileChanges = [];
+      eventBus.communications = [];
+      eventBus.roleInvocationMap = new Map();
+      eventBus.toolUsageMap = new Map();
+      eventBus.skillUsageMap = new Map();
+      eventBus.workflowTitle = `${eventBus.projectName || 'Virtual Office'} • Standby`;
+      eventBus.currentPhase = 'Standby & Ready';
+      eventBus.latestMilestoneAgentId = null;
+      eventBus.latestMilestone = `⚠️ No agents found in ${eventBus.projectName || 'workspace'}. Click "Setup Team" to create your roles & agents.`;
+    } else {
+      // Reset all agents to ready standby at their workstations
+      for (const [id, agent] of eventBus.agents.entries()) {
+        agent.status = 'available';
+        agent.currentTask = null;
+        agent.currentFile = null;
+        agent.activityMessage = 'Ready at workstation';
+        agent.taskStartedAt = null;
+        agent.taskCompletedAt = null;
+        agent.taskDurationSec = null;
+        if (agent.theme?.deskPosition) {
+          agent.currentPosition = { ...agent.theme.deskPosition };
+        }
       }
-    }
 
-    // Reset board tasks & workflow back to clean Standby
-    eventBus.tasks = new Map();
-    eventBus.fileChanges = [];
-    eventBus.communications = [];
-    eventBus.workflowTitle = `${eventBus.projectName || 'Virtual Office'} • Standby`;
-    eventBus.currentPhase = 'Standby & Ready';
-    eventBus.latestMilestone = `👉 Standby on ${eventBus.projectName || 'workspace'}: Ready for AI agent tasks.`;
-    eventBus.latestMilestoneAgentId = eventBus.agents.size > 0 ? eventBus.agents.keys().next().value : 'project-manager';
+      // Reset board tasks & workflow back to clean Standby
+      eventBus.tasks = new Map();
+      eventBus.fileChanges = [];
+      eventBus.communications = [];
+      eventBus.workflowTitle = `${eventBus.projectName || 'Virtual Office'} • Standby`;
+      eventBus.currentPhase = 'Standby & Ready';
+      eventBus.latestMilestone = `👉 Standby on ${eventBus.projectName || 'workspace'}: Ready for AI agent tasks.`;
+      eventBus.latestMilestoneAgentId = eventBus.agents.size > 0 ? eventBus.agents.keys().next().value : 'project-manager';
+    }
 
     eventBus.broadcast({
       type: 'DEMO_STATE',

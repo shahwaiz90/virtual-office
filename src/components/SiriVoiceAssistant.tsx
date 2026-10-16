@@ -210,8 +210,8 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
       voiceService.stop();
       if (isDemo) onToggleDemo();
       setLastResponse({
-        spokenText: 'Stopping sprint demo now and silencing all speech.',
-        displayText: '⏹️ **Stopping Sprint Demo**\nSimulation stopped and audio output silenced.',
+        spokenText: 'Stopping Demo Agentic Workflow now and silencing all speech.',
+        displayText: '⏹️ **Stopping Demo Agentic Workflow**\nSimulation stopped and audio output silenced.',
         action: { type: 'STOP_DEMO' },
         highlightBadge: 'STOP DEMO',
       });

@@ -125,25 +125,25 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
     };
   }
 
-  // 4. TRIGGER SPRINT DEMO / RUN SPRINT
+  // 4. TRIGGER DEMO AGENTIC WORKFLOW / RUN SPRINT
   if (
     (q.includes('start') || q.includes('run') || q.includes('play') || q.includes('simulate') || q.includes('launch')) &&
     (q.includes('sprint') || q.includes('demo') || q.includes('simulation') || q.includes('workflow'))
   ) {
     if (isDemo) {
       return {
-        spokenText: `The sprint demo is already underway in the ${workflowPhase} phase. Would you like a progress update?`,
-        displayText: `The sprint demo is **already active**. Currently in phase: \`${workflowPhase}\`.`,
+        spokenText: `The Demo Agentic Workflow is already underway in the ${workflowPhase} phase. Would you like a progress update?`,
+        displayText: `The Demo Agentic Workflow is **already active**. Currently in phase: \`${workflowPhase}\`.`,
         highlightBadge: 'DEMO ACTIVE',
       };
     }
     const coordinator = pmAgent || agents[0];
     const coordName = coordinator ? coordinator.name : 'Project Lead';
     return {
-      spokenText: `Starting the Scrum sprint demo now. ${coordName} is convening the sprint backlog with your team.`,
-      displayText: `🚀 **Starting Scrum Sprint Demo**\n${coordName} is orchestrating sprint deliverables across your configured team.`,
+      spokenText: `Starting the Demo Agentic Workflow now. ${coordName} is convening the sprint backlog with your team.`,
+      displayText: `🚀 **Starting Demo Agentic Workflow**\n${coordName} is orchestrating sprint deliverables across your configured team.`,
       action: { type: 'START_DEMO' },
-      highlightBadge: 'SPRINT DEMO',
+      highlightBadge: 'DEMO WORKFLOW',
     };
   }
 
@@ -157,8 +157,8 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
     q === 'stop'
   ) {
     return {
-      spokenText: 'Stopping sprint demo now and silencing all speech.',
-      displayText: '⏹️ **Stopping Sprint Demo**\nDemo simulation stopped and voice playback silenced.',
+      spokenText: 'Stopping Demo Agentic Workflow now and silencing all speech.',
+      displayText: '⏹️ **Stopping Demo Agentic Workflow**\nDemo simulation stopped and voice playback silenced.',
       action: { type: 'STOP_DEMO' },
       highlightBadge: 'STOP DEMO',
     };
@@ -256,10 +256,10 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
     if (!isDemo && tasks.length === 0) {
       const agentNames = agents.map((a) => a.name).join(', ');
       return {
-        spokenText: `Status briefing for ${projectName}: The office is on standby with ${agents.length} configured agents ready at their workstations: ${agentNames}. Say "run sprint" or click Sprint Demo to simulate.`,
+        spokenText: `Status briefing for ${projectName}: The office is on standby with ${agents.length} configured agents ready at their workstations: ${agentNames}. Say "run sprint" or click Demo Agentic Workflow to simulate.`,
         displayText: `🟢 **Workspace: ${projectName}**\n- Status: \`Standby & Ready\`\n- Configured Agents: **${agents.length}**\n${agents
           .map((a) => `- **${a.name}** (${a.role}) — \`${a.status}\``)
-          .join('\n')}\n\n*Say **"Run sprint"** or click Sprint Demo to simulate the Scrum workflow.*`,
+          .join('\n')}\n\n*Say **"Run sprint"** or click Demo Agentic Workflow to simulate the Scrum workflow.*`,
         highlightBadge: 'STANDBY READY',
       };
     }
@@ -298,8 +298,8 @@ export async function queryVoiceAssistantAsync(
   // Fast path for immediate actions
   if (lower === 'stop' || lower === 'stop demo' || lower === 'stop sprint' || lower === 'pause demo') {
     return {
-      spokenText: 'Stopping sprint demo now and silencing all speech.',
-      displayText: '⏹️ **Stopping Sprint Demo**\nSimulation stopped and audio output silenced.',
+      spokenText: 'Stopping Demo Agentic Workflow now and silencing all speech.',
+      displayText: '⏹️ **Stopping Demo Agentic Workflow**\nSimulation stopped and audio output silenced.',
       action: { type: 'STOP_DEMO' },
       highlightBadge: 'STOP DEMO',
     };

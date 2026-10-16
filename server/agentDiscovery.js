@@ -1046,6 +1046,146 @@ function discoverAgents(customProjectDir, explicitConfigPath) {
   });
 }
 
+/**
+ * Generates in-memory ghost agents for demo simulation when workspace has 0 configured agents.
+ * Strictly in-memory with zero disk pollution.
+ */
+function generateGhostAgents() {
+  const slots = generateOfficeSlots(4);
+  const ghostSpecs = [
+    {
+      id: 'tech-pm',
+      name: 'Scrum Master',
+      role: 'Scrum Master',
+      badgeText: 'PM',
+      badge: 'PM',
+      avatarUrl: '/assets/pm.png',
+      isPrimary: true,
+      is_primary: true,
+      description: 'Facilitates agile ceremony, user story intake, and Definition of Done verification.',
+      skills: [
+        { id: 'sprint-planning', name: 'Sprint Planning', description: 'Sprint backlog ingestion & DoD verification' },
+        { id: 'backlog-grooming', name: 'Backlog Grooming', description: 'Scrum facilitation and agile delivery' },
+      ],
+      skillIds: ['sprint-planning', 'backlog-grooming'],
+      allowedTools: ['read_file', 'write_to_file', 'run_command', 'git_diff'],
+    },
+    {
+      id: 'tech-lead',
+      name: 'Technical Lead',
+      role: 'Technical Lead',
+      badgeText: 'LEAD',
+      badge: 'LEAD',
+      avatarUrl: '/assets/techlead.png',
+      isPrimary: false,
+      is_primary: false,
+      description: 'Technical lead responsible for architecture boundaries, interface contracts, and code reviews.',
+      skills: [
+        { id: 'architecture-review', name: 'Architecture Review', description: 'System boundaries & API specifications' },
+        { id: 'contract-boundaries', name: 'Contract Boundaries', description: 'System boundary architecture spike' },
+      ],
+      skillIds: ['architecture-review', 'contract-boundaries'],
+      allowedTools: ['read_file', 'write_to_file', 'run_command', 'git_diff', 'invoke_subagent'],
+    },
+    {
+      id: 'core-dev',
+      name: 'Feature Developer',
+      role: 'Feature Developer',
+      badgeText: 'DEV',
+      badge: 'DEV',
+      avatarUrl: '/assets/developer.png',
+      isPrimary: false,
+      is_primary: false,
+      description: 'Core software engineer responsible for feature implementation and test-driven development.',
+      skills: [
+        { id: 'feature-implementation', name: 'Feature Implementation', description: 'TDD feature implementation' },
+        { id: 'unit-testing', name: 'Unit Testing', description: 'Local unit and integration test coverage' },
+      ],
+      skillIds: ['feature-implementation', 'unit-testing'],
+      allowedTools: ['read_file', 'write_to_file', 'run_command', 'git_diff'],
+    },
+    {
+      id: 'mobile-qa',
+      name: 'QA Tester',
+      role: 'QA Tester',
+      badgeText: 'QA',
+      badge: 'QA',
+      avatarUrl: '/assets/qa.png',
+      isPrimary: false,
+      is_primary: false,
+      description: 'QA engineer responsible for automated testing, regression suites, and acceptance verification.',
+      skills: [
+        { id: 'test-automation', name: 'Test Automation', description: 'Automated test suite execution' },
+        { id: 'regression-testing', name: 'Regression Testing', description: 'Regression verification & DoD certification' },
+      ],
+      skillIds: ['test-automation', 'regression-testing'],
+      allowedTools: ['read_file', 'run_command', 'git_diff'],
+    },
+  ];
+
+  return ghostSpecs.map((spec, index) => {
+    const slot = slots[index] || slots[0];
+    const palette = CURATED_PALETTES[index % CURATED_PALETTES.length];
+    const theme = {
+      themeColor: palette.themeColor,
+      lightColor: palette.lightColor,
+      badge: spec.badge,
+      hairColor: palette.hairColor,
+      skinColor: palette.skinColor,
+      clothingColor: palette.clothingColor,
+      accessory: palette.accessory,
+      station: `${spec.id}-station`,
+      stationName: `${spec.name} Station`,
+      deskPosition: { ...slot.deskPosition },
+      roomBounds: { ...slot.roomBounds },
+      avatarUrl: spec.avatarUrl,
+      facing: slot.facing,
+      isPrimary: spec.isPrimary,
+    };
+
+    return {
+      id: spec.id,
+      name: spec.name,
+      role: spec.role,
+      origin: 'in-memory-ghost',
+      aliases: [],
+      badgeText: spec.badgeText,
+      badge: spec.badge,
+      activeRoleBadge: `🎭 **Active Role**: **${spec.name}** (\`${spec.id}\`)`,
+      description: spec.description,
+      skills: spec.skills,
+      skillIds: spec.skillIds,
+      allowedTools: spec.allowedTools,
+      enable_subagent_tools: spec.id === 'tech-lead',
+      enable_write_tools: true,
+      enable_mcp_tools: false,
+      prohibitedActions: [],
+      delegationTargets: [],
+      delegation_targets: [],
+      isPrimary: spec.isPrimary,
+      is_primary: spec.is_primary,
+      isSubagent: !spec.isPrimary,
+      is_subagent: !spec.isPrimary,
+      theme,
+      avatarUrl: spec.avatarUrl,
+      status: 'available',
+      currentTask: null,
+      currentFile: null,
+      lastTool: null,
+      delegatedBy: null,
+      parentAgent: spec.isPrimary ? null : 'tech-pm',
+      currentPosition: { ...theme.deskPosition },
+      targetPosition: { ...theme.deskPosition },
+      activityMessage: 'Ready at workstation',
+      taskStartedAt: null,
+      taskCompletedAt: null,
+      taskDurationSec: null,
+      totalWorkTimeSec: 0,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+}
+
 module.exports = {
   discoverAgents,
   discoverAgentsFromFolders,
@@ -1058,4 +1198,7 @@ module.exports = {
   setProjectRoot,
   PROJECT_ROOT,
   DEFAULT_FALLBACK_AGENTS,
+  generateOfficeSlots,
+  CURATED_PALETTES,
+  generateGhostAgents,
 };

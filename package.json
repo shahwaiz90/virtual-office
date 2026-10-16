@@ -23,7 +23,7 @@
     "preview": "vite preview",
     "start": "node server/index.js",
     "launch": "node server/launcher.js",
-    "test": "node tests/test_universal_agent_registry.js && node tests/test_universal_agent_registry_e2e.js && node tests/test_conversation_project_isolation.js && node tests/test_conversation_workspace_isolation.js && node tests/test_orchestration_rules.js && node tests/test_standby_and_definitions.js"
+    "test": "node tests/test_universal_agent_registry.js && node tests/test_universal_agent_registry_e2e.js && node tests/test_conversation_project_isolation.js && node tests/test_conversation_workspace_isolation.js && node tests/test_orchestration_rules.js && node tests/test_standby_and_definitions.js && node tests/test_ghost_agents_demo.js && node tests/test_jarvis_intelligence.mjs"
   },
   "keywords": [
     "ai-agents",

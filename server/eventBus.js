@@ -1,6 +1,6 @@
 const EventEmitter = require('events');
 const path = require('path');
-const { discoverAgents, getProjectRoot } = require('./agentDiscovery');
+const { discoverAgents, getProjectRoot, generateGhostAgents } = require('./agentDiscovery');
 const { OrchestrationRules } = require('./orchestrationRules');
 
 class EventBus extends EventEmitter {
@@ -17,6 +17,9 @@ class EventBus extends EventEmitter {
     this.currentPhase = 'Standby & Ready';
     this.latestMilestone = `Virtual Office ready on ${this.projectName}. Run commands in terminal or prompt agents to begin.`;
     this.latestMilestoneAgentId = 'project-manager';
+
+    // Ghost team simulation flag
+    this.isGhostTeam = false;
 
     // Initialize agents
     this.agents = new Map();
@@ -78,6 +81,15 @@ class EventBus extends EventEmitter {
   }
 
   initAgents() {
+    if (this.isGhostTeam) {
+      if (this.agents.size === 0) {
+        const ghostAgents = generateGhostAgents();
+        for (const a of ghostAgents) {
+          this.agents.set(a.id, a);
+        }
+      }
+      return;
+    }
     this.agents.clear();
     const discovered = discoverAgents();
     for (const a of discovered) {
@@ -263,24 +275,27 @@ class EventBus extends EventEmitter {
   }
 
   initDefaultRoleAnalytics() {
-    const roles = [
-      { agentId: 'project-manager', invocations: 5, activeTimeSec: 78, completedTasks: 2, slaAdherenceRate: 100 },
-      { agentId: 'android-tech-lead', invocations: 8, activeTimeSec: 198, completedTasks: 3, slaAdherenceRate: 98 },
-      { agentId: 'android-dev', invocations: 12, activeTimeSec: 342, completedTasks: 3, slaAdherenceRate: 95 },
-      { agentId: 'android-tester', invocations: 4, activeTimeSec: 86, completedTasks: 2, slaAdherenceRate: 100 },
-    ];
-
-    for (const r of roles) {
-      const agent = this.agents.get(r.agentId);
-      this.roleInvocationMap.set(r.agentId, {
-        agentId: r.agentId,
-        agentName: agent ? agent.name : r.agentId,
-        role: agent ? agent.role : 'Specialist',
-        invocations: r.invocations,
-        activeTimeSec: r.activeTimeSec,
-        completedTasks: r.completedTasks,
-        slaAdherenceRate: r.slaAdherenceRate,
-        status: agent ? agent.status : 'available',
+    if (this.agents.size > 0) {
+      const agentIds = Array.from(this.agents.keys());
+      const seedMetrics = [
+        { invocations: 5, activeTimeSec: 78, completedTasks: 2, slaAdherenceRate: 100 },
+        { invocations: 8, activeTimeSec: 198, completedTasks: 3, slaAdherenceRate: 98 },
+        { invocations: 12, activeTimeSec: 342, completedTasks: 3, slaAdherenceRate: 95 },
+        { invocations: 4, activeTimeSec: 86, completedTasks: 2, slaAdherenceRate: 100 },
+      ];
+      agentIds.forEach((agentId, idx) => {
+        const agent = this.agents.get(agentId);
+        const seed = seedMetrics[idx % seedMetrics.length];
+        this.roleInvocationMap.set(agentId, {
+          agentId,
+          agentName: agent ? agent.name : agentId,
+          role: agent ? agent.role : 'Specialist',
+          invocations: seed.invocations,
+          activeTimeSec: seed.activeTimeSec,
+          completedTasks: seed.completedTasks,
+          slaAdherenceRate: seed.slaAdherenceRate,
+          status: agent ? agent.status : 'available',
+        });
       });
     }
   }
@@ -928,8 +943,21 @@ class EventBus extends EventEmitter {
     this.workflowTitle = workflowTitle;
     this.currentPhase = 'Intake & Planning';
     this.latestMilestone = '⚠️ SIMULATION DEMO STARTED: Ingesting FEATURE-101.';
-    this.latestMilestoneAgentId = 'project-manager';
-    this.initAgents();
+
+    // If empty workspace or already ghost team, preserve/initialize ghost agents without disk pollution
+    if (this.agents.size === 0 || this.isGhostTeam) {
+      this.isGhostTeam = true;
+      if (this.agents.size === 0) {
+        const ghostAgents = generateGhostAgents();
+        for (const a of ghostAgents) {
+          this.agents.set(a.id, a);
+        }
+      }
+    } else {
+      this.initAgents();
+    }
+
+    this.latestMilestoneAgentId = this.agents.size > 0 ? (this.agents.get('tech-pm')?.id || this.agents.keys().next().value) : 'project-manager';
     this.tasks = new Map();
     this.loadDemoTasks();
     this.toolUsageMap = new Map();
@@ -958,6 +986,7 @@ class EventBus extends EventEmitter {
   resetForProject(projectDir, newAgents) {
     this.clearedAt = Date.now();
     this.isDemoRunning = false;
+    this.isGhostTeam = false;
     this.clearAllAgentBusyTimers();
     if (this.handoffTimeout) {
       clearTimeout(this.handoffTimeout);
@@ -1033,22 +1062,28 @@ class EventBus extends EventEmitter {
     this.workflowStartTime = Date.now();
     this.workflowTitle = 'Standby (No active tasks)';
     this.currentPhase = 'Awaiting Sprint Tasks';
-    this.latestMilestone = `👉 Standby on ${this.projectName || 'workspace'}: Ready for agent tasks or click "Sprint Demo".`;
-    this.latestMilestoneAgentId = this.agents.size > 0 ? this.agents.keys().next().value : 'project-manager';
 
-    this.clearAllAgentBusyTimers();
-    for (const [id, agent] of this.agents.entries()) {
-      agent.status = 'available';
-      agent.currentTask = null;
-      agent.currentFile = null;
-      agent.activityMessage = 'Ready at workstation';
-      agent.taskStartedAt = null;
-      agent.taskCompletedAt = null;
-      agent.taskDurationSec = null;
+    if (this.isGhostTeam) {
+      this.agents.clear();
+      this.isGhostTeam = false;
+      this.latestMilestoneAgentId = null;
+      this.latestMilestone = `⚠️ No agents found in ${this.projectName || 'workspace'}. Click "Setup Team" to create your roles & agents.`;
+    } else {
+      this.latestMilestone = `👉 Standby on ${this.projectName || 'workspace'}: Ready for agent tasks or click "Demo Agentic Workflow".`;
+      this.latestMilestoneAgentId = this.agents.size > 0 ? this.agents.keys().next().value : 'project-manager';
+      for (const [id, agent] of this.agents.entries()) {
+        agent.status = 'available';
+        agent.currentTask = null;
+        agent.currentFile = null;
+        agent.activityMessage = 'Ready at workstation';
+        agent.taskStartedAt = null;
+        agent.taskCompletedAt = null;
+        agent.taskDurationSec = null;
+      }
+      this.initStandbyRoleAnalytics();
     }
 
-    this.initStandbyRoleAnalytics();
-
+    this.clearAllAgentBusyTimers();
     this.broadcast({
       type: 'SYNC_STATE',
       data: this.getStateSnapshot(),

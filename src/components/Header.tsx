@@ -169,7 +169,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Workflow Recorder */}
           {recorderSlot}
 
-          {/* Sprint Demo Button */}
+          {/* Demo Agentic Workflow Button */}
           <button
             onClick={() => {
               if (isDemo) {
@@ -177,6 +177,7 @@ export const Header: React.FC<HeaderProps> = ({
               }
               onToggleDemo();
             }}
+            title={isDemo ? 'Stop Demo' : 'Demo Agentic Workflow'}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer ${
               isDemo
                 ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20'
@@ -192,7 +193,7 @@ export const Header: React.FC<HeaderProps> = ({
             ) : (
               <>
                 <Play className="w-3.5 h-3.5 fill-current" />
-                <span className="hidden sm:inline">Sprint Demo</span>
+                <span className="hidden sm:inline">Demo Agentic Workflow</span>
                 <span className="sm:hidden">Demo</span>
               </>
             )}

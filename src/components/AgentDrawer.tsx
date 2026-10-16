@@ -6,6 +6,7 @@ import {
   Inbox, Layers, CheckCircle2, ChevronDown
 } from 'lucide-react';
 import { voiceService } from '../services/voiceService';
+import { LiveLogs } from './LiveLogs';
 
 interface AgentDrawerProps {
   agent: Agent | null;
@@ -49,8 +50,6 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
 
   if (!agent) return null;
 
-  // Filter events specific to this agent
-  const agentEvents = events.filter((e) => e.agentId === agent.id).slice(0, 15);
 
   const activeSkillObj = agent.skills.find((s) => s.id === selectedSkillId) || agent.skills[0];
 
@@ -215,14 +214,42 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
           <div>
             <h2 className="text-base font-bold text-slate-900 tracking-tight">{agent.name}</h2>
             <p className="text-xs text-slate-500">{agent.role}</p>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <span
-                className="w-2 h-2 rounded-full animate-ping"
-                style={{ backgroundColor: agent.theme.themeColor }}
-              />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-600">
-                {agent.status}
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border shadow-2xs"
+                style={{
+                  backgroundColor:
+                    agent.status === 'working' ? '#ecfdf5' : agent.status === 'handoff' ? '#fffbeb' : '#f8fafc',
+                  color:
+                    agent.status === 'working' ? '#047857' : agent.status === 'handoff' ? '#b45309' : '#475569',
+                  borderColor:
+                    agent.status === 'working' ? '#a7f3d0' : agent.status === 'handoff' ? '#fde68a' : '#e2e8f0',
+                }}
+              >
+                <span className="relative flex h-2 w-2">
+                  {agent.status === 'working' || agent.status === 'handoff' ? (
+                    <span
+                      className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                      style={{ backgroundColor: agent.status === 'working' ? '#10b981' : '#f59e0b' }}
+                    />
+                  ) : null}
+                  <span
+                    className="relative inline-flex rounded-full h-2 w-2"
+                    style={{
+                      backgroundColor:
+                        agent.status === 'working' ? '#10b981' : agent.status === 'handoff' ? '#f59e0b' : '#94a3b8',
+                    }}
+                  />
+                </span>
+                <span className="uppercase tracking-wider">
+                  {agent.status === 'working' ? 'Working Active' : agent.status === 'handoff' ? 'Handoff Active' : 'Idle / Standby'}
+                </span>
               </span>
+              {agent.lastTool && (
+                <span className="text-[10px] font-mono px-2 py-0.5 bg-slate-100 text-slate-700 rounded border border-slate-200">
+                  tool: {agent.lastTool}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -634,33 +661,19 @@ export const AgentDrawer: React.FC<AgentDrawerProps> = ({
           </div>
         )}
 
-        {/* Real-Time Agent Activity Timeline */}
+        {/* Real-Time Agent Activity & Terminal Logs */}
         <div className="space-y-2">
-          <h3 className="text-[11px] uppercase tracking-wider font-bold text-slate-500 flex items-center gap-1.5">
-            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Recent Execution Timeline
-          </h3>
-
-          <div className="space-y-1.5">
-            {agentEvents.length === 0 ? (
-              <div className="text-slate-400 italic text-center py-4">No recent activity recorded</div>
-            ) : (
-              agentEvents.map((evt) => (
-                <div
-                  key={evt.eventId}
-                  className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 flex items-start gap-2"
-                >
-                  <span className="text-[10px] text-slate-400 font-mono shrink-0">
-                    {new Date(evt.timestamp).toLocaleTimeString()}
-                  </span>
-                  <div className="flex-1">
-                    <span className="text-slate-700">
-                      {evt.payload.details || evt.payload.command || evt.payload.task || evt.type}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <LiveLogs
+            events={events}
+            agents={allAgents.length > 0 ? allAgents : [agent]}
+            selectedAgentId={agent.id}
+            hideAgentFilter={true}
+            compactMode={true}
+            activeAgent={agent}
+            showStatusBanner={true}
+            title={`${agent.name}'s Real-Time OpenCode Logs`}
+            maxHeight="380px"
+          />
         </div>
       </div>
     </div>

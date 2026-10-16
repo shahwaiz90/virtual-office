@@ -33,7 +33,7 @@ function queryVoiceAssistant(query, state, isDemo) {
     };
   }
 
-  // 3. Start sprint demo
+  // 3. Start demo agentic workflow
   if (
     (q.includes('start') || q.includes('run')) &&
     (q.includes('sprint') || q.includes('demo')) &&
@@ -42,7 +42,7 @@ function queryVoiceAssistant(query, state, isDemo) {
     if (isDemo) return { spokenText: 'Already active.', displayText: 'Active' };
     const pmName = pmAgent ? pmAgent.name : 'Project Lead';
     return {
-      spokenText: `Starting sprint demo now. ${pmName} is convening the sprint backlog.`,
+      spokenText: `Starting Demo Agentic Workflow now. ${pmName} is convening the sprint backlog.`,
       action: { type: 'START_DEMO' },
     };
   }
