@@ -11,6 +11,7 @@ interface HeaderProps {
   recorderSlot?: React.ReactNode;
   onOpenVoice?: () => void;
   onOpenSettings?: () => void;
+  onOpenIntegrations?: () => void;
   projectPath?: string;
   onOpenChangeDirectory?: () => void;
   onOpenTeamStudio?: () => void;
@@ -23,6 +24,7 @@ export const Header: React.FC<HeaderProps> = ({
   recorderSlot,
   onOpenVoice,
   onOpenSettings,
+  onOpenIntegrations,
   projectPath,
   onOpenChangeDirectory,
   onOpenTeamStudio,
@@ -208,13 +210,28 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           {missingTokens.length > 0 && (
-            <span
-              className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200"
-              title={missingTokens.map((m) => `${m.name}: ${m.setup}`).join('\n')}
+            <button
+              type="button"
+              onClick={onOpenIntegrations}
+              className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 cursor-pointer"
+              title={missingTokens.map((m) => `${m.name}: ${m.setup}`).join('\n') + '\nClick for setup steps.'}
             >
               <KeyRound className="w-3.5 h-3.5" />
               {missingTokens.map((m) => m.envVar).join(', ')} not set
-            </span>
+            </button>
+          )}
+
+          {/* Jira / Confluence integrations: status, setup steps and connection test */}
+          {onOpenIntegrations && missingTokens.length === 0 && (
+            <button
+              type="button"
+              onClick={onOpenIntegrations}
+              className="p-2 rounded-xl text-sand-500 hover:text-brand-700 hover:bg-brand-50 cursor-pointer"
+              title="Integrations (Jira, Confluence)"
+              aria-label="Integrations"
+            >
+              <KeyRound className="w-4 h-4" />
+            </button>
           )}
 
           {/* Workflow Recorder */}

@@ -3,7 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { integrationStatus } = require('../server/integrations');
+const { integrationStatus, testConnection } = require('../server/integrations');
 
 const root = path.join(__dirname, '..');
 console.log('🧪 Starting Jira & Confluence Setup Test Suite...\n');
@@ -13,6 +13,7 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), 'test-jira-home-'));
 const project = fs.mkdtempSync(path.join(os.tmpdir(), 'test-jira-project-'));
 const cleanEnv = { PATH: process.env.PATH, HOME: home };
 
+(async () => {
 try {
   console.log('▶ Test 1: The scripts stop with setup instructions when the token is missing...');
   const python = spawnSync('python3', ['--version']);
@@ -55,8 +56,35 @@ try {
   for (const [k, v] of Object.entries(saved)) if (v !== undefined) process.env[k] = v;
   console.log('  ✅ Test 2 Passed.\n');
 
+  console.log('▶ Test 3: Test connection reports the account or why it failed, never the token...');
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'test-jira-empty-'));
+  const missing = await testConnection('jira', empty, { homeDir: empty, request: async () => assert.fail('no request without a token') });
+  assert.deepStrictEqual([missing.ok, missing.reason], [false, 'missing']);
+  fs.rmSync(empty, { recursive: true, force: true });
+  fs.writeFileSync(path.join(project, '.env.local'), 'JIRA_PATH="secret-token"\n');
+  const seen = [];
+  const fake = (reply) => async (url, token) => {
+    seen.push({ url, token });
+    return reply;
+  };
+  const ok = await testConnection('jira', project, { homeDir: home, request: fake({ status: 200, type: 'application/json', body: '{"displayName":"Ahmad"}' }) });
+  assert.deepStrictEqual([ok.ok, ok.account], [true, 'Ahmad']);
+  assert.ok(seen[0].url.endsWith('/rest/api/2/myself') && seen[0].token === 'secret-token', 'Token goes only to the Jira whoami endpoint');
+  const rejected = await testConnection('jira', project, { homeDir: home, request: fake({ status: 401, type: 'application/json', body: '{}' }) });
+  assert.strictEqual(rejected.reason, 'rejected');
+  const sso = await testConnection('jira', project, { homeDir: home, request: fake({ status: 200, type: 'text/html', body: '<html>login</html>' }) });
+  assert.strictEqual(sso.reason, 'rejected', 'A sign-in page means the token is not valid');
+  const down = await testConnection('jira', project, { homeDir: home, request: fake({ error: 'getaddrinfo ENOTFOUND' }) });
+  assert.strictEqual(down.reason, 'unreachable');
+  for (const r of [ok, rejected, sso, down]) assert.ok(!JSON.stringify(r).includes('secret-token'), 'Results never include the token');
+  console.log('  ✅ Test 3 Passed.\n');
+
   console.log('🎉 ALL JIRA & CONFLUENCE SETUP TESTS PASSED!');
 } finally {
   fs.rmSync(home, { recursive: true, force: true });
   fs.rmSync(project, { recursive: true, force: true });
 }
+})().catch((e) => {
+  console.error('❌ Jira & Confluence setup test failed:', e);
+  process.exit(1);
+});

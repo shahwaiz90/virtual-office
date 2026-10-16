@@ -870,6 +870,8 @@ function startNewSprint(root, goalTitle) {
     if (typeof eventBus.setSprintState === 'function') {
       eventBus.setSprintState(sprintId, sprintPath, updatedSprints);
     }
+    // A new sprint starts with an empty hub; the previous sprint keeps its deliverables.json
+    eventBus.deliverables = new Map();
 
     const snap = eventBus.getStateSnapshot();
     eventBus.broadcast({
@@ -1289,6 +1291,8 @@ function syncTasksFromJson(filePath, options = {}) {
       const reg = registerRealAgentTask(t, { skipPersist: true });
       if (reg) registered.push(reg);
     }
+    // The hub's deliverables belong to the same sprint folder as its cards
+    eventBus.loadDeliverables(path.dirname(filePath));
     const repaired = cleanUpBoard();
     if (repaired.removed.length || repaired.closed.length) {
       console.log(`[Watchers] Board repaired: removed ${repaired.removed.join(', ') || 'none'}; closed ${repaired.closed.join(', ') || 'none'}`);

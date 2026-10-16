@@ -500,6 +500,7 @@ app.delete('/api/deliverables/:id', (req, res) => {
     return res.status(404).json({ success: false, error: `Deliverable with id "${id}" not found.` });
   }
   eventBus.deliverables.delete(id);
+  eventBus.persistDeliverables();
   eventBus.broadcast({
     type: 'DELIVERABLE_DELETED',
     id,
@@ -1327,6 +1328,12 @@ app.get('/api/integrations', (req, res) => {
   res.json({ success: true, integrations: integrationStatus(getProjectRoot(), Array.from(eventBus.agents.values())) });
 });
 
+// Signs in once with the stored token (sent only to that Jira/Confluence server) and reports the account
+app.post('/api/integrations/:id/test', async (req, res) => {
+  const { testConnection } = require('./integrations');
+  res.json({ success: true, result: await testConnection(req.params.id, getProjectRoot()) });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',
@@ -1690,6 +1697,9 @@ async function startServer(portOverride) {
 
     // Auto-discover and register agents in runtime for initial workspace
     autoDiscoverAndRegisterAgents(root);
+
+    // The running server keeps the deliverables hub on disk (loaded with each sprint's tasks)
+    eventBus.persistDeliverablesEnabled = true;
 
     // Start watching real-time transcripts and scratch tasks
     setupWatchers(root);

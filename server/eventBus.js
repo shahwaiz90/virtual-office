@@ -463,10 +463,11 @@ class EventBus extends EventEmitter {
       id,
       title: item.title || 'Sprint Deliverable',
       type: item.type || 'source_code',
-      role: role || 'Engineering Team',
+      // An author the poster didn't give stays unknown rather than being credited to a guessed role
+      role: role || '',
       roleSlug: roleSlug || 'specialist',
-      agentId: item.agentId || 'web-dev',
-      agentName: agentName || 'Developer',
+      agentId: item.agentId || 'unattributed',
+      agentName: agentName || item.agentId || 'Unattributed',
       status: item.status || 'delivered',
       summary: item.summary || '',
       content: item.content || '',
@@ -484,6 +485,7 @@ class EventBus extends EventEmitter {
 
     // Deduplicate by id or title
     this.deliverables.set(normalized.id, normalized);
+    this.persistDeliverables();
 
     this.broadcast({
       type: 'DELIVERABLE_UPDATE',
@@ -492,6 +494,41 @@ class EventBus extends EventEmitter {
     });
 
     return normalized;
+  }
+
+  /**
+   * Deliverables live next to the sprint's cards in .agents/sprints/<sprint>/deliverables.json, so the
+   * hub survives restarts. Only the running server writes it (startServer enables it), never tests
+   * that merely load the modules.
+   */
+  deliverablesFile(sprintDir) {
+    const dir = sprintDir || path.join(getProjectRoot(), this.activeSprintPath || '.agents/sprints/sprint-1');
+    return path.join(dir, 'deliverables.json');
+  }
+
+  persistDeliverables() {
+    if (!this.persistDeliverablesEnabled) return;
+    try {
+      const fs = require('fs');
+      const file = this.deliverablesFile();
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      const deliverables = Array.from(this.deliverables.values());
+      fs.writeFileSync(file, JSON.stringify({ sprintId: this.activeSprintId, deliverables }, null, 2), 'utf8');
+    } catch (e) {
+      console.warn('[EventBus] Could not save deliverables:', e.message);
+    }
+  }
+
+  loadDeliverables(sprintDir) {
+    if (!this.persistDeliverablesEnabled) return;
+    try {
+      const fs = require('fs');
+      const file = this.deliverablesFile(sprintDir);
+      const items = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')).deliverables || [] : [];
+      this.deliverables = new Map(items.filter((d) => d && d.id).map((d) => [d.id, d]));
+    } catch (e) {
+      console.warn('[EventBus] Could not load deliverables:', e.message);
+    }
   }
 
   registerWsClient(ws) {

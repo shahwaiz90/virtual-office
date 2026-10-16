@@ -10,6 +10,7 @@ import { WorkflowRecorder } from './components/WorkflowRecorder';
 // import { SiriVoiceAssistant } from './components/SiriVoiceAssistant';
 import { SettingsModal } from './components/SettingsModal';
 import { ChangeDirectoryModal } from './components/ChangeDirectoryModal';
+import { IntegrationsPanel } from './components/IntegrationsPanel';
 import { TeamOnboardingModal } from './components/TeamOnboardingModal';
 import { RoleDeliverablesHub } from './components/RoleDeliverablesHub';
 import { voiceService } from './services/voiceService';
@@ -32,6 +33,7 @@ export const App: React.FC = () => {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isChangeDirectoryOpen, setIsChangeDirectoryOpen] = useState<boolean>(false);
+  const [isIntegrationsOpen, setIsIntegrationsOpen] = useState(false);
   const [isTeamStudioOpen, setIsTeamStudioOpen] = useState<boolean>(false);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [hasCustomAgentsConfig, setHasCustomAgentsConfig] = useState<boolean>(true);
@@ -328,6 +330,7 @@ export const App: React.FC = () => {
         }
         onOpenVoice={handleOpenVoice}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenIntegrations={() => setIsIntegrationsOpen(true)}
         projectPath={projectPath}
         onOpenChangeDirectory={() => setIsChangeDirectoryOpen(true)}
         onOpenTeamStudio={() => handleOpenTeamStudio()}
@@ -426,6 +429,9 @@ export const App: React.FC = () => {
         projectPath={projectPath || state?.workflow?.projectPath}
         onOpenChangeDirectory={() => setIsChangeDirectoryOpen(true)}
       />
+
+      {/* Jira / Confluence setup and connection test */}
+      <IntegrationsPanel isOpen={isIntegrationsOpen} onClose={() => setIsIntegrationsOpen(false)} />
 
       {/* Change Target Project Directory Modal */}
       <ChangeDirectoryModal
