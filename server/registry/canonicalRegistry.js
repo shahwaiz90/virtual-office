@@ -443,7 +443,10 @@ function saveRegistry(registry, projectRoot) {
  * If empty or missing, scaffolds canonical definitions from:
  * 1. Existing registry.yaml / registry.json
  * 2. Existing agents.json (migrating legacy configuration)
- * 3. Discovered agents or default fallback team template
+ * 3. Discovered agents from existing agent configuration files
+ *
+ * NOTE: If the project directory has NO agent configuration files at all,
+ * does NOT create or write fallback agents to disk, returning { ensured: false, count: 0 }.
  *
  * @param {string} projectRoot - Target project directory root
  * @returns {{ ensured: boolean, count: number }}
@@ -598,10 +601,10 @@ function ensureCanonicalDefinitions(projectRoot) {
 
   // Branch 3: Else (neither registry.yaml nor agents.json exists)
   try {
-    const { discoverAgents, DEFAULT_FALLBACK_AGENTS } = require('../agentDiscovery');
-    let discovered = discoverAgents(projectRoot);
+    const { discoverAgents } = require('../agentDiscovery');
+    const discovered = discoverAgents(projectRoot);
     if (!discovered || discovered.length === 0) {
-      discovered = DEFAULT_FALLBACK_AGENTS || [];
+      return { ensured: false, count: 0 };
     }
 
     if (Array.isArray(discovered) && discovered.length > 0) {

@@ -4,6 +4,7 @@ const assert = require('assert');
 const { eventBus } = require('../server/eventBus');
 const { handleWorkspaceFileChange } = require('../server/watchers');
 const { saveRegistry, loadRegistry } = require('../server/registry/canonicalRegistry');
+const { discoverAgents } = require('../server/agentDiscovery');
 
 console.log('🧪 Starting Standby & Definitions Scaffolding Test Suite...\n');
 
@@ -107,14 +108,23 @@ try {
 fs.mkdirSync(testDirBlank, { recursive: true });
 
 const resBlank = ensureCanonicalDefinitions(testDirBlank);
-assert.strictEqual(resBlank.ensured, true, 'Expected ensureCanonicalDefinitions to return ensured=true for blank dir');
-assert.ok(resBlank.count > 0, `Expected count > 0 for blank dir fallback, got ${resBlank.count}`);
+assert.strictEqual(resBlank.ensured, false, 'Expected ensureCanonicalDefinitions to return ensured=false for blank dir');
+assert.strictEqual(resBlank.count, 0, 'Expected ensureCanonicalDefinitions to return count=0 for blank dir');
 
 const blankDefsDir = path.join(testDirBlank, '.agents', 'definitions');
-assert.ok(fs.existsSync(blankDefsDir), 'Expected .agents/definitions to exist in blank dir');
-const blankDefs = fs.readdirSync(blankDefsDir).filter((f) => f.endsWith('.md'));
-assert.strictEqual(blankDefs.length, resBlank.count, 'Defs count on disk must match ensured count');
-console.log('  ✅ Step 6: ensureCanonicalDefinitions scaffolds definitions/*.md for totally blank directory');
+assert.ok(!fs.existsSync(blankDefsDir), 'Expected .agents/definitions to NOT exist in blank dir');
+assert.ok(!fs.existsSync(path.join(testDirBlank, '.agents')), 'Expected .agents directory to NOT exist in blank dir');
+
+const blankDiscovered = discoverAgents(testDirBlank);
+assert.strictEqual(Array.isArray(blankDiscovered), true, 'Expected discoverAgents to return array');
+assert.strictEqual(blankDiscovered.length, 0, `Expected discoverAgents to return 0 agents for blank dir, got ${blankDiscovered.length}`);
+
+eventBus.resetForProject(testDirBlank, blankDiscovered);
+assert.strictEqual(eventBus.agents.size, 0, `Expected 0 agents in eventBus after resetForProject, got ${eventBus.agents.size}`);
+assert.strictEqual(eventBus.tasks.size, 0, `Expected 0 tasks in eventBus after resetForProject, got ${eventBus.tasks.size}`);
+assert.strictEqual(eventBus.latestMilestoneAgentId, null, 'Expected latestMilestoneAgentId to be null when no agents exist');
+
+console.log('  ✅ Step 6: ensureCanonicalDefinitions does NOT create fallback agents for blank directory (0 agents & clean standby)');
 
 try {
   fs.rmSync(testDirBlank, { recursive: true, force: true });
