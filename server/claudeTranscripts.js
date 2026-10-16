@@ -18,13 +18,28 @@ function resolveClaudeProjectDir(projectRoot) {
 }
 
 /**
- * Lists session transcripts for the project, including subagent transcripts
+ * Transcript folders for the project: its own, plus one per git worktree Claude Code made for it.
+ * A worktree at <root>/.claude/worktrees/<name> is stored under <slug>--claude-worktrees-<name>.
+ */
+function claudeTranscriptDirs(projectRoot) {
+  const own = resolveClaudeProjectDir(projectRoot);
+  const base = path.dirname(own);
+  const worktreePrefix = `${path.basename(own)}--claude-worktrees-`;
+  let siblings = [];
+  try {
+    siblings = fs
+      .readdirSync(base, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && e.name.startsWith(worktreePrefix))
+      .map((e) => path.join(base, e.name));
+  } catch (e) {}
+  return [own, ...siblings].filter((d) => fs.existsSync(d));
+}
+
+/**
+ * Lists session transcripts for the project and its worktrees, including subagent transcripts
  * (<sessionId>/subagents/*.jsonl), touched within `maxAgeMs`.
  */
 function listClaudeTranscripts(projectRoot, maxAgeMs = 12 * 60 * 60 * 1000) {
-  const dir = resolveClaudeProjectDir(projectRoot);
-  if (!fs.existsSync(dir)) return [];
-
   const now = Date.now();
   const results = [];
   const consider = (filePath, sessionId, agentType = null) => {
@@ -43,27 +58,29 @@ function listClaudeTranscripts(projectRoot, maxAgeMs = 12 * 60 * 60 * 1000) {
     }
   };
 
-  let entries = [];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch (e) {
-    return [];
-  }
+  for (const dir of claudeTranscriptDirs(projectRoot)) {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch (e) {
+      continue;
+    }
 
-  for (const entry of entries) {
-    if (entry.isFile() && entry.name.endsWith('.jsonl')) {
-      consider(path.join(dir, entry.name), entry.name.replace(/\.jsonl$/, ''));
-    } else if (entry.isDirectory()) {
-      const subDir = path.join(dir, entry.name, 'subagents');
-      if (!fs.existsSync(subDir)) continue;
-      try {
-        for (const sub of fs.readdirSync(subDir)) {
-          if (sub.endsWith('.jsonl')) {
-            const full = path.join(subDir, sub);
-            consider(full, entry.name, readAgentType(full));
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+        consider(path.join(dir, entry.name), entry.name.replace(/\.jsonl$/, ''));
+      } else if (entry.isDirectory()) {
+        const subDir = path.join(dir, entry.name, 'subagents');
+        if (!fs.existsSync(subDir)) continue;
+        try {
+          for (const sub of fs.readdirSync(subDir)) {
+            if (sub.endsWith('.jsonl')) {
+              const full = path.join(subDir, sub);
+              consider(full, entry.name, readAgentType(full));
+            }
           }
-        }
-      } catch (e) {}
+        } catch (e) {}
+      }
     }
   }
   return results;
@@ -89,6 +106,11 @@ function textFromContent(content) {
 // cross-session messages, background-task and CI notifications). None of them is a request.
 const INJECTED_EVENT_TAGS = /^<(side-sessions-event|cross-session-message|task-notification|ci-monitor-event|system-reminder|local-command|command-|bash-)/i;
 
+/** True for text the host app injected as a user turn (side-session notes, cross-session messages, ...). */
+function isInjectedText(text) {
+  return INJECTED_EVENT_TAGS.test(stripInjectedMarkup(text));
+}
+
 function isHumanPrompt(entry) {
   if (entry.type !== 'user' || entry.isMeta || entry.isSidechain) return false;
   const content = entry.message && entry.message.content;
@@ -96,7 +118,7 @@ function isHumanPrompt(entry) {
   if (entry.origin && entry.origin.kind) return entry.origin.kind === 'human';
   const text = stripInjectedMarkup(textFromContent(content));
   // App-injected events, slash-command wrappers, local command output and interrupts are not prompts
-  return Boolean(text) && !INJECTED_EVENT_TAGS.test(text) && !/^\[Request interrupted/i.test(text);
+  return Boolean(text) && !isInjectedText(text) && !/^\[Request interrupted/i.test(text);
 }
 
 /**
@@ -230,7 +252,9 @@ function toTranscriptSteps(entry, isInProject) {
 module.exports = {
   claudeProjectSlug,
   resolveClaudeProjectDir,
+  claudeTranscriptDirs,
   listClaudeTranscripts,
+  isInjectedText,
   toTranscriptSteps,
   usageFromEntry,
   isHumanPrompt,
