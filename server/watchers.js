@@ -1823,17 +1823,18 @@ function handleClaudeEntry(entry, state) {
     }
 
     let promptCardId = null;
-    if (step.type === 'USER_INPUT' && state.promptTaskId) {
-      // The previous turn never reported an end (interrupted); the user has moved on, so close it
-      completeClaudePromptCard(state.promptTaskId, step);
-      state.promptTaskId = null;
-    }
+    let followUpCard = null;
+    const followUpEntryId = step.type === 'USER_INPUT' ? `msg_prompt_${step.claude.uuid}` : null;
     if (step.type === 'USER_INPUT') {
       promptCardId = `TASK-CC-${hashString(`${state.convId}:${step.claude.uuid}`)}`;
+      // One card per conversation on the active board: a later prompt is a follow-up on that card
+      followUpCard = eventBus.tasks.has(promptCardId) ? null : conversationCard(state.convId);
       const seen = eventBus.tasks.get(promptCardId);
-      if (seen) {
-        // Replayed prompt (e.g. after a restart): don't restart its sprint or reopen its card
-        state.promptTaskId = seen.column === 'done' ? null : seen.id;
+      const replayedFollowUp = followUpCard && (followUpCard.thread || []).some((m) => m.id === followUpEntryId);
+      if (seen || replayedFollowUp) {
+        // Replayed prompt (e.g. after a restart): don't reopen its card or post it twice
+        const card = seen || followUpCard;
+        state.promptTaskId = card.column === 'done' ? null : card.id;
         continue;
       }
     }
@@ -1847,7 +1848,16 @@ function handleClaudeEntry(entry, state) {
     conversationProjectMatch.set(state.convId, true);
     parseTranscriptStep(step, state.convId);
 
-    if (step.type === 'USER_INPUT') {
+    if (step.type === 'USER_INPUT' && followUpCard) {
+      appendThreadEntry(followUpCard, { id: followUpEntryId, agentId: 'user', kind: 'request', text: step.claude.prompt.slice(0, 2000), at: step.created_at });
+      if (followUpCard.column === 'done') {
+        // New work on a finished request: it is open again until this turn ends
+        followUpCard.column = 'in_progress';
+        followUpCard.progress = 0;
+      }
+      persistActiveSprintTasks();
+      state.promptTaskId = followUpCard.id;
+    } else if (step.type === 'USER_INPUT') {
       const prompt = step.claude.prompt;
       const firstLine = prompt.split('\n').map((l) => l.trim()).filter(Boolean)[0] || prompt;
       const task = registerRealAgentTask({
@@ -1869,6 +1879,15 @@ function handleClaudeEntry(entry, state) {
       state.promptTaskId = null;
     }
   }
+}
+
+/** The requirement card a Claude Code conversation started on the active board (its latest one). */
+function conversationCard(convId) {
+  return (
+    Array.from(eventBus.tasks.values())
+      .filter((t) => t.sourceConversation === convId && t.type === 'requirement')
+      .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))[0] || null
+  );
 }
 
 /** Credits each assistant message's token usage once, to the subagent's role or else the orchestrator. */
@@ -2030,12 +2049,8 @@ function parseTranscriptStep(step, convId = '') {
       const firstLine = promptText.split('\n').map((s) => s.trim()).filter(Boolean)[0] || promptText;
       const displayTitle = firstLine.length > 60 ? firstLine.slice(0, 57) + '...' : firstLine;
 
-      // Automatic Clean Slate on New Requirement (Option 2):
-      // If previous tasks exist and are all completed, auto-archive them and provision a clean sprint
-      const realTasks = Array.from(eventBus.tasks.values());
-      if (realTasks.length > 0 && realTasks.every((t) => t.column === 'done')) {
-        startNewSprint(getProjectRoot(), displayTitle);
-      }
+      // New requests join the active sprint; a new sprint starts only when the user starts one
+      // (POST /api/sprints/start), never because every card happens to be done
 
       eventBus.workflowTitle = `${eventBus.projectName} • ${displayTitle}`;
       eventBus.currentPhase = 'Intake & Planning';

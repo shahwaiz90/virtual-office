@@ -22,6 +22,7 @@ interface TaskCardDetailsProps {
 }
 
 const KIND_STYLE: Record<TaskThreadKind, { label: string; className: string }> = {
+  request: { label: 'Request', className: 'bg-brand-50 text-brand-700 border-brand-200' },
   handoff: { label: 'Handoff', className: 'bg-brand-100 text-brand-800 border-brand-200' },
   question: { label: 'Question', className: 'bg-amber-100 text-amber-800 border-amber-200' },
   answer: { label: 'Answer', className: 'bg-olive-100 text-olive-800 border-olive-200' },

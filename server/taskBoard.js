@@ -10,7 +10,8 @@ const { eventBus } = require('./eventBus');
 const { isInjectedText } = require('./claudeTranscripts');
 
 const COLUMNS = ['backlog', 'assigned', 'in_progress', 'review', 'testing', 'done'];
-const THREAD_KINDS = ['handoff', 'question', 'answer', 'update', 'decision', 'result', 'status'];
+// `request` is a message from the user (a follow-up prompt in the same conversation)
+const THREAD_KINDS = ['request', 'handoff', 'question', 'answer', 'update', 'decision', 'result', 'status'];
 
 function findTask(keyOrId) {
   if (!keyOrId) return null;
@@ -46,7 +47,7 @@ function getTaskDetail(task) {
 
 function appendThreadEntry(task, entry) {
   const record = {
-    id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    id: entry.id || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     agentId: entry.agentId || 'unknown',
     kind: THREAD_KINDS.includes(entry.kind) ? entry.kind : 'update',
     text: String(entry.text || '').trim(),
