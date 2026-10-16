@@ -326,7 +326,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
           {activeTab === 'roles' ? (
             <div className="flex items-center gap-2 text-sand-600 font-semibold py-1">
               <Users className="w-3.5 h-3.5 text-brand-600" />
-              <span>Team Roles, Dispatch Frequencies & SLA Adherence Overview</span>
+              <span>Team Roles, Dispatch Frequencies & Token Usage</span>
             </div>
           ) : (
             <div className="flex items-center gap-2 bg-surface border border-sand-200 rounded-xl px-3 py-1.5 shadow-2xs w-full sm:w-auto">
@@ -582,13 +582,13 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
         </div>
       )}
 
-      {/* TAB 3: ROLE INVOCATIONS & SLA ADHERENCE */}
+      {/* TAB 3: ROLE INVOCATIONS & TOKEN USAGE */}
       {activeTab === 'roles' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {roleStats.map((role) => {
             const themeColor = getAgentTheme(role.agentId);
             const avatar = getAgentAvatar(role.agentId);
-            const invocationPct = Math.round((role.invocations / maxRoleInvocations) * 100);
+            const invocationPct = totalRoleInvocations ? Math.round((role.invocations / totalRoleInvocations) * 100) : 0;
             const tokens = tokenStats.find((t) => t.agentId === role.agentId);
 
             return (
@@ -649,13 +649,13 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                   </div>
                 </div>
 
-                {/* SLA Adherence & Progress */}
+                {/* Share of all invocations (there is no SLA data to report) */}
                 <div className="space-y-1.5 pt-2 border-t border-sand-200/70">
                   <div className="flex items-center justify-between text-[11px]">
                     <span className="text-sand-500 flex items-center gap-1 font-medium">
-                      <Award className="w-3 h-3 text-emerald-600" /> SLA Adherence
+                      <Award className="w-3 h-3 text-emerald-600" /> Share of invocations
                     </span>
-                    <span className="font-extrabold text-emerald-700">{role.slaAdherenceRate}%</span>
+                    <span className="font-extrabold text-emerald-700">{totalRoleInvocations ? Math.round((role.invocations / totalRoleInvocations) * 100) : 0}%</span>
                   </div>
                   <div className="w-full bg-sand-200/70 rounded-full h-1.5 overflow-hidden">
                     <div

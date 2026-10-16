@@ -39,64 +39,7 @@ export function sanitizeFilePath(filePath?: string | null): string {
 }
 
 /**
- * Checks whether a given task ID or string is a dummy / mock placeholder
- */
-export function isMockTask(taskStr?: string | null): boolean {
-  if (!taskStr || typeof taskStr !== 'string') return false;
-  const s = taskStr.trim();
-  if (/^DELIV-\d+/i.test(s)) return true;
-  if (/^TASK-[1-5]$/i.test(s)) return true;
-  if (/\b(US-101|Sprint\s*42|facilitated Sprint Planning|Definition of Ready|\(DoR\)|Definition of Done|\(DoD\)|AuthService|FEATURE-101)\b/i.test(s)) return true;
-  if (s === 'Core Feature Implementation & Refactoring') return true;
-  if (s === 'Automated Unit & Regression Test Verification') return true;
-  if (s === 'Architecture Scope Analysis') return true;
-  return false;
-}
-
-/**
- * Strictly identifies any mock/demo artifacts
- * (e.g. US-101, facilitated Sprint Planning, Sprint 42, AuthService, DELIV-, Definition of Ready, Definition of Done).
- */
-export function isMockEvent(evt?: NormalizedEvent | null): boolean {
-  if (!evt) return false;
-  const p = evt.payload || {};
-
-  const mockRegex = /\b(US-101|Sprint\s*42|facilitated Sprint Planning|Definition of Ready|\(DoR\)|Definition of Done|\(DoD\)|AuthService|FEATURE-101|DELIV-\d+|TASK-[1-5]\b|CompanyProfileScreen|WalkThroughOverlay)\b/i;
-
-  const fieldsToCheck = [
-    evt.type,
-    p.task,
-    p.taskTitle,
-    p.details,
-    p.command,
-    p.tool,
-    p.key,
-    p.taskId,
-    p.milestone,
-    p.fileName,
-    p.file,
-    p.summary,
-    p.instruction,
-    p.phase,
-    p.contentPreview,
-    p.message,
-  ];
-
-  for (const field of fieldsToCheck) {
-    if (typeof field === 'string' && mockRegex.test(field)) {
-      return true;
-    }
-  }
-
-  if (p.task && isMockTask(p.task)) return true;
-  if (p.taskId && isMockTask(p.taskId)) return true;
-  if (p.taskTitle && isMockTask(p.taskTitle)) return true;
-
-  return false;
-}
-
-/**
- * Sanitizes text content by cleaning machine paths and stripping mock task IDs
+ * Sanitizes text content by cleaning machine paths
  */
 export function sanitizeText(text?: string | null): string {
   if (!text || typeof text !== 'string') return '';
@@ -105,12 +48,7 @@ export function sanitizeText(text?: string | null): string {
   s = s.replace(/file:\/\/\/[^\s"'`)]+/g, (m) => sanitizeFilePath(m));
   s = s.replace(/(?:\/[a-zA-Z0-9_.\-]+)+\/(?:Virtual Office|virtual-office)\/([a-zA-Z0-9_.\-\/]+)/gi, '$1');
   s = s.replace(/(?:\/[a-zA-Z0-9_.\-]+)+\/((?:src|server|tests|\.agents)[a-zA-Z0-9_.\-\/]+)/gi, '$1');
-  // Strip mock task IDs
-  s = s.replace(/\bDELIV-\d+\b/gi, '').replace(/\bTASK-[1-5]\b/gi, '').trim();
-  s = s.replace(/Core Feature Implementation & Refactoring/gi, 'Feature Implementation');
-  s = s.replace(/Automated Unit & Regression Test Verification/gi, 'Test Verification');
-  s = s.replace(/Architecture Scope Analysis/gi, 'Architecture & Specs');
-  return s;
+  return s.trim();
 }
 
 /**
@@ -151,7 +89,7 @@ export function formatTerminalCommand(p: Record<string, any> = {}, evtType = '')
   if (p.command) {
     return sanitizeText(p.command);
   }
-  if (p.task && !isMockTask(p.task)) {
+  if (p.task) {
     return sanitizeText(p.task);
   }
   return evtType;
@@ -215,8 +153,8 @@ export function describeTerminalEvent(evt: NormalizedEvent): TerminalEntry {
   const tool: string = p.tool || '';
   const file = sanitizeFilePath(p.file || p.filePath || p.targetFile || p.path || '');
   const details = sanitizeText(p.output || p.details || '');
-  const task = !isMockTask(p.task) ? sanitizeText(p.task) : '';
-  const meta = p.key && !isMockTask(p.key) ? String(p.key) : '';
+  const task = sanitizeText(p.task);
+  const meta = p.key ? String(p.key) : '';
   const entry = (kind: TerminalEntryKind, summary: string, body = ''): TerminalEntry => ({
     kind,
     summary: summary || KIND_STYLES[kind].label.toLowerCase(),
@@ -333,7 +271,7 @@ export const WorkstationTerminalTile: React.FC<WorkstationTerminalTileProps> = (
   const [copied, setCopied] = useState<boolean>(false);
   const terminalContainerRef = useRef<HTMLDivElement | null>(null);
 
-  const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id) && !isMockEvent(e));
+  const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id));
 
   // Auto-scroll whenever new events arrive
   useEffect(() => {
@@ -372,11 +310,11 @@ export const WorkstationTerminalTile: React.FC<WorkstationTerminalTileProps> = (
 
   let statusTone: 'working' | 'handoff' | 'idle' = 'idle';
   let statusText = 'Standby / Idle';
-  let statusDetails = agent.activityMessage || (!isMockTask(agent.currentTask) ? agent.currentTask : '') || 'Awaiting assigned tasks...';
+  let statusDetails = agent.activityMessage || (agent.currentTask || '') || 'Awaiting assigned tasks...';
 
   if (latestEvent) {
     const p = latestEvent.payload || {};
-    const validTask = !isMockTask(p.task) ? p.task : '';
+    const validTask = p.task || '';
     const cleanFile = sanitizeFilePath(p.file || p.filePath || p.targetFile || '');
 
     if (latestEvent.type === 'jira_confluence_lookup' || p.sourceType === 'jira' || p.sourceType === 'confluence') {
@@ -419,11 +357,11 @@ export const WorkstationTerminalTile: React.FC<WorkstationTerminalTileProps> = (
           : agent.status === 'testing'
           ? 'Running Tests...'
           : 'Working...';
-      statusDetails = !isMockTask(agent.currentTask) ? agent.currentTask! : statusDetails;
+      statusDetails = agent.currentTask || statusDetails;
     } else if (agent.status === 'handoff' || agent.status === 'delegating') {
       statusTone = 'handoff';
       statusText = 'Task Handoff';
-      statusDetails = !isMockTask(agent.currentTask) ? agent.currentTask! : statusDetails;
+      statusDetails = agent.currentTask || statusDetails;
     }
   } else if (agent.status === 'working' || agent.status === 'coding' || agent.status === 'testing') {
     statusTone = 'working';
@@ -433,12 +371,12 @@ export const WorkstationTerminalTile: React.FC<WorkstationTerminalTileProps> = (
         : agent.status === 'testing'
         ? 'Running Tests...'
         : 'Working';
-    statusDetails = !isMockTask(agent.currentTask) ? agent.currentTask! : statusDetails;
+    statusDetails = agent.currentTask || statusDetails;
   } else if (agent.status === 'handoff' || agent.status === 'delegating') {
     statusTone = 'handoff';
     statusText = 'Task Handoff';
-    statusDetails = !isMockTask(agent.currentTask) ? agent.currentTask! : statusDetails;
-  } else if (agent.currentTask && !isMockTask(agent.currentTask)) {
+    statusDetails = agent.currentTask || statusDetails;
+  } else if (agent.currentTask) {
     statusTone = 'working';
     statusText = 'Assigned';
     statusDetails = agent.currentTask;

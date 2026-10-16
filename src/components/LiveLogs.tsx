@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NormalizedEvent, Agent } from '../types/office';
 import { Search, Filter, Copy, Download, Terminal, ChevronDown, ChevronRight, Check } from 'lucide-react';
-import { isMockEvent } from './WorkstationTerminalTile';
 
 export interface LiveLogsProps {
   events: NormalizedEvent[];
@@ -51,7 +50,6 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
 
   // Filter events
   const filteredEvents = events.filter((e) => {
-    if (isMockEvent(e)) return false;
     if (selectedAgent !== 'all' && e.agentId !== selectedAgent) return false;
     if (selectedType !== 'all' && e.type !== selectedType) return false;
     if (search.trim()) {
@@ -100,7 +98,7 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
   // Find latest event for this agent to determine live working status
   const latestAgentEvent = currentAgent
     ? events
-        .filter((e) => e.agentId === currentAgent.id && !isMockEvent(e))
+        .filter((e) => e.agentId === currentAgent.id)
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
     : null;
 

@@ -246,17 +246,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       });
   };
 
-  // Nothing should be mocked on the Kanban board.
-  // Strictly filter out synthetic mock deliverables (e.g. DELIV-*, MOCK-*) and any legacy mock cards.
-  const displayTasks = tasks.filter((t) => {
-    if (!t) return false;
-    const id = String(t.id || '');
-    const title = String(t.title || '');
-    if (id.startsWith('DELIV-') || id.startsWith('MOCK-')) return false;
-    if (/(?:Scope\s+)?Architectur(?:e|al)\s+Spike/i.test(title)) return false;
-    if (/Architectural\s+Spike\s*&\s*Interface/i.test(title)) return false;
-    return true;
-  });
+  // Every card comes from the board API or an agent, so every card is shown
+  const displayTasks = tasks.filter(Boolean);
 
   return (
     <div className="bg-surface border border-sand-200/90 rounded-2xl p-3.5 sm:p-5 shadow-sm">

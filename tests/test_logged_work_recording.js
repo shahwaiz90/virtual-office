@@ -119,14 +119,11 @@ test('DEV-317: VirtualOffice.tsx Floor Plan Canvas Render Loop & Speech Bubble C
     'events must be passed to draw3DCharacters'
   );
 
-  // 2. Verify totalTimeLogged calculation in drawRoomBox
+  // 2. Logged time is measured time only, never estimated from the number of events
+  assert.ok(!content.includes('eventWorkSec'), 'No per-event time estimate');
   assert.ok(
-    content.includes('const eventWorkSec = agentEvents.length * 6;'),
-    'eventWorkSec must be calculated from agentEvents.length * 6'
-  );
-  assert.ok(
-    content.includes('const totalTimeLogged = Math.max((agent.totalWorkTimeSec || 0), eventWorkSec) + (isWorking ? currentTaskElapsed : 0);'),
-    'totalTimeLogged must combine agent.totalWorkTimeSec and eventWorkSec'
+    content.includes('const totalTimeLogged = (agent.totalWorkTimeSec || 0) + (isWorking ? currentTaskElapsed : 0);'),
+    'totalTimeLogged is completed work time plus the running task'
   );
 
   // 3. Verify speech bubble action formatting

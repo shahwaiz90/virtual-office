@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Agent, ActiveHandoff, NormalizedEvent } from '../types/office';
 import { Pencil, Sparkles, Users, Terminal, LayoutGrid } from 'lucide-react';
-import { WorkstationTerminalTile, isMockEvent, isMockTask } from './WorkstationTerminalTile';
+import { WorkstationTerminalTile } from './WorkstationTerminalTile';
 
 interface VirtualOfficeProps {
   agents: Agent[];
@@ -133,7 +133,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   const [, setImagesLoadedVersion] = useState<number>(0);
   const crispAvatarsRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
 
-  const events = rawEvents.filter((e) => !isMockEvent(e));
+  const events = rawEvents;
 
   const handleSetViewMode = (mode: 'floor' | 'terminal_grid') => {
     setViewMode(mode);
@@ -994,7 +994,7 @@ function getRoomWorkingState(
       }
     }
 
-    const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id) && !isMockEvent(e));
+    const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id));
     let latestEvent: NormalizedEvent | null = null;
     if (agentEvents.length > 0) {
       latestEvent = agentEvents.reduce((latest, curr) => {
@@ -1135,7 +1135,7 @@ function drawOfficeRooms(
       y: bounds.y + bounds.h / 2 + (maxRows <= 2 ? 0 : 15),
     };
 
-    const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id) && !isMockEvent(e));
+    const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id));
 
     const rState = getRoomWorkingState(
       { x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h, assignedAgentId: agent.id },
@@ -1340,8 +1340,8 @@ function drawRoomBox(
     ? Math.max(0, Math.floor((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000))
     : (agent.taskDurationSec || 0);
 
-  const eventWorkSec = agentEvents.length * 6;
-  const totalTimeLogged = Math.max((agent.totalWorkTimeSec || 0), eventWorkSec) + (isWorking ? currentTaskElapsed : 0);
+  // Only measured time: completed work plus the running task's elapsed time (no per-event estimate)
+  const totalTimeLogged = (agent.totalWorkTimeSec || 0) + (isWorking ? currentTaskElapsed : 0);
   const totalMins = Math.floor(totalTimeLogged / 60);
   const totalSecs = totalTimeLogged % 60;
   const totalStr = totalMins > 0 ? `${totalMins}m ${totalSecs}s` : `${totalSecs}s`;
@@ -1704,7 +1704,7 @@ function draw3DCharacters(
       posY = activeHandoff.fromPos.y + (midY - activeHandoff.fromPos.y) * Math.sin(progress * Math.PI);
     }
 
-    const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id) && !isMockEvent(e));
+    const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id));
     let latestAgentEvent: NormalizedEvent | null = null;
     if (agentEvents.length > 0) {
       latestAgentEvent = agentEvents.reduce((latest, curr) => {
@@ -1738,8 +1738,7 @@ function draw3DCharacters(
     draw3DCleanNameBadge(ctx, posX, posY, agent, isIdle);
 
     // 3. Speech Bubble: ONLY display when hovered, receiving handoff, OR actively performing work
-    const isMockHandoff = isMockTask(activeHandoff?.taskTitle) || (activeHandoff?.taskTitle && isMockEvent({ type: '', payload: { details: activeHandoff.taskTitle } } as any));
-    if (activeHandoff && activeHandoff.toId === agent.id && !isMockHandoff) {
+    if (activeHandoff && activeHandoff.toId === agent.id) {
       let shortTask = activeHandoff.taskTitle || 'Task Handover';
       if (shortTask.includes(':')) {
         const parts = shortTask.split(':');
@@ -1776,12 +1775,7 @@ function draw3DCharacters(
       }
       draw3DSpeechBubble(ctx, posX, posY - 62, bubbleText, agent.theme.themeColor, false);
     } else if (isHovered || (!isIdle && agent.activityMessage)) {
-      const isMockMsg = agent.activityMessage && (isMockTask(agent.activityMessage) || isMockEvent({ type: '', payload: { details: agent.activityMessage } } as any));
-      const message = isHovered
-        ? `${agent.role} • ${agent.status.toUpperCase()}`
-        : isMockMsg
-        ? 'Ready at workstation'
-        : agent.activityMessage;
+      const message = isHovered ? `${agent.role} • ${agent.status.toUpperCase()}` : agent.activityMessage;
       draw3DSpeechBubble(ctx, posX, posY - 62, message, agent.theme.themeColor, isIdle);
     }
   });

@@ -77,35 +77,10 @@ test('OrchestrationRules: distillShortTopic never maps keywords to canned titles
   assert.ok(OrchestrationRules.distillShortTopic('word '.repeat(40)).length <= 80);
 });
 
-test('OrchestrationRules: getInitialDemoTasks returns 5 demo tasks', () => {
-  const roster = [
-    { id: 'pm-1', name: 'Scrum Master', badge: 'PM' },
-    { id: 'lead-1', name: 'Tech Lead', badge: 'LEAD' },
-    { id: 'dev-1', name: 'Developer', badge: 'DEV' },
-    { id: 'qa-1', name: 'Tester', badge: 'QA' },
-  ];
-
-  const demoTasks = OrchestrationRules.getInitialDemoTasks(roster);
-  assert.equal(demoTasks.length, 5);
-  assert.equal(demoTasks[0].id, 'TASK-1');
-  assert.equal(demoTasks[4].id, 'TASK-5');
-});
-
-test('OrchestrationRules: getDefaultFileChanges & getDefaultCommunications return non-empty datasets', () => {
-  const roster = [
-    { id: 'pm-1', name: 'Scrum Master', badge: 'PM' },
-    { id: 'lead-1', name: 'Tech Lead', badge: 'LEAD' },
-    { id: 'dev-1', name: 'Developer', badge: 'DEV' },
-    { id: 'qa-1', name: 'Tester', badge: 'QA' },
-  ];
-
-  const fc = OrchestrationRules.getDefaultFileChanges(roster);
-  assert.ok(fc.length >= 3);
-  assert.ok(fc.every(f => f.filePath && f.agentId));
-
-  const comms = OrchestrationRules.getDefaultCommunications(roster);
-  assert.ok(comms.length >= 6);
-  assert.ok(comms.every(c => c.fromAgentId && c.toAgentId && c.message));
+test('OrchestrationRules: no demo task, file-change or communication templates exist', () => {
+  for (const seed of ['getInitialDemoTasks', 'getDefaultFileChanges', 'getDefaultCommunications']) {
+    assert.equal(typeof OrchestrationRules[seed], 'undefined', `${seed} must not exist`);
+  }
 });
 
 test('OrchestrationRules: Robustness against Team Studio user renaming (Zero regex on name/role)', () => {

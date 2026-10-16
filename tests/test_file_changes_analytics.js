@@ -6,11 +6,13 @@ console.log('🧪 Starting File Changes & Updated Content Analytics Tests...\n')
 
 const bus = new EventBus();
 
-// Test 1: File changes are present in state snapshot
-console.log('Test 1: File changes present in state snapshot...');
+// Test 1: No sample file changes; a recorded change appears with its author and content
+console.log('Test 1: File changes start empty and show recorded edits...');
+assert(Array.isArray(bus.getStateSnapshot().fileChanges), 'snapshot.fileChanges must be an array');
+assert.strictEqual(bus.getStateSnapshot().fileChanges.length, 0, 'No sample file changes');
+const firstAgent = Array.from(bus.agents.values())[0] || { id: 'web-dev', name: 'Web Dev', role: 'Developer' };
+bus.recordFileChange({ filePath: 'src/export.ts', action: 'created', agentId: firstAgent.id, agentName: firstAgent.name, agentRole: firstAgent.role, contentPreview: 'export const csv = 1;' });
 const snapshot = bus.getStateSnapshot();
-assert(Array.isArray(snapshot.fileChanges), 'snapshot.fileChanges must be an array');
-assert(snapshot.fileChanges.length > 0, 'snapshot.fileChanges should have initial records');
 
 const firstChange = snapshot.fileChanges[0];
 assert(firstChange.filePath, 'file change must have filePath');
@@ -61,8 +63,7 @@ console.log('Test 3: Clearing and reloading state...');
 bus.clearState();
 assert.strictEqual(bus.getStateSnapshot().fileChanges.length, 0, 'clearState must clear fileChanges');
 
-bus.loadDemoWorkflow('DEMO TEST');
-assert(bus.getStateSnapshot().fileChanges.length > 0, 'loadDemoWorkflow must repopulate fileChanges');
-console.log('✅ PASS: State clearing and demo reload manage fileChanges correctly!\n');
+assert.strictEqual(typeof bus.loadDemoWorkflow, 'undefined', 'There is no demo workflow to repopulate sample file changes');
+console.log('✅ PASS: State clearing empties fileChanges and nothing repopulates them!\n');
 
 console.log('🎉 ALL FILE CHANGES ANALYTICS TESTS PASSED 100%!');

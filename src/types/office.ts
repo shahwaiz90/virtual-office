@@ -205,7 +205,6 @@ export interface RoleInvocationStat {
   measuredInvocations?: number;
   activeTimeSec: number;
   completedTasks: number;
-  slaAdherenceRate: number; // percentage
   status: string;
 }
 
@@ -335,7 +334,6 @@ export interface OfficeState {
     elapsedSeconds: number;
     milestone: string;
     milestoneAgentId?: string;
-    isDemoRunning?: boolean;
     hasAgents?: boolean;
   };
   metrics: {
@@ -361,7 +359,6 @@ export interface OfficeState {
   jiraConfluenceItems?: JiraConfluenceItem[];
   activeHandoff: ActiveHandoff | null;
   connectedViewers: number;
-  isDemoRunning?: boolean;
   hasCustomAgentsConfig?: boolean;
   events?: any[];
 }

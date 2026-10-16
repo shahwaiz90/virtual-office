@@ -398,27 +398,9 @@ function formatDeliverableTitle(skillTitle, defaultAction) {
   return `${skillTitle} ${filtered.join(' ')}`.replace(/\s+&\s*$/, '').trim();
 }
 
-/**
- * Ensures clean, self-descriptive role-delegated deliverables exist on the Authoritative Task Board,
-/**
- * Checks if eventBus.tasks contains genuine agent tasks (not static mock DELIV-* tasks)
- */
+/** True when the board has any card (every card on it comes from a real agent or the user). */
 function hasRealAgentTasks(tasksMap) {
-  if (!tasksMap || tasksMap.size === 0) return false;
-  for (const [id] of tasksMap.entries()) {
-    if (
-      typeof id === 'string' &&
-      !id.startsWith('DELIV-') &&
-      !id.startsWith('TASK-1') &&
-      !id.startsWith('TASK-2') &&
-      !id.startsWith('TASK-3') &&
-      !id.startsWith('TASK-4') &&
-      !id.startsWith('TASK-5')
-    ) {
-      return true;
-    }
-  }
-  return false;
+  return Boolean(tasksMap && tasksMap.size > 0);
 }
 
 /**
@@ -559,8 +541,6 @@ let isPersistingSprintTasks = false;
 let pendingSprintPersist = false;
 
 function persistActiveSprintTasks(root) {
-  // Demo tasks are sample data; never write them into the real sprint's tasks.json
-  if (eventBus.isDemoRunning) return;
   if (isPersistingSprintTasks) {
     // Don't drop the update; write the latest state once the current write settles
     pendingSprintPersist = true;
@@ -575,9 +555,7 @@ function persistActiveSprintTasks(root) {
       fs.mkdirSync(sprintDir, { recursive: true });
     }
     const sprintTasksJsonPath = path.join(sprintDir, 'tasks.json');
-    const tasksList = Array.from(eventBus.tasks.values()).filter(
-      (t) => !t.id.startsWith('DELIV-') && !t.id.startsWith('MOCK-')
-    );
+    const tasksList = Array.from(eventBus.tasks.values());
     const payload = {
       sprintId: sprintInfo.id || sprintInfo.activeSprintId || 'sprint-1',
       version: '1.0.0',
@@ -628,7 +606,7 @@ function carriedTaskFields(taskData, existing) {
 }
 
 /**
- * Registers a genuine agent-delegated task into eventBus.tasks, purging mock DELIV-* tasks
+ * Registers a genuine agent-delegated task into eventBus.tasks
  */
 function registerRealAgentTask(taskData, options = {}) {
   const agentList = Array.from(eventBus.agents.values());
@@ -636,13 +614,6 @@ function registerRealAgentTask(taskData, options = {}) {
   const leadAgent = getResolvedAgent('lead', 1);
   const devAgent = getResolvedAgent('dev', 2);
   const testerAgent = getResolvedAgent('test', 3);
-
-  // Clear mock DELIV-* tasks once real tasks are registered
-  for (const [id] of eventBus.tasks.entries()) {
-    if (typeof id === 'string' && id.startsWith('DELIV-')) {
-      eventBus.tasks.delete(id);
-    }
-  }
 
   // Resolve assigned agent
   const assignRaw = (taskData.assignedTo || '').toLowerCase().trim();
@@ -917,7 +888,6 @@ function startNewSprint(root, goalTitle) {
  * Scans active brain directories and workspace sprint plans for genuine agent tasks
  */
 function syncRealTasksFromFiles() {
-  if (eventBus.isDemoRunning) return [];
   const root = getProjectRoot();
   const sprintInfo = getActiveSprintInfo(root);
 
@@ -982,151 +952,6 @@ function syncRealTasksFromFiles() {
   }
 }
 
-/**
- * Ensures high-level executive sprint deliverables are present on the board,
- * dynamically built from the project's actual agents.json configuration.
- * When genuine agent tasks are present, mock deliverables are bypassed.
- */
-function ensureRoleDeliverables(featureTitle = '') {
-  // Nothing should be mocked on the board unless demo simulation is explicitly active
-  if (!eventBus.isDemoRunning && !featureTitle) {
-    return;
-  }
-  if (hasRealAgentTasks(eventBus.tasks)) {
-    return;
-  }
-
-  const agentList = Array.from(eventBus.agents.values());
-  if (agentList.length === 0) return;
-
-  const pmAgent = getResolvedAgent('pm', 0);
-  const leadAgent = getResolvedAgent('lead', 1);
-  const devAgent = getResolvedAgent('dev', 2);
-  const testerAgent = getResolvedAgent('test', 3);
-
-  const cleanFeature = featureTitle ? ` (${featureTitle.slice(0, 30)})` : '';
-
-  // Dynamically resolve delegation chains directly from agents.json
-  const leadDelegator = findDelegatorAgent(leadAgent, pmAgent);
-  const devDelegator = findDelegatorAgent(devAgent, leadAgent);
-  const testerDelegator = findDelegatorAgent(testerAgent, leadAgent);
-
-  // Dynamically derive deliverable titles from agents.json skills, role, and name
-  const leadArchSkill = getAgentSkillTitle(leadAgent, ['architecture', 'impact', 'design', 'plan'], 'Feature Architecture');
-  const devFeatSkill = getAgentSkillTitle(devAgent, ['feature', 'compose', 'viewmodel', 'repository', 'implementation'], 'Core Feature');
-  const testerVerifySkill = getAgentSkillTitle(testerAgent, ['test', 'regression', 'unit', 'qa', 'automation'], 'Automated Unit & Regression');
-  const leadReviewSkill = getAgentSkillTitle(leadAgent, ['review', 'quality', 'audit', 'gate'], 'Architectural Quality Gate');
-  const pmDeliverySkill = getAgentSkillTitle(pmAgent, ['reporting', 'delivery', 'sprint', 'sign-off'], 'Delivery Verification & Release Sign-Off');
-
-  const cleanLeadArchSkill = leadArchSkill
-    .replace(/Architectur(?:e|al)\s+Spike(\s*&\s*Interface)?/gi, 'Planning & Design')
-    .replace(/\bSpike\b/gi, 'Planning')
-    .trim();
-  const archTitle = sanitizeTaskTitle(formatDeliverableTitle(cleanLeadArchSkill || 'Architecture', 'Scope Analysis'));
-  const devTitle = sanitizeTaskTitle(formatDeliverableTitle(devFeatSkill, 'Implementation & Refactoring') + cleanFeature);
-  const testTitle = sanitizeTaskTitle(formatDeliverableTitle(testerVerifySkill, 'Test Verification & Regression Analysis'));
-  const revTitle = sanitizeTaskTitle(formatDeliverableTitle(leadReviewSkill, 'Quality Gate & Review'));
-  const relTitle = sanitizeTaskTitle(formatDeliverableTitle(pmDeliverySkill, 'Delivery Verification & Release Sign-Off'));
-
-  const deliverables = [
-    {
-      id: 'DELIV-1',
-      key: sanitizeTaskKey(leadAgent.badge ? `${leadAgent.badge}-101` : 'PLAN-101'),
-      title: archTitle,
-      description: `Analyze component boundaries, data flow, and file dependencies according to ${leadAgent.role || leadAgent.name}`,
-      assignedTo: leadAgent.id,
-      delegatedBy: leadDelegator.id,
-      delegatedByRole: leadDelegator.role || leadDelegator.name,
-      column: 'backlog',
-      skill: cleanLeadArchSkill || 'Planning & Design',
-      progress: 0,
-    },
-    {
-      id: 'DELIV-2',
-      key: `${devAgent.badge || 'DEV'}-101`,
-      title: devTitle,
-      description: `Implement domain business logic, UI components, and state management according to ${devAgent.role || devAgent.name}`,
-      assignedTo: devAgent.id,
-      delegatedBy: devDelegator.id,
-      delegatedByRole: devDelegator.role || devDelegator.name,
-      column: 'backlog',
-      skill: devFeatSkill,
-      progress: 0,
-    },
-    {
-      id: 'DELIV-3',
-      key: `${testerAgent.badge || 'TEST'}-101`,
-      title: testTitle,
-      description: `Execute automated test suites to ensure 100% pass rate with zero regressions according to ${testerAgent.role || testerAgent.name}`,
-      assignedTo: testerAgent.id,
-      delegatedBy: testerDelegator.id,
-      delegatedByRole: testerDelegator.role || testerDelegator.name,
-      column: 'backlog',
-      skill: testerVerifySkill,
-      progress: 0,
-    },
-    {
-      id: 'DELIV-4',
-      key: 'REV-101',
-      title: revTitle,
-      description: `Verify boundary compliance, code quality standards, and immutability according to ${leadAgent.role || leadAgent.name}`,
-      assignedTo: leadAgent.id,
-      delegatedBy: devAgent.id,
-      delegatedByRole: devAgent.role || devAgent.name,
-      column: 'backlog',
-      skill: leadReviewSkill,
-      progress: 0,
-    },
-    {
-      id: 'DELIV-5',
-      key: 'REL-101',
-      title: relTitle,
-      description: `Validate acceptance criteria, collate delivery artifacts, and broadcast sign-off according to ${pmAgent.role || pmAgent.name}`,
-      assignedTo: pmAgent.id,
-      delegatedBy: testerAgent.id,
-      delegatedByRole: testerAgent.role || testerAgent.name,
-      column: 'backlog',
-      skill: pmDeliverySkill,
-      progress: 0,
-    },
-  ];
-
-  const now = new Date().toISOString();
-  for (const d of deliverables) {
-    if (!eventBus.tasks.has(d.id)) {
-      eventBus.tasks.set(d.id, {
-        ...d,
-        createdAt: d.createdAt || now,
-        updatedAt: d.updatedAt || now,
-      });
-    }
-  }
-
-  // Support arbitrary developer agent definitions (monorepos, specialized agents, etc.)
-  for (const agent of agentList) {
-    const customTaskId = `DELIV-${agent.id}`;
-    if (!eventBus.tasks.has(customTaskId) && !deliverables.some((d) => d.assignedTo === agent.id)) {
-      const delegator = findDelegatorAgent(agent, pmAgent);
-      const skill = getAgentSkillTitle(agent, [], agent.role || agent.name);
-      eventBus.tasks.set(customTaskId, {
-        id: customTaskId,
-        key: `${agent.badge || 'AGENT'}-101`,
-        title: `${skill} - ${agent.name}`,
-        description: agent.description || `Deliverable for ${agent.role || agent.name}`,
-        assignedTo: agent.id,
-        delegatedBy: delegator.id,
-        delegatedByRole: delegator.role || delegator.name,
-        column: 'backlog',
-        skill,
-        progress: 0,
-        createdAt: now,
-        updatedAt: now,
-      });
-    }
-  }
-}
-
-eventBus.ensureRoleDeliverables = ensureRoleDeliverables;
 eventBus.resyncRealTasks = () => syncRealTasksFromFiles();
 
 /**
@@ -1523,152 +1348,28 @@ function handleWorkspaceFileChange(filePath, action) {
     return;
   }
 
-  const devAgent = getResolvedAgent('dev', 2);
-  const testerAgent = getResolvedAgent('test', 3);
-  const leadAgent = getResolvedAgent('lead', 1);
-  const pmAgent = getResolvedAgent('pm', 0);
+  // A save on disk doesn't say who made it or which card it belongs to (it may be the user's own
+  // editor), so it is recorded as an unattributed file change and never touches the board.
+  // Agent edits are attributed from their transcripts instead.
+  recordDiskFileChange(filePath, relPath, action);
+}
 
-  // 1. Test Files -> Tester / QA Agent
-  const isTest =
-    fileName.includes('.test.') ||
-    fileName.includes('.spec.') ||
-    fileName.endsWith('Test.kt') ||
-    fileName.endsWith('Test.java') ||
-    fileName.endsWith('Tests.swift') ||
-    fileName.endsWith('Test.ts') ||
-    fileName.endsWith('Test.js') ||
-    fileName.startsWith('test_') ||
-    relPath.includes('/tests/') ||
-    relPath.includes('/test/') ||
-    relPath.includes('/__tests__/');
-
-  // 2. Documentation / Specs / Plans -> Tech Lead or PM
-  const isDocOrPlan =
-    ext === '.md' ||
-    ext === '.mdx' ||
-    relPath.includes('/docs/') ||
-    relPath.includes('/specs/') ||
-    relPath.includes('/architecture/') ||
-    relPath.includes('PRD') ||
-    relPath.includes('RFC');
-
-  // 3. Build & Configuration
-  const isConfig =
-    fileName === 'package.json' ||
-    fileName === 'pom.xml' ||
-    fileName.startsWith('build.gradle') ||
-    fileName === 'Cargo.toml' ||
-    fileName === 'go.mod' ||
-    fileName === 'Podfile' ||
-    fileName === 'requirements.txt' ||
-    fileName === 'pyproject.toml' ||
-    ext === '.json' ||
-    ext === '.yaml' ||
-    ext === '.yml' ||
-    ext === '.toml';
-
+/** Records a file change seen on disk, with no author and no card. */
+function recordDiskFileChange(filePath, relPath, action) {
   let contentPreview = '';
   try {
     if (fs.existsSync(filePath) && fs.statSync(filePath).size < 300000) {
-      const raw = fs.readFileSync(filePath, 'utf8');
-      const lines = raw.split('\n');
-      contentPreview = lines.slice(0, 60).join('\n');
+      contentPreview = fs.readFileSync(filePath, 'utf8').split('\n').slice(0, 60).join('\n');
     }
   } catch (e) {}
-
-  let assignedAgent = isTest ? testerAgent : (isDocOrPlan || isConfig ? leadAgent : devAgent);
-
-  const hasActiveWorkflow = eventBus.tasks.size > 0 || eventBus.isDemoRunning;
-  if (!hasActiveWorkflow) {
-    // Project is in Standby mode. Record file change in history, but do not generate sprint deliverables.
-    eventBus.recordFileChange({
-      filePath: relPath,
-      fileName,
-      action: action === 'unlink' || action === 'deleted' ? 'deleted' : 'modified',
-      contentPreview,
-      timestamp: new Date().toISOString(),
-    });
-    return;
-  }
-
-  if (eventBus.isDemoRunning) {
-    ensureRoleDeliverables();
-  }
-
-  let taskId = 'DELIV-2';
-  let column = 'in_progress';
-  let phase = 'Implementation';
-  let progress = 65;
-
-  if (isTest) {
-    assignedAgent = testerAgent;
-    taskId = 'DELIV-3';
-    column = 'testing';
-    phase = 'Verification';
-    progress = 70;
-    const testTask = eventBus.tasks.get('DELIV-3');
-    if (testTask) {
-      testTask.column = 'testing';
-      testTask.progress = Math.max(testTask.progress || 0, 70);
-      testTask.description = `Authoring and executing test suites around ${fileName}`;
-    }
-  } else if (isDocOrPlan || isConfig) {
-    assignedAgent = leadAgent;
-    taskId = 'DELIV-1';
-    column = 'in_progress';
-    phase = 'Architecture & Planning';
-    progress = 50;
-    const archTask = eventBus.tasks.get('DELIV-1');
-    if (archTask && archTask.column !== 'done') {
-      archTask.column = 'in_progress';
-      archTask.progress = Math.max(archTask.progress || 0, 50);
-      archTask.description = `Refining architectural boundaries and specs in ${fileName}`;
-    }
-  } else {
-    // Normal code edit
-    const devTask = eventBus.tasks.get('DELIV-2');
-    if (devTask) {
-      devTask.column = 'in_progress';
-      devTask.progress = Math.max(devTask.progress || 0, 65);
-      devTask.description = `Implementing and refactoring changes in ${fileName}`;
-    }
-    const archTask = eventBus.tasks.get('DELIV-1');
-    if (archTask && archTask.column !== 'done') {
-      archTask.column = 'done';
-      archTask.progress = 100;
-    }
-  }
-
-  let realTask = null;
-  if (hasRealAgentTasks(eventBus.tasks)) {
-    const realTasks = Array.from(eventBus.tasks.values()).filter((t) => !t.id.startsWith('DELIV-'));
-    const matched = isTest
-      ? realTasks.find((t) => t.assignedTo === testerAgent.id && t.column !== 'done') || realTasks.find((t) => t.column === 'testing')
-      : isDocOrPlan || isConfig
-      ? realTasks.find((t) => (t.assignedTo === leadAgent.id || t.assignedTo === pmAgent.id) && t.column !== 'done')
-      : realTasks.find((t) => t.assignedTo === devAgent.id && t.column !== 'done') || realTasks.find((t) => t.column === 'in_progress');
-    realTask = matched || realTasks.find((t) => t.column !== 'done') || realTasks[0] || null;
-  }
-
-  eventBus.emitEvent({
-    agentId: assignedAgent.id,
-    type: 'file_modified',
-    payload: {
-      taskId: realTask ? realTask.id : undefined,
-      key: realTask ? realTask.key : undefined,
-      task: realTask ? realTask.title : undefined,
-      tool: action === 'created' ? 'write_to_file' : 'replace_file_content',
-      file: relPath,
-      fileName,
-      action,
-      contentPreview,
-      linesAdded: contentPreview ? contentPreview.split('\n').length : undefined,
-      details: `${assignedAgent.name} ${action} ${relPath}`,
-      column,
-      progress,
-      phase,
-      milestone: `${assignedAgent.name} updated ${fileName}`,
-    },
+  const deleted = action === 'unlink' || action === 'deleted';
+  eventBus.recordFileChange({
+    filePath: relPath,
+    fileName: path.basename(filePath),
+    action: deleted ? 'deleted' : action === 'created' || action === 'add' ? 'created' : 'modified',
+    contentPreview,
+    summary: `${path.basename(filePath)} ${deleted ? 'deleted' : 'saved'} on disk`,
+    timestamp: new Date().toISOString(),
   });
 }
 
@@ -1805,27 +1506,19 @@ function parseOpenCodeLogLine(line) {
     return; // Command belongs to a different project on this computer
   }
 
-  const devAgent = getResolvedAgent('dev', 2);
-  const testerAgent = getResolvedAgent('test', 3);
-  const leadAgent = getResolvedAgent('lead', 1);
+  // Credit the agent the log line names; otherwise the activity is OpenCode's, not a guessed role
+  const agentMatch = line.match(/\bagent=["']?([a-zA-Z0-9_\-]+)/);
+  const actorId = agentMatch && eventBus.agents.has(agentMatch[1]) ? agentMatch[1] : 'opencode';
 
   // 1. Tool execution (e.g., tool call / tool execution)
   const toolMatch = line.match(/tool=([a-zA-Z0-9_\-]+)/i) || line.match(/message="tool call"[\s\S]*name=([a-zA-Z0-9_\-]+)/i);
   if (toolMatch) {
     const toolName = toolMatch[1];
-    const isTest = toolName.toLowerCase().includes('test');
-    const assigned = isTest ? testerAgent : devAgent;
-
-    // Emits tool execution for Live Terminal Logs and Avatar activity bubbles, without creating messy raw cards!
     eventBus.emitEvent({
-      agentId: assigned.id,
+      agentId: actorId,
       type: 'tool_executing',
       timestamp: lineTimestamp || new Date().toISOString(),
-      payload: {
-        tool: toolName,
-        task: `Executing ${toolName}`,
-        details: `OpenCode invoking tool: ${toolName}`,
-      },
+      payload: { tool: toolName, details: `OpenCode invoking tool: ${toolName}` },
     });
     return;
   }
@@ -1849,59 +1542,17 @@ function parseOpenCodeLogLine(line) {
       return;
     }
 
-    const isTest = fullCmd.includes('test') || fullCmd.includes('pytest') || fullCmd.includes('jest') || fullCmd.includes('gradle');
-    const assigned = isTest ? testerAgent : devAgent;
-
-    if (isTest) {
-      if (eventBus.tasks.size > 0 || eventBus.isDemoRunning) {
-        ensureRoleDeliverables();
-        const devTask = eventBus.tasks.get('DELIV-2');
-        if (devTask && devTask.column === 'in_progress') {
-          devTask.column = 'review';
-          devTask.progress = 90;
-        }
-        const testTask = eventBus.tasks.get('DELIV-3');
-        if (testTask) {
-          testTask.column = 'testing';
-          testTask.progress = 75;
-          testTask.description = `Executing automated test suite: ${baseCmd}`;
-        }
-      }
-      let realTestTask = null;
-      if (hasRealAgentTasks(eventBus.tasks)) {
-        const realTasks = Array.from(eventBus.tasks.values()).filter((t) => !t.id.startsWith('DELIV-'));
-        realTestTask = realTasks.find((t) => t.assignedTo === testerAgent.id && t.column !== 'done') || realTasks.find((t) => t.column === 'testing') || null;
-      }
-      eventBus.emitEvent({
-        agentId: assigned.id,
-        type: 'command_executing',
-        timestamp: lineTimestamp || new Date().toISOString(),
-        payload: {
-          taskId: realTestTask ? realTestTask.id : undefined,
-          key: realTestTask ? realTestTask.key : undefined,
-          task: realTestTask ? realTestTask.title : undefined,
-          tool: 'run_command',
-          command: fullCmd.substring(0, 100),
-          details: `Executing test suite: ${baseCmd}`,
-          column: 'testing',
-          progress: 75,
-          phase: 'Verification',
-          milestone: `${assigned.name} running: ${baseCmd}`,
-          milestoneAgentId: assigned.id,
-        },
-      });
-    } else {
-      eventBus.emitEvent({
-        agentId: assigned.id,
-        type: 'command_executing',
-        timestamp: lineTimestamp || new Date().toISOString(),
-        payload: {
-          tool: 'run_command',
-          command: fullCmd.substring(0, 100),
-          details: `Running: ${fullCmd.substring(0, 80)}`,
-        },
-      });
-    }
+    // A command is activity, not a card move: no column, progress or test verdict is inferred from it
+    eventBus.emitEvent({
+      agentId: actorId,
+      type: 'command_executing',
+      timestamp: lineTimestamp || new Date().toISOString(),
+      payload: {
+        tool: 'run_command',
+        command: fullCmd.substring(0, 100),
+        details: `Running: ${fullCmd.substring(0, 80)}`,
+      },
+    });
   }
 }
 
@@ -1934,93 +1585,8 @@ function setupScratchWatcher() {
 }
 
 function handleScratchFileChange(filePath, action) {
-  const norm = filePath.replace(/\\/g, '/');
-  const fileName = path.basename(filePath);
-  const relPath = path.relative(getProjectRoot(), filePath).replace(/\\/g, '/');
-
-  const pmAgent = getResolvedAgent('pm', 0);
-  const leadAgent = getResolvedAgent('lead', 1);
-  const devAgent = getResolvedAgent('dev', 2);
-  const testerAgent = getResolvedAgent('test', 3);
-
-  if (norm.includes('/pm/estimation.md') || norm.includes('estimation')) {
-    eventBus.emitEvent({
-      agentId: pmAgent.id,
-      type: 'task_started',
-      payload: {
-        task: 'Intake & Minute Estimation',
-        file: relPath,
-        tool: 'write_to_file',
-        details: `${pmAgent.name} ${action} estimation report in ${relPath}`,
-        taskId: 'TASK-1',
-        column: 'done',
-        phase: 'Intake & Sizing',
-        milestone: 'Sprint minute estimations collated under 10-minute SLA.',
-      },
-    });
-  } else if (norm.includes('/lead/architecture-plan.md') || norm.includes('architecture')) {
-    eventBus.emitEvent({
-      agentId: leadAgent.id,
-      type: 'planning_started',
-      payload: {
-        task: 'Architecture Plan & Interface Scoping',
-        file: relPath,
-        tool: 'write_to_file',
-        details: `${leadAgent.name} ${action} architecture specification`,
-        taskId: 'TASK-2',
-        column: 'done',
-        phase: 'Architecture Locked',
-        milestone: 'Architecture plan & unit test specifications approved.',
-      },
-    });
-  } else if (norm.includes('implementation') || norm.includes('/dev/')) {
-    eventBus.emitEvent({
-      agentId: devAgent.id,
-      type: 'file_modified',
-      payload: {
-        task: 'Feature Implementation & Unit Tests',
-        file: relPath,
-        tool: 'write_to_file',
-        details: `${devAgent.name} logged progress in ${relPath}`,
-        taskId: 'TASK-3',
-        column: 'in_progress',
-        phase: 'Implementation',
-      },
-    });
-  } else if (norm.includes('test') || norm.includes('/tester/')) {
-    eventBus.emitEvent({
-      agentId: testerAgent.id,
-      type: 'test_result',
-      payload: {
-        task: 'Unit Test Verification',
-        file: relPath,
-        tool: 'run_command',
-        command: 'npm test',
-        details: `${testerAgent.name} logged test results`,
-        testsPassed: 10,
-        testsFailed: 0,
-        taskId: 'TASK-5',
-        column: 'done',
-        phase: 'Verification',
-        milestone: 'Test verification report generated with zero regressions.',
-      },
-    });
-  } else if (norm.includes('delivery') || norm.includes('signoff') || norm.includes('summary')) {
-    eventBus.emitEvent({
-      agentId: pmAgent.id,
-      type: 'task_completed',
-      payload: {
-        task: 'Final Delivery & Sign-Off',
-        file: relPath,
-        tool: 'write_to_file',
-        details: `${pmAgent.name} finalized delivery report`,
-        taskId: 'TASK-6',
-        column: 'done',
-        phase: 'Delivered',
-        milestone: 'Feature delivered and verified for stakeholder sign-off.',
-      },
-    });
-  }
+  // A scratch note is just a file; its name says nothing about test results or delivery
+  recordDiskFileChange(filePath, path.relative(getProjectRoot(), filePath).replace(/\\/g, '/'), action);
 }
 
 /**
@@ -2310,6 +1876,9 @@ function recordClaudeTokenUsage(entry, state) {
 function completeClaudePromptCard(taskId, step) {
   const task = eventBus.tasks.get(taskId);
   if (!task || task.column === 'done') return;
+  // The turn ended, but sub-tasks still open mean the request isn't done; they close it when they finish
+  const openChildren = Array.from(eventBus.tasks.values()).filter((t) => t.parentKey === task.key && t.column !== 'done');
+  if (openChildren.length) return;
   task.column = 'done';
   task.progress = 100;
   task.updatedAt = new Date().toISOString();
@@ -2347,14 +1916,14 @@ function parseTranscriptStep(step, convId = '') {
   const content = typeof step.content === 'string' ? step.content : '';
   const toolCalls = step.tool_calls || [];
 
-  const devAgent = getResolvedAgent('dev', 2);
-  const testerAgent = getResolvedAgent('test', 3);
-  const leadAgent = getResolvedAgent('lead', 1);
   const pmAgent = getResolvedAgent('pm', 0);
   // The role that actually took this step, when the transcript says so (a Claude Code subagent)
   const actor = step.actorAgentId ? eventBus.agents.get(step.actorAgentId) || null : null;
-  const ownOpenTask = () =>
-    actor ? Array.from(eventBus.tasks.values()).find((t) => t.assignedTo === actor.id && t.column !== 'done') : null;
+  // Without a named subagent the step is the main session's, which plays the orchestrator
+  const stepAgent = actor || pmAgent;
+  const openTaskOf = (agent) =>
+    agent ? Array.from(eventBus.tasks.values()).find((t) => t.assignedTo === agent.id && t.column !== 'done') || null : null;
+  const ownOpenTask = () => openTaskOf(actor);
 
   // If conversation was confirmed to belong to a DIFFERENT project, drop it completely!
   if (convId && conversationProjectMatch.get(convId) === false) {
@@ -2409,72 +1978,25 @@ function parseTranscriptStep(step, convId = '') {
     (/\[Message\]/i.test(content) && /sender=/i.test(content));
 
   if (isSubagentMessage) {
-    const isCompletion = /(?:^|[^a-zA-Z])(completed|complete|done|finished)(?:[^a-zA-Z]|$)/i.test(content);
-    if (isCompletion) {
-      let detectedAgentId = null;
-      const senderMatch = content.match(/sender=([^\s\]]+)/i);
-      if (senderMatch) {
-        const senderStr = senderMatch[1].split('/')[0].toLowerCase();
-        const agentList = Array.from(eventBus.agents.values());
-        const matched = agentList.find(
-          (a) => a.id.toLowerCase() === senderStr || a.name.toLowerCase() === senderStr
-        );
-        if (matched) detectedAgentId = matched.id;
-      }
-
-      const tasksToComplete = [];
-      for (const [tId, task] of eventBus.tasks.entries()) {
-        const isMentioned = task.key && content.includes(task.key);
-        const isSubTask =
-          (typeof tId === 'string' && tId.startsWith('TASK-SUB-')) ||
-          (task && typeof task.id === 'string' && task.id.startsWith('TASK-SUB-'));
-        const isAssigned = detectedAgentId && task.assignedTo === detectedAgentId;
-
-        if ((isMentioned || isSubTask || (isAssigned && content.includes('100% COMPLETED'))) && task && task.column !== 'done') {
-          task.column = 'done';
-          task.progress = 100;
-          task.updatedAt = new Date().toISOString();
-          tasksToComplete.push(task);
-        }
-      }
-
-      if (tasksToComplete.length > 0) {
-        for (const task of tasksToComplete) {
-          eventBus.emitEvent({
-            agentId: detectedAgentId || task.assignedTo || devAgent.id,
-            type: 'subagent_completed',
-            timestamp: step.created_at || new Date().toISOString(),
-            payload: {
-              taskId: task.id,
-              key: task.key,
-              task: task.title,
-              column: 'done',
-              progress: 100,
-              milestone: `🎉 Task completed: ${task.title || task.id}`,
-              milestoneAgentId: detectedAgentId || task.assignedTo || devAgent.id,
-              details: content.substring(0, 150).replace(/\n/g, ' '),
-              phase: 'Execution',
-            },
-          });
-        }
-      } else {
-        eventBus.emitEvent({
-          agentId: detectedAgentId || devAgent.id,
-          type: 'subagent_completed',
-          timestamp: step.created_at || new Date().toISOString(),
-          payload: {
-            phase: 'Execution',
-            milestone: `🎉 Subagent execution completed`,
-            milestoneAgentId: detectedAgentId || devAgent.id,
-            details: content.substring(0, 150).replace(/\n/g, ' '),
-          },
-        });
-      }
+    // A subagent's message is activity. Its card closes only when the card is moved on the board,
+    // never because the message contains words like "done" or "completed".
+    const senderMatch = content.match(/sender=([^\s\]]+)/i);
+    const senderStr = senderMatch ? senderMatch[1].split('/')[0].toLowerCase() : '';
+    const sender = senderStr
+      ? Array.from(eventBus.agents.values()).find((a) => a.id.toLowerCase() === senderStr || a.name.toLowerCase() === senderStr)
+      : null;
+    if (sender) {
+      eventBus.emitEvent({
+        agentId: sender.id,
+        type: 'subagent_message',
+        timestamp: step.created_at || new Date().toISOString(),
+        payload: { details: content.substring(0, 150).replace(/\n/g, ' ') },
+      });
     }
     if (toolCalls.length === 0) return;
   }
 
-  // 3. User Input Prompt -> Activate PM (Scrum Master) FIRST without creating mock DELIV-* tasks
+  // 3. User Input Prompt -> Activate PM (Scrum Master) FIRST
   if (step.type === 'USER_INPUT' || step.source === 'USER_EXPLICIT') {
     if (convId && conversationProjectMatch.get(convId) === undefined) {
       resolveConversationProject(convId);
@@ -2498,9 +2020,7 @@ function parseTranscriptStep(step, convId = '') {
 
       // Automatic Clean Slate on New Requirement (Option 2):
       // If previous tasks exist and are all completed, auto-archive them and provision a clean sprint
-      const realTasks = Array.from(eventBus.tasks.values()).filter(
-        (t) => !t.id.startsWith('DELIV-') && !t.id.startsWith('MOCK-')
-      );
+      const realTasks = Array.from(eventBus.tasks.values());
       if (realTasks.length > 0 && realTasks.every((t) => t.column === 'done')) {
         startNewSprint(getProjectRoot(), displayTitle);
       }
@@ -2525,41 +2045,6 @@ function parseTranscriptStep(step, convId = '') {
       });
     }
     return;
-  }
-
-  // 3. Detect model completion / delivery announcements
-  // (Claude Code steps are completed by their turn end in handleClaudeEntry instead)
-  if (step.type === 'PLANNER_RESPONSE' && content && toolCalls.length === 0 && !step.claude) {
-    const isDelivery = /deliver|sign-?off|ready for stakeholder|production ready|completed the task|finished the work/i.test(content);
-    const isFixed = /fixed the issue|successfully resolved|all tests passed|tests are green|changes have been verified|successfully updated/i.test(content);
-
-    if (isDelivery || isFixed) {
-      let updatedAny = false;
-      for (const [tId, task] of eventBus.tasks.entries()) {
-        if (task.column === 'in_progress' || task.column === 'testing' || task.column === 'review') {
-          task.column = 'done';
-          task.progress = 100;
-          task.updatedAt = new Date().toISOString();
-          updatedAny = true;
-        }
-      }
-      if (updatedAny) {
-        persistActiveSprintTasks();
-      }
-
-      eventBus.emitEvent({
-        agentId: isFixed ? testerAgent.id : pmAgent.id,
-        type: isFixed ? 'test_result' : 'task_completed',
-        timestamp: step.created_at || new Date().toISOString(),
-        payload: {
-          phase: 'Delivered',
-          column: 'done',
-          milestone: `🎉 ${isFixed ? 'Verification passed' : 'Feature Delivered'}: ${content.substring(0, 65).replace(/\n/g, ' ')}...`,
-          milestoneAgentId: isFixed ? testerAgent.id : pmAgent.id,
-          details: content.substring(0, 150),
-        },
-      });
-    }
   }
 
   // 3. Detect role header in content: 🎭 **Active Role**: **<Role Name>** (`<role-id>`)
@@ -2595,15 +2080,11 @@ function parseTranscriptStep(step, convId = '') {
       const fromAg = agentList.find((a) => a.id.toLowerCase() === fromAgent.toLowerCase()) || { id: fromAgent, name: fromAgent, role: 'Agent' };
       const toAg = agentList.find((a) => a.id.toLowerCase() === toAgent.toLowerCase()) || { id: toAgent, name: toAgent, role: 'Agent' };
 
-      const taskId = `TASK-HO-${Date.now().toString().slice(-4)}`;
-      const taskKey = `${toAg.badge || 'TASK'}-${Math.floor(Math.random() * 899 + 100)}`;
-
+      // The marker names no card, so this is shown as a handoff only; no card or key is invented
       eventBus.emitEvent({
         agentId: fromAgent,
         type: 'agent_handoff',
         payload: {
-          taskId,
-          key: taskKey,
           fromAgent,
           toAgent,
           assignedTo: toAgent,
@@ -2636,17 +2117,8 @@ function parseTranscriptStep(step, convId = '') {
       const cleanRelPath = toRelativePath(targetPath);
       const fileName = path.basename(targetPath) || cleanRelPath || 'source file';
 
-      let realArchTask = null;
-      let activeViewerAgent = actor || (eventBus.currentPhase === 'Intake & Planning' ? pmAgent : leadAgent);
-      if (actor) {
-        realArchTask = ownOpenTask();
-      } else if (hasRealAgentTasks(eventBus.tasks)) {
-        const realTasks = Array.from(eventBus.tasks.values()).filter((t) => !t.id.startsWith('DELIV-'));
-        realArchTask = realTasks.find((t) => (t.assignedTo === leadAgent.id || t.assignedTo === pmAgent.id) && t.column !== 'done') || null;
-        if (realArchTask && eventBus.currentPhase !== 'Intake & Planning') {
-          activeViewerAgent = eventBus.agents.get(realArchTask.assignedTo) || leadAgent;
-        }
-      }
+      const activeViewerAgent = stepAgent;
+      const realArchTask = openTaskOf(stepAgent);
 
       const isJiraConfluenceDoc = cleanRelPath.includes('jira') || cleanRelPath.includes('confluence') || /DXDT-\d+/i.test(cleanRelPath);
       if (isJiraConfluenceDoc) {
@@ -2697,8 +2169,6 @@ function parseTranscriptStep(step, convId = '') {
       const contentPreview = codeContent || replacementContent || '';
       const action = name === 'write_to_file' ? (args.Overwrite ? 'modified' : 'created') : 'modified';
 
-      const isTest = fileName.toLowerCase().includes('test') || targetFile.toLowerCase().includes('test');
-      const isDocOrPlan = fileName.endsWith('.md') || fileName.endsWith('.yaml') || fileName.endsWith('.json') || fileName.endsWith('.rules');
 
       // Extract genuine tasks from file content if markdown/json/yaml
       if (codeContent && !targetFile.endsWith('tasks.json')) {
@@ -2708,44 +2178,21 @@ function parseTranscriptStep(step, convId = '') {
         }
       }
 
-      let targetTaskId = undefined;
-      let assigned = actor || (isDocOrPlan ? (eventBus.currentPhase === 'Intake & Planning' ? pmAgent : leadAgent) : devAgent);
-      let phase = 'Implementation';
-      let column = 'in_progress';
-      let progress = 0;
-
-      if (hasRealAgentTasks(eventBus.tasks)) {
-        const realTasks = Array.from(eventBus.tasks.values()).filter((t) => !t.id.startsWith('DELIV-'));
-        const assignedMatch = actor
-          ? ownOpenTask()
-          : isTest
-          ? realTasks.find((t) => t.assignedTo === testerAgent.id && t.column !== 'done') ||
-            realTasks.find((t) => t.column === 'testing')
-          : isDocOrPlan
-          ? realTasks.find((t) => (t.assignedTo === leadAgent.id || t.assignedTo === pmAgent.id) && t.column !== 'done')
-          : realTasks.find((t) => t.assignedTo === devAgent.id && t.column !== 'done') ||
-            realTasks.find((t) => t.column === 'in_progress');
-
-        // Only open work is attributed; a finished card is never reopened by an edit
-        const targetTask = assignedMatch || realTasks.find((t) => t.column !== 'done');
-        if (targetTask) {
-          targetTaskId = targetTask.id;
-          assigned = actor || eventBus.agents.get(targetTask.assignedTo) || assigned;
-          if (isTest && !actor && rosterHasTester()) {
-            targetTask.column = 'testing';
-            column = 'testing';
-            phase = 'Verification';
-            persistActiveSprintTasks();
-          } else if (targetTask.column === 'assigned' || targetTask.column === 'backlog') {
-            targetTask.column = 'in_progress';
-            column = 'in_progress';
-            persistActiveSprintTasks();
-          }
-        }
+      // Credited to the agent that made the edit and linked to that agent's own open card only
+      const assigned = stepAgent;
+      const phase = 'Implementation';
+      const column = undefined;
+      const progress = undefined;
+      const targetTask = openTaskOf(stepAgent);
+      const targetTaskId = targetTask ? targetTask.id : undefined;
+      // A subagent starting on its own queued card is real progress; nothing else moves a card here
+      if (actor && targetTask && (targetTask.column === 'assigned' || targetTask.column === 'backlog')) {
+        targetTask.column = 'in_progress';
+        persistActiveSprintTasks();
       }
 
       const activeTask = targetTaskId ? eventBus.tasks.get(targetTaskId) : null;
-      const isRealTask = activeTask && !activeTask.id.startsWith('DELIV-');
+      const isRealTask = Boolean(activeTask);
 
       eventBus.emitEvent({
         agentId: assigned.id,
@@ -2781,7 +2228,7 @@ function parseTranscriptStep(step, convId = '') {
       // Board API calls (reading a card, posting to its thread, moving it) are already applied by the
       // server; show them as activity but don't let keyword guesses below move cards a second time.
       if (/https?:\/\/(localhost|127\.0\.0\.1):\d+\/api\/tasks/.test(cmd)) {
-        const boardAgent = actor || devAgent;
+        const boardAgent = stepAgent;
         const keyMatch = cmd.match(/\/api\/tasks\/([A-Za-z0-9_-]+)/);
         eventBus.emitEvent({
           agentId: boardAgent.id,
@@ -2806,11 +2253,11 @@ function parseTranscriptStep(step, convId = '') {
       const confPageMatch = cmd.match(/pageId=(\d+)/i) || cmd.match(/pages\/(\d+)/i) || (cmd.includes('read_confluence.py') ? cmd.match(/read_confluence\.py\s+(\d+)/i) : null) || (cmd.includes('confluence') ? cmd.match(/\b(\d{6,})\b/) : null);
       const isConfCmd = cmd.includes('read_confluence.py') || confUrlMatch || (cmd.includes('confluence') && confPageMatch);
 
-      const callerAgent = actor || devAgent;
+      const callerAgent = stepAgent;
       if (isJiraCmd) {
         const ticketKey = jiraUrlMatch ? jiraUrlMatch[1] : (jiraKeyMatch ? jiraKeyMatch[1] : 'JIRA-TICKET');
         const jiraUrl = jiraUrlMatch ? jiraUrlMatch[0] : (ticketKey ? `https://dm.stc.com.sa/browse/${ticketKey}` : null);
-        const executor = eventBus.currentPhase === 'Intake & Planning' ? pmAgent : callerAgent;
+        const executor = stepAgent;
         eventBus.emitEvent({
           agentId: executor.id,
           type: 'jira_confluence_lookup',
@@ -2831,7 +2278,7 @@ function parseTranscriptStep(step, convId = '') {
       } else if (isConfCmd) {
         const pageId = confPageMatch ? confPageMatch[1] : null;
         const confUrl = confUrlMatch ? confUrlMatch[0] : (pageId ? `https://dm.stc.com.sa/wiki/pages/viewpage.action?pageId=${pageId}` : null);
-        const executor = eventBus.currentPhase === 'Intake & Planning' ? pmAgent : callerAgent;
+        const executor = stepAgent;
         eventBus.emitEvent({
           agentId: executor.id,
           type: 'jira_confluence_lookup',
@@ -2851,51 +2298,20 @@ function parseTranscriptStep(step, convId = '') {
         });
       }
 
-      const isTest = cmd.includes('test') || cmd.includes('gradlew test') || cmd.includes('pytest') || cmd.includes('jest') || cmd.includes('vitest');
-      const assigned = actor || (isTest && rosterHasTester() ? testerAgent : devAgent);
-
-      if (isTest && !actor && rosterHasTester()) {
-        if (hasRealAgentTasks(eventBus.tasks)) {
-          const realTasks = Array.from(eventBus.tasks.values()).filter((t) => !t.id.startsWith('DELIV-'));
-          const testTask = realTasks.find((t) => t.assignedTo === testerAgent.id && t.column !== 'done') || realTasks.find((t) => t.column === 'testing');
-          if (testTask) {
-            testTask.column = 'testing';
-            persistActiveSprintTasks();
-            eventBus.emitEvent({
-              agentId: testerAgent.id,
-              type: 'command_executing',
-              payload: {
-                taskId: testTask.id,
-                key: testTask.key,
-                task: testTask.title,
-                tool: 'run_command',
-                command: cmd,
-                column: 'testing',
-                details: `Running: ${cmd}`,
-                phase: 'Verification',
-              },
-            });
-          }
-        }
-      } else {
-        let activeDevTask = undefined;
-        if (hasRealAgentTasks(eventBus.tasks)) {
-          const realTasks = Array.from(eventBus.tasks.values()).filter((t) => !t.id.startsWith('DELIV-') && !t.id.startsWith('MOCK-'));
-          activeDevTask = realTasks.find((t) => t.assignedTo === assigned.id && t.column !== 'done') || realTasks.find((t) => t.column === 'in_progress');
-        }
-        eventBus.emitEvent({
-          agentId: assigned.id,
-          type: 'command_executing',
-          payload: {
-            taskId: activeDevTask ? activeDevTask.id : undefined,
-            key: activeDevTask ? activeDevTask.key : undefined,
-            task: activeDevTask ? activeDevTask.title : undefined,
-            tool: 'run_command',
-            command: cmd,
-            details: `Running: ${cmd}`,
-          },
-        });
-      }
+      // A command is activity of the agent that ran it; a test command moves no card and implies no verdict
+      const activeDevTask = openTaskOf(stepAgent);
+      eventBus.emitEvent({
+        agentId: stepAgent.id,
+        type: 'command_executing',
+        payload: {
+          taskId: activeDevTask ? activeDevTask.id : undefined,
+          key: activeDevTask ? activeDevTask.key : undefined,
+          task: activeDevTask ? activeDevTask.title : undefined,
+          tool: 'run_command',
+          command: cmd,
+          details: `Running: ${cmd}`,
+        },
+      });
     } else if (name === 'search_web' || name === 'read_url_content') {
       const q = cleanStringVal(args.query || args.Url || args.url || 'Research');
       const targetUrl = cleanStringVal(args.Url || args.url || '');
@@ -2907,7 +2323,7 @@ function parseTranscriptStep(step, convId = '') {
       if (jiraUrlMatch) {
         const ticketKey = jiraUrlMatch[1];
         eventBus.emitEvent({
-          agentId: pmAgent.id,
+          agentId: stepAgent.id,
           type: 'jira_confluence_lookup',
           timestamp: step.created_at || new Date().toISOString(),
           payload: {
@@ -2919,14 +2335,14 @@ function parseTranscriptStep(step, convId = '') {
             tool: name,
             details: `Fetched Jira Ticket ${ticketKey} specifications`,
             milestone: `🎫 Opened Jira ticket: ${ticketKey}`,
-            milestoneAgentId: pmAgent.id,
+            milestoneAgentId: stepAgent.id,
             phase: 'Intake & Planning',
           },
         });
       } else if (confUrlMatch || confPageMatch) {
         const pageId = confPageMatch ? confPageMatch[1] : null;
         eventBus.emitEvent({
-          agentId: pmAgent.id,
+          agentId: stepAgent.id,
           type: 'jira_confluence_lookup',
           timestamp: step.created_at || new Date().toISOString(),
           payload: {
@@ -2938,14 +2354,14 @@ function parseTranscriptStep(step, convId = '') {
             tool: name,
             details: `Accessed Confluence documentation ${pageId || ''}`,
             milestone: `📖 Opened Confluence doc: ${pageId || 'Wiki'}`,
-            milestoneAgentId: pmAgent.id,
+            milestoneAgentId: stepAgent.id,
             phase: 'Intake & Planning',
           },
         });
       }
 
       eventBus.emitEvent({
-        agentId: leadAgent.id,
+        agentId: stepAgent.id,
         type: 'tool_executing',
         payload: {
           tool: name,
@@ -2974,7 +2390,7 @@ function parseTranscriptStep(step, convId = '') {
         );
         if (!targetAgent) {
           eventBus.emitEvent({
-            agentId: actor ? actor.id : devAgent.id,
+            agentId: stepAgent.id,
             type: 'tool_executing',
             timestamp: step.created_at || new Date().toISOString(),
             payload: { tool: 'subagent', details: `Started ${typeName || 'subagent'}: ${aiTitle || prompt.slice(0, 80)}` },
@@ -3000,7 +2416,7 @@ function parseTranscriptStep(step, convId = '') {
         // Handing a card back up for review comes from its assignee; a downward handoff from its delegator
         const cardSenderId = referencedCard && (isReviewHandback ? referencedCard.assignedTo : referencedCard.delegatedBy);
         const cardSender = cardSenderId ? eventBus.agents.get(cardSenderId) : null;
-        const callerAgent = cardSender || (isInvokingPm ? pmAgent : (targetAgent.id === leadAgent.id ? pmAgent : leadAgent));
+        const callerAgent = cardSender || stepAgent;
 
         // Parse any real structured tasks within the subagent prompt
         const parsedPromptTasks = parseRealTasksFromContent(prompt, 'invoke_subagent');
@@ -3081,42 +2497,17 @@ function parseTranscriptStep(step, convId = '') {
         let rawSentence = message.split('\n')[0].replace(/^[#\-*\d.]+\s*/, '').trim();
         let taskTitle = formatConciseTaskTitle(rawSentence, message, '');
 
-        const agentList = Array.from(eventBus.agents.values());
-        const isMessagingPm =
-          recipient.toLowerCase() === pmAgent.id.toLowerCase() ||
-          recipient === 'a59f400d-e918-4259-a3c5-1ce3c56544a1' ||
-          /as\s+\*\*?scrum\s+master\*\*?|tech-pm|primary\s+orchestrator/i.test(message);
-
-        const fromAgent = isMessagingPm ? pmAgent : leadAgent;
-        const targetAgent = isMessagingPm
-          ? leadAgent
-          : agentList.find(
-              (a) =>
-                a.id.toLowerCase() === recipient.toLowerCase() ||
-                (a.name && a.name.toLowerCase().includes(recipient.toLowerCase())) ||
-                (a.role && a.role.toLowerCase().includes(recipient.toLowerCase()))
-            ) || devAgent;
-
+        // Sender is the agent that took this step; the recipient must be on the roster (no fallback role)
+        const fromAgent = stepAgent;
+        const rq = recipient.toLowerCase();
+        const targetAgent = rq
+          ? Array.from(eventBus.agents.values()).find((a) => a.id.toLowerCase() === rq || (a.name && a.name.toLowerCase() === rq)) || null
+          : null;
         const ts = step.created_at || new Date().toISOString();
-
-        if (isMessagingPm) {
-          // Activate PM first so Virtual Office visually shows Scrum Master (tech-pm) taking the requirement first!
-          eventBus.emitEvent({
-            agentId: pmAgent.id,
-            type: 'agent_active',
-            timestamp: ts,
-            payload: {
-              task: taskTitle || 'Sprint Task Decomposition',
-              details: message,
-              assignedTo: pmAgent.id,
-              phase: 'Intake & Planning',
-              milestone: `👑 ${pmAgent.name} (${pmAgent.id}) decomposing requirement into Sprint tasks`,
-              milestoneAgentId: pmAgent.id,
-            },
-          });
+        if (!targetAgent) {
+          eventBus.emitEvent({ agentId: fromAgent.id, type: 'tool_executing', timestamp: ts, payload: { tool: 'send_message', details: `Message to ${recipient || 'unknown recipient'}` } });
+          continue;
         }
-
-        eventBus.currentPhase = 'Sprint Execution';
 
         eventBus.recordCommunication({
           fromAgentId: fromAgent.id,
@@ -3125,8 +2516,8 @@ function parseTranscriptStep(step, convId = '') {
           toAgentId: targetAgent.id,
           toAgentName: targetAgent.name,
           toAgentRole: targetAgent.role,
-          taskKey: parsedMsgTasks[0]?.key || 'MSG',
-          taskTitle: parsedMsgTasks[0]?.title || taskTitle || 'Agent Communication',
+          taskKey: parsedMsgTasks[0]?.key || '',
+          taskTitle: parsedMsgTasks[0]?.title || taskTitle || '',
           message: message,
           channel: 'subagent_delegation',
           timestamp: ts,
@@ -3142,14 +2533,13 @@ function parseTranscriptStep(step, convId = '') {
             task: parsedMsgTasks[0]?.title || taskTitle || 'Direct Message',
             details: message,
             channel: 'subagent_delegation',
-            phase: 'Sprint Execution',
-            milestone: `${fromAgent.name} delegated "${parsedMsgTasks[0]?.title || taskTitle}" to ${targetAgent.name}`,
+            milestone: `${fromAgent.name} messaged ${targetAgent.name}: "${parsedMsgTasks[0]?.title || taskTitle}"`,
           },
         });
       }
     } else if (name) {
       eventBus.emitEvent({
-        agentId: actor ? actor.id : devAgent.id,
+        agentId: stepAgent.id,
         type: 'tool_executing',
         payload: {
           tool: name,
@@ -3168,7 +2558,6 @@ module.exports = {
   handleWorkspaceFileChange,
   parseTranscriptStep,
   handleClaudeEntry,
-  ensureRoleDeliverables,
   getResolvedAgent,
   resolveConversationProject,
   conversationProjectMatch,

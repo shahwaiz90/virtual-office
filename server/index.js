@@ -10,7 +10,6 @@ const WebSocket = require('ws');
 const { eventBus } = require('./eventBus');
 const { discoverAgents, getProjectRoot, setProjectRoot, findAllAgentsConfigFiles, findAgentsConfigFile } = require('./agentDiscovery');
 const { setupWatchers, resetWatchersOffsets } = require('./watchers');
-const { demoSimulator } = require('./demoSimulator');
 const { OFFICIAL_SKILLS, TEAM_TEMPLATES, scaffoldSkillsToProject, getAllSkills, saveSkillFile } = require('./officialSkills');
 const { queryExistingModel } = require('./voiceIntelligence');
 const { AgentRunner } = require('./agentRunner');
@@ -132,12 +131,12 @@ app.post('/api/skills/save', (req, res) => {
 // 1h. API: Query Existing Model with Guardrails for Voice Assistant
 app.post('/api/voice/query', async (req, res) => {
   try {
-    const { query, state, isDemo } = req.body;
+    const { query, state } = req.body;
     if (!query || typeof query !== 'string') {
       return res.status(400).json({ success: false, error: 'Query text is required.' });
     }
     const liveState = state || eventBus.getStateSnapshot();
-    const result = await queryExistingModel(query, liveState, Boolean(isDemo));
+    const result = await queryExistingModel(query, liveState);
     res.json({ success: true, ...result });
   } catch (err) {
     console.error('[VoiceQuery] Error executing model voice query:', err);
@@ -547,29 +546,8 @@ app.post('/api/events', (req, res) => {
   res.json({ success: true, event: normalized });
 });
 
-// 5. API: Demo Mode Control
-app.post('/api/demo/start', (req, res) => {
-  demoSimulator.start();
-  res.json({
-    success: true,
-    message: 'Demo simulation started',
-    state: eventBus.getStateSnapshot(),
-  });
-});
-
-app.post('/api/demo/stop', (req, res) => {
-  demoSimulator.stop();
-  agentRunner.stop();
-  res.json({
-    success: true,
-    message: 'Demo simulation stopped',
-    state: eventBus.getStateSnapshot(),
-  });
-});
-
 // Clear Office State & Reset to Standby
 app.post('/api/state/clear', (req, res) => {
-  demoSimulator.stop();
   agentRunner.stop();
   resetWatchersOffsets();
   eventBus.clearState();
@@ -854,9 +832,6 @@ app.post('/api/project/set-path', (req, res) => {
     return res.status(400).json({ success: false, error: `Cannot access directory: ${err.message}` });
   }
 
-  // Stop any active simulation demo
-  demoSimulator.stop();
-
   // Update runtime project root and instance registry
   const oldRoot = getProjectRoot();
   setProjectRoot(resolved);
@@ -1037,9 +1012,6 @@ app.post('/api/project/pick-folder', async (req, res) => {
         branch,
       });
     }
-
-    // Stop any active simulation demo
-    demoSimulator.stop();
 
     // Automatically apply the picked path
     const oldRoot = getProjectRoot();
@@ -1648,12 +1620,7 @@ wss.on('connection', (ws, req) => {
       const data = JSON.parse(message);
       if (data.type === 'PING') {
         ws.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));
-      } else if (data.type === 'TRIGGER_DEMO') {
-        demoSimulator.start();
-      } else if (data.type === 'STOP_DEMO') {
-        demoSimulator.stop();
       } else if (data.type === 'CLEAR_STATE') {
-        demoSimulator.stop();
         agentRunner.stop();
         resetWatchersOffsets();
         eventBus.clearState();

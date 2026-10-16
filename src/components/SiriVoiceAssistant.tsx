@@ -8,8 +8,6 @@ interface SiriVoiceAssistantProps {
   isOpen: boolean;
   onClose: () => void;
   state: OfficeState | null;
-  isDemo: boolean;
-  onToggleDemo: () => void;
   onClearState: () => void;
   onSelectAgent?: (agent: Agent) => void;
   listenTrigger?: number;
@@ -19,8 +17,6 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
   isOpen,
   onClose,
   state,
-  isDemo,
-  onToggleDemo,
   onClearState,
   onSelectAgent,
   listenTrigger = 0,
@@ -206,14 +202,13 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
 
     // Fast-path immediate action check
     const lower = commandText.trim().toLowerCase();
-    if (lower === 'stop' || lower === 'stop demo' || lower === 'stop sprint' || lower === 'pause demo') {
+    if (lower === 'stop' || lower === 'stop speaking' || lower === 'be quiet') {
       voiceService.stop();
-      if (isDemo) onToggleDemo();
       setLastResponse({
-        spokenText: 'Stopping Demo Agentic Workflow now and silencing all speech.',
-        displayText: '⏹️ **Stopping Demo Agentic Workflow**\nSimulation stopped and audio output silenced.',
-        action: { type: 'STOP_DEMO' },
-        highlightBadge: 'STOP DEMO',
+        spokenText: 'Stopping speech.',
+        displayText: '⏹️ **Speech stopped**',
+        action: { type: 'STOP_SPEECH' },
+        highlightBadge: 'STOP',
       });
       return;
     }
@@ -232,16 +227,13 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
 
     setIsThinking(true);
     try {
-      const response = await queryVoiceAssistantAsync(commandText, state, isDemo);
+      const response = await queryVoiceAssistantAsync(commandText, state);
       setLastResponse(response);
 
       // Execute actions triggered by command
       if (response.action) {
-        if (response.action.type === 'START_DEMO') {
-          if (!isDemo) onToggleDemo();
-        } else if (response.action.type === 'STOP_DEMO') {
+        if (response.action.type === 'STOP_SPEECH') {
           voiceService.stop();
-          if (isDemo) onToggleDemo();
         } else if (response.action.type === 'CLEAR_BOARD') {
           voiceService.stop();
           onClearState();
@@ -272,7 +264,6 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
   };
 
   // Suggestion chips dynamically generated from real configured agents
-  // Suggestion chips dynamically generated from real configured agents
   const suggestionChips = useMemo(() => {
     const chips: { label: string; query: string }[] = [
       { label: 'Status', query: 'status' },
@@ -283,10 +274,9 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
       const label = ag.theme?.badge || ag.badgeText || ag.name.split(' ').slice(-1)[0] || 'Agent';
       chips.push({ label, query: `Check ${ag.name}` });
     });
-    chips.push({ label: isDemo ? 'Stop Demo' : 'Run Sprint', query: isDemo ? 'stop demo' : 'run sprint' });
     chips.push({ label: 'Reset', query: 'clear board' });
     return chips;
-  }, [state?.agents, isDemo]);
+  }, [state?.agents]);
 
   if (!isOpen) return null;
 

@@ -1,6 +1,6 @@
 const EventEmitter = require('events');
 const path = require('path');
-const { discoverAgents, getProjectRoot, generateGhostAgents } = require('./agentDiscovery');
+const { discoverAgents, getProjectRoot } = require('./agentDiscovery');
 const { OrchestrationRules } = require('./orchestrationRules');
 
 class EventBus extends EventEmitter {
@@ -18,15 +18,11 @@ class EventBus extends EventEmitter {
     this.latestMilestone = `Virtual Office ready on ${this.projectName}. Run commands in terminal or prompt agents to begin.`;
     this.latestMilestoneAgentId = 'project-manager';
 
-    // Ghost team simulation flag
-    this.isGhostTeam = false;
-
     // Initialize agents
     this.agents = new Map();
     this.initAgents();
 
-    // Clean initial Kanban state (awaits active agent tasks or demo trigger)
-    this.isDemoRunning = false;
+    // Clean initial Kanban state: only real agent tasks are ever shown
     this.clearedAt = Date.now();
 
     // Active handoff in progress (for animation synchronization)
@@ -133,15 +129,6 @@ class EventBus extends EventEmitter {
   }
 
   initAgents() {
-    if (this.isGhostTeam) {
-      if (this.agents.size === 0) {
-        const ghostAgents = generateGhostAgents();
-        for (const a of ghostAgents) {
-          this.agents.set(a.id, a);
-        }
-      }
-      return;
-    }
     this.agents.clear();
     const discovered = discoverAgents();
     for (const a of discovered) {
@@ -206,17 +193,8 @@ class EventBus extends EventEmitter {
         invocations: 0,
         activeTimeSec: 0,
         completedTasks: 0,
-        slaAdherenceRate: 100,
         status: 'available',
       });
-    }
-  }
-
-  loadDemoTasks() {
-    if (this.agents.size === 0) return;
-    const initialTasks = OrchestrationRules.getInitialDemoTasks(this.agents);
-    for (const t of initialTasks) {
-      this.tasks.set(t.id, t);
     }
   }
 
@@ -368,7 +346,6 @@ class EventBus extends EventEmitter {
       measuredInvocations: 0,
       activeTimeSec: 0,
       completedTasks: 0,
-      slaAdherenceRate: 100,
       status: 'working',
     };
 
@@ -385,15 +362,6 @@ class EventBus extends EventEmitter {
     this.roleInvocationMap.set(agentId, existing);
   }
 
-  initDefaultFileChanges() {
-    this.fileChanges = [];
-    if (this.agents.size === 0) return;
-    const records = OrchestrationRules.getDefaultFileChanges(this.agents);
-    for (const rec of records) {
-      this.recordFileChange(rec);
-    }
-  }
-
   recordFileChange(change) {
     if (!change || !change.filePath) return;
     if (this.isBeforeReset(change.timestamp)) return;
@@ -404,15 +372,16 @@ class EventBus extends EventEmitter {
       filePath: change.filePath,
       fileName: fName,
       action: change.action || 'modified',
-      agentId: change.agentId || 'developer',
-      agentName: change.agentName || 'Developer',
-      agentRole: change.agentRole || 'Developer',
+      // Unattributed changes (e.g. a save in the user's editor) stay unattributed
+      agentId: change.agentId || '',
+      agentName: change.agentName || 'Unattributed',
+      agentRole: change.agentRole || '',
       timestamp: change.timestamp || new Date().toISOString(),
       summary: change.summary || change.details || `Updated ${fName}`,
       instruction: change.instruction || '',
       contentPreview: content,
       previousContent: change.previousContent || change.targetContent || '',
-      linesAdded: change.linesAdded || (content ? content.split('\n').length : 1),
+      linesAdded: change.linesAdded || (content ? content.split('\n').length : undefined),
     };
 
     // Avoid duplicate rapid recordings of the exact same content within the file
@@ -428,15 +397,6 @@ class EventBus extends EventEmitter {
       }
     }
     return record;
-  }
-
-  initDefaultCommunications() {
-    this.communications = [];
-    if (this.agents.size === 0) return;
-    const records = OrchestrationRules.getDefaultCommunications(this.agents);
-    for (const rec of records) {
-      this.recordCommunication(rec);
-    }
   }
 
   recordCommunication(comm) {
@@ -534,228 +494,6 @@ class EventBus extends EventEmitter {
     return normalized;
   }
 
-  initDefaultDeliverables() {
-    this.deliverables.clear();
-    const { pm, lead, dev, tester } = OrchestrationRules.resolveTeamRoles(this.agents);
-
-    const prdContent = `# Product Requirement Document (PRD)
-## Feature: User Authentication & Token Vault (US-101)
-**Author**: ${pm.name} (${pm.role})
-**Delivered To**: ${lead.name} (${lead.role})
-**Status**: Approved & Ready for Architecture
-
-### 1. Objective & Problem Statement
-Provide enterprise-grade session lifecycle and JWT security with multi-factor biometrics and automatic token refreshing.
-
-### 2. User Stories & Acceptance Criteria
-- **US-101.1**: User can log in with OAuth2 & secure password credentials.
-- **US-101.2**: Access tokens expire in 15 minutes; refresh tokens auto-rotate.
-- **US-101.3**: Failed login threshold of 5 attempts triggers exponential cooldown.
-- **US-101.4**: Token payload signed with RS256 with key rotation support.
-- **US-101.5**: Full audit telemetry emitted for compliance monitoring.
-
-### 3. Definition of Done (DoD)
-- [x] Functional specs reviewed and signed off.
-- [x] Zero P0/P1 security vulnerabilities.
-- [x] Automated test coverage >= 95%.
-- [x] Performance SLA: Authentication latency under 120ms at p99.`;
-
-    const archContent = `# Architectural Design Contract & Implementation Plan
-## Feature: User Authentication & Token Vault (ARCH-101)
-**Author**: ${lead.name} (${lead.role})
-**Delivered To**: ${dev.name} (${dev.role})
-**Status**: Handed off for Implementation
-
-### 1. Component Boundaries & Contract
-- \`AuthService\`: Coordinates handshake, credential verification, and token exchange.
-- \`TokenVault\`: In-memory isolated storage with platform-keychain hardware backing.
-- \`AuthInterceptor\`: Axios/Fetch pipeline middleware injecting Bearer tokens and managing transparent 401 refresh cycles.
-
-### 2. Implementation Specifications
-- **Format**: TypeScript Strict / ESM Module.
-- **Error Handling**: Standardized \`AuthError\` class with error codes \`TOKEN_EXPIRED\`, \`INVALID_CREDENTIALS\`, \`RATE_LIMITED\`.
-- **Concurrency**: Lock refresh requests using a mutex semaphore to eliminate stampedes.
-
-### 3. Quality Gates
-- Lint: ESLint zero-warning policy.
-- Types: TypeScript strict mode with no implicit \`any\`.`;
-
-    const codeContent = `/**
- * AuthService & Token Vault Implementation (CODE-101)
- * Author: ${dev.name} (${dev.role})
- * Delivered To: ${lead.name} (${lead.role})
- */
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-}
-
-export class AuthService {
-  private static instance: AuthService;
-  private tokenCache: Map<string, string> = new Map();
-
-  static getInstance(): AuthService {
-    if (!AuthService.instance) {
-      AuthService.instance = new AuthService();
-    }
-    return AuthService.instance;
-  }
-
-  async authenticate(credentials: { email: string; token: string }): Promise<AuthTokens> {
-    if (!credentials.email || !credentials.token) {
-      throw new Error('INVALID_CREDENTIALS');
-    }
-    const tokens: AuthTokens = {
-      accessToken: 'jwt_access_' + Math.random().toString(36).substring(2),
-      refreshToken: 'jwt_refresh_' + Math.random().toString(36).substring(2),
-      expiresIn: 900
-    };
-    this.tokenCache.set('active_token', tokens.accessToken);
-    return tokens;
-  }
-
-  async verifySession(token: string): Promise<boolean> {
-    return Boolean(token && token.startsWith('jwt_access_'));
-  }
-}`;
-
-    const qaContent = `# Automated E2E Test Suite & Verification Report
-## Verification: Authentication Pipeline (QA-101)
-**Author**: ${tester.name} (${tester.role})
-**Delivered To**: ${pm.name} (${pm.role})
-**Status**: 100% Pass Rate (Ready for Production Release)
-
-### 1. Test Execution Summary
-- **Total Test Cases Executed**: 42
-- **Passed**: 42 (100%)
-- **Failed**: 0 (0%)
-- **Code Coverage**: 98.4% Line / 96.1% Branch
-- **Execution Time**: 1.84s
-
-### 2. Test Suites
-| Test Suite | Tests | Result | Duration |
-|:---|:---:|:---:|:---:|
-| OAuth2 Credential Verification | 14 | PASSED | 420ms |
-| Refresh Token Rotation & Mutex | 12 | PASSED | 610ms |
-| Rate-Limiter & Exponential Backoff | 8 | PASSED | 390ms |
-| Keychain Secure Persistence | 8 | PASSED | 420ms |
-
-### 3. QA Sign-Off
-All acceptance criteria defined in PRD-101 have been verified with automated regression tests. Ready for sprint signoff.`;
-
-    const defaultItems = [
-      {
-        id: 'deliv-prd-101',
-        title: 'PRD-101: User Authentication & Token Vault Specification',
-        type: 'prd',
-        role: pm.role,
-        roleSlug: 'pm',
-        agentId: pm.id,
-        agentName: pm.name,
-        status: 'approved',
-        summary: 'Complete product requirements, user stories, acceptance criteria, and Definition of Done for user authentication.',
-        content: prdContent,
-        format: 'markdown',
-        filePath: '.agents/sprints/sprint-1/PRD-101.md',
-        version: 'v1.0',
-        sprintId: this.activeSprintId,
-        deliveredTo: lead.id,
-        deliveredToName: lead.name,
-        deliveredToRole: lead.role,
-        metadata: {
-          wordCount: 380,
-          acceptanceCriteriaCount: 5,
-          targetPlatform: 'Web & Mobile'
-        },
-        createdAt: new Date(Date.now() - 3600000).toISOString(),
-        updatedAt: new Date(Date.now() - 3600000).toISOString(),
-      },
-      {
-        id: 'deliv-arch-101',
-        title: 'ARCH-101: Authentication Architecture & Token Security Specification',
-        type: 'architecture',
-        role: lead.role,
-        roleSlug: 'tech-lead',
-        agentId: lead.id,
-        agentName: lead.name,
-        status: 'delivered',
-        summary: 'Architectural component contracts, TokenVault interface boundaries, and concurrency mutex design.',
-        content: archContent,
-        format: 'markdown',
-        filePath: '.agents/sprints/sprint-1/ARCH-101.md',
-        version: 'v1.0',
-        sprintId: this.activeSprintId,
-        deliveredTo: dev.id,
-        deliveredToName: dev.name,
-        deliveredToRole: dev.role,
-        metadata: {
-          wordCount: 290,
-          securityChecksPassed: 8,
-          targetPlatform: 'Multiplatform'
-        },
-        createdAt: new Date(Date.now() - 2700000).toISOString(),
-        updatedAt: new Date(Date.now() - 2700000).toISOString(),
-      },
-      {
-        id: 'deliv-code-101',
-        title: 'CODE-101: AuthService & Token Interceptor Implementation',
-        type: 'source_code',
-        role: dev.role,
-        roleSlug: 'dev',
-        agentId: dev.id,
-        agentName: dev.name,
-        status: 'in_review',
-        summary: 'Core AuthService class with credential verification, session validation, and TokenVault caching.',
-        content: codeContent,
-        format: 'code',
-        filePath: 'src/services/AuthService.ts',
-        version: 'v1.0',
-        sprintId: this.activeSprintId,
-        deliveredTo: lead.id,
-        deliveredToName: lead.name,
-        deliveredToRole: lead.role,
-        metadata: {
-          linesOfCode: 38,
-          coveragePercent: 96,
-          targetPlatform: 'TypeScript / Node'
-        },
-        createdAt: new Date(Date.now() - 1800000).toISOString(),
-        updatedAt: new Date(Date.now() - 1800000).toISOString(),
-      },
-      {
-        id: 'deliv-qa-101',
-        title: 'QA-101: E2E Authentication Test Suite & Regression Report',
-        type: 'test_report',
-        role: tester.role,
-        roleSlug: 'qa',
-        agentId: tester.id,
-        agentName: tester.name,
-        status: 'approved',
-        summary: 'Automated test suite report with 100% pass rate across 42 test cases and zero vulnerabilities.',
-        content: qaContent,
-        format: 'markdown',
-        filePath: '.agents/sprints/sprint-1/QA-TEST-REPORT-101.md',
-        version: 'v1.0',
-        sprintId: this.activeSprintId,
-        deliveredTo: pm.id,
-        deliveredToName: pm.name,
-        deliveredToRole: pm.role,
-        metadata: {
-          testCount: 42,
-          testPassRate: '100%',
-          coveragePercent: 98.4
-        },
-        createdAt: new Date(Date.now() - 900000).toISOString(),
-        updatedAt: new Date(Date.now() - 900000).toISOString(),
-      }
-    ];
-
-    for (const d of defaultItems) {
-      this.deliverables.set(d.id, d);
-    }
-  }
-
   registerWsClient(ws) {
     this.wsClients.add(ws);
     // Send initial snapshot on connection
@@ -810,7 +548,7 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
     if (rawEvent && this.isBeforeReset(rawEvent.timestamp)) return null;
     const eventId = rawEvent.eventId || `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const timestamp = rawEvent.timestamp || new Date().toISOString();
-    const agentId = rawEvent.agentId || 'project-manager';
+    const agentId = rawEvent.agentId || 'unattributed';
     const type = rawEvent.type || 'INFO';
     const payload = rawEvent.payload || {};
 
@@ -966,16 +704,14 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
               toAgent.activityMessage = `Accepted task: ${taskTitle}`;
               toAgent.currentTask = taskTitle;
 
-              if (!this.isDemoRunning) {
-                this.setAgentBusyTimer(toAgent.id, () => {
-                  if (!this.isDemoRunning && toAgent.status === 'working') {
-                    toAgent.status = 'available';
-                    toAgent.currentTask = null;
-                    toAgent.activityMessage = 'Ready at workstation';
-                    this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
-                  }
-                }, 4500);
-              }
+              this.setAgentBusyTimer(toAgent.id, () => {
+                if (toAgent.status === 'working') {
+                  toAgent.status = 'available';
+                  toAgent.currentTask = null;
+                  toAgent.activityMessage = 'Ready at workstation';
+                  this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+                }
+              }, 4500);
             }
             if (fromAgent) {
               fromAgent.status = 'available';
@@ -1041,7 +777,7 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
-            if (!this.isDemoRunning && agent.status === 'working') {
+            if (agent.status === 'working') {
               agent.status = 'available';
               agent.activityMessage = 'Ready at workstation';
               this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
@@ -1059,7 +795,7 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
-            if (!this.isDemoRunning && (agent.status === 'working' || agent.status === 'coding')) {
+            if ((agent.status === 'working' || agent.status === 'coding')) {
               if (agent.taskStartedAt) {
                 const elapsed = Math.max(1, Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000));
                 agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
@@ -1086,7 +822,7 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
-            if (!this.isDemoRunning && (agent.status === 'working' || agent.status === 'coding' || agent.status === 'testing')) {
+            if ((agent.status === 'working' || agent.status === 'coding' || agent.status === 'testing')) {
               if (agent.taskStartedAt) {
                 const elapsed = Math.max(1, Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000));
                 agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
@@ -1111,7 +847,7 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
-            if (!this.isDemoRunning && (agent.status === 'coding' || agent.status === 'working')) {
+            if ((agent.status === 'coding' || agent.status === 'working')) {
               if (agent.taskStartedAt) {
                 const elapsed = Math.max(1, Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000));
                 agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
@@ -1191,7 +927,7 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
           this.recordRoleInvocation(agentId);
           this.recordToolUsage(agentId, payload.tool || (payload.sourceType === 'confluence' ? 'read_confluence.py' : 'read_jira.py'));
           this.setAgentBusyTimer(agentId, () => {
-            if (!this.isDemoRunning && agent.status === 'working') {
+            if (agent.status === 'working') {
               agent.status = 'available';
               agent.activityMessage = 'Ready at workstation';
               this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
@@ -1232,8 +968,8 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
         fileName: fName,
         action: payload.action || (payload.tool === 'write_to_file' ? 'created' : 'modified'),
         agentId,
-        agentName: agent ? agent.name : (agentId || 'Developer'),
-        agentRole: agent ? agent.role : 'Developer',
+        agentName: agent ? agent.name : agentId || 'Unattributed',
+        agentRole: agent ? agent.role : '',
         timestamp: event.timestamp || new Date().toISOString(),
         summary: payload.details || payload.instruction || `Updated ${fName}`,
         instruction: payload.instruction || '',
@@ -1243,109 +979,26 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
       });
     }
 
-    // 6. Update or auto-create Kanban tasks (aggregating micro-actions into high-level sprint deliverables)
-    let targetTaskId = payload.taskId;
-    if (targetTaskId && !this.tasks.has(targetTaskId)) {
-      if (
-        targetTaskId.startsWith('TASK-FILE-') ||
-        targetTaskId.startsWith('TASK-CMD-') ||
-        targetTaskId.startsWith('TASK-REQ-')
-      ) {
-        const isTest = (payload.file && payload.file.toLowerCase().includes('test')) || (payload.command && (payload.command.includes('test') || payload.command.includes('gradle')));
-        const isDoc = payload.file && (payload.file.endsWith('.md') || payload.file.endsWith('.yaml') || payload.file.endsWith('.json'));
-        if (isTest && this.tasks.has('DELIV-3')) {
-          targetTaskId = 'DELIV-3';
-        } else if (isDoc && this.tasks.has('DELIV-1')) {
-          targetTaskId = 'DELIV-1';
-        } else if (this.tasks.has('DELIV-2')) {
-          targetTaskId = 'DELIV-2';
-        } else if (this.tasks.has('DELIV-1')) {
-          targetTaskId = 'DELIV-1';
+    // 6. Activity events never create or move cards: cards change only through the board API
+    // (POST /api/tasks/:key/status) or the agent's own registered tasks. An event that reports
+    // its card is done only triggers the assignee's celebration.
+    const reportedTask = payload.taskId ? this.tasks.get(payload.taskId) : null;
+    if (reportedTask && reportedTask.column === 'done' && payload.column === 'done' && agent && agent.status !== 'error') {
+      agent.status = 'celebrating';
+      agent.activityMessage = `🎉 Done: ${reportedTask.title}`;
+      agent.taskCompletedAt = new Date().toISOString();
+      if (agent.taskStartedAt) {
+        const dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
+        agent.taskDurationSec = dur;
+        agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
+      }
+      this.setAgentBusyTimer(agent.id, () => {
+        if (agent.status === 'celebrating') {
+          agent.status = 'available';
+          agent.activityMessage = 'Ready at workstation';
+          this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
         }
-      }
-    }
-
-    if (targetTaskId) {
-      if (!this.tasks.has(targetTaskId)) {
-        this.tasks.set(targetTaskId, {
-          id: targetTaskId,
-          key: payload.key || 'TASK-1',
-          title: payload.task || 'Active Task',
-          description: payload.details || 'Task executing in workspace',
-          assignedTo: payload.assignedTo || agentId,
-          delegatedBy: payload.delegatedBy || 'orchestrator',
-          delegatedByRole: payload.delegatedByRole || 'AI Agent',
-          column: payload.column || 'in_progress',
-          skill: payload.allowedSkill || payload.skill || payload.tool || 'coding',
-          progress: payload.progress !== undefined ? payload.progress : (payload.column === 'done' ? 100 : 0),
-          updatedAt: new Date().toISOString(),
-        });
-      }
-      const task = this.tasks.get(targetTaskId);
-      if (task) {
-        if (payload.column) {
-          task.column = payload.column;
-          // Trigger celebration on assigned agent when a task transitions to 'done'
-          if (payload.column === 'done' && agent && agent.status !== 'error') {
-            agent.status = 'celebrating';
-            agent.activityMessage = `🎉 Done: ${task.title}`;
-            agent.taskCompletedAt = new Date().toISOString();
-            if (agent.taskStartedAt) {
-              const dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
-              agent.taskDurationSec = dur;
-              agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
-            }
-            this.setAgentBusyTimer(agent.id, () => {
-              if (agent.status === 'celebrating') {
-                agent.status = 'available';
-                agent.activityMessage = 'Ready at workstation';
-                this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
-              }
-            }, 5000);
-          }
-        }
-        if (payload.progress !== undefined) task.progress = payload.progress;
-        if (payload.assignedTo) task.assignedTo = payload.assignedTo;
-        if (payload.delegatedBy) task.delegatedBy = payload.delegatedBy;
-        if (payload.delegatedByRole) task.delegatedByRole = payload.delegatedByRole;
-        // Activity events never overwrite what the delegating agent wrote on the card
-        if (payload.task && !task.title) task.title = payload.task;
-        if (payload.details && !task.description) task.description = payload.details;
-        if (payload.allowedSkill || payload.skill) task.skill = payload.allowedSkill || payload.skill;
-        task.updatedAt = new Date().toISOString();
-      }
-    }
-
-    // 6. Feature Delivery & Completion Auto-Resolution:
-    // When the Project Manager or workflow transitions to 'Delivered', or announces delivery/signoff,
-    // or when type === 'task_completed', automatically complete ALL open tasks on the board!
-    const isFeatureDelivered =
-      this.currentPhase === 'Delivered' ||
-      type === 'task_completed' ||
-      (payload.phase && /deliver/i.test(payload.phase)) ||
-      (payload.milestone && /deliver|sign-?off|all tasks complete|feature delivered|shipped/i.test(payload.milestone));
-
-    // Only the scripted demo closes the whole board at once. Real agents move each card themselves
-    // (POST /api/tasks/:key/status), so one "delivered" message must not complete everyone's work.
-    if (isFeatureDelivered && this.isDemoRunning) {
-      for (const [id, task] of this.tasks.entries()) {
-        if (task.column !== 'done') {
-          task.column = 'done';
-          task.progress = 100;
-          task.updatedAt = new Date().toISOString();
-        }
-      }
-    }
-
-    // Auto-complete test and review tasks when test result is successful
-    if (this.isDemoRunning && type === 'test_result' && (!payload.testsFailed || payload.testsFailed === 0)) {
-      for (const [id, task] of this.tasks.entries()) {
-        if (task.column === 'testing' || task.column === 'review' || id === 'DELIV-3' || id === 'DELIV-4') {
-          task.column = 'done';
-          task.progress = 100;
-          task.updatedAt = new Date().toISOString();
-        }
-      }
+      }, 5000);
     }
   }
 
@@ -1381,7 +1034,6 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
         elapsedSeconds: Math.floor((Date.now() - this.workflowStartTime) / 1000),
         milestone: this.latestMilestone,
         milestoneAgentId: this.latestMilestoneAgentId || 'project-manager',
-        isDemoRunning: this.isDemoRunning || false,
         hasAgents,
       },
       hasCustomAgentsConfig: hasAgents,
@@ -1410,60 +1062,12 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
       activeHandoff: hasAgents ? this.activeHandoff : null,
       jiraConfluenceItems: this.jiraConfluenceItems || [],
       connectedViewers: this.wsClients.size,
-      isDemoRunning: this.isDemoRunning || false,
       events: hasAgents ? this.events.slice(0, 60) : [],
     };
   }
 
-  loadDemoWorkflow(workflowTitle = 'DEMO: FEATURE-101 (User Authentication Service)') {
-    this.workflowStartTime = Date.now();
-    this.workflowTitle = workflowTitle;
-    this.currentPhase = 'Intake & Planning';
-    this.latestMilestone = '⚠️ SIMULATION DEMO STARTED: Ingesting FEATURE-101.';
-
-    // If empty workspace or already ghost team, preserve/initialize ghost agents without disk pollution
-    if (this.agents.size === 0 || this.isGhostTeam) {
-      this.isGhostTeam = true;
-      if (this.agents.size === 0) {
-        const ghostAgents = generateGhostAgents();
-        for (const a of ghostAgents) {
-          this.agents.set(a.id, a);
-        }
-      }
-    } else {
-      this.initAgents();
-    }
-
-    this.latestMilestoneAgentId = this.agents.size > 0 ? (this.agents.get('tech-pm')?.id || this.agents.keys().next().value) : 'project-manager';
-    this.tasks = new Map();
-    this.loadDemoTasks();
-    this.initDefaultDeliverables();
-    this.toolUsageMap = new Map();
-    this.tokenUsageMap = new Map();
-    this.skillUsageMap = new Map();
-    this.roleInvocationMap = new Map();
-    // Demo seed records are intentionally backdated; don't let the reset cutoff drop them.
-    const savedClearedAt = this.clearedAt;
-    this.clearedAt = 0;
-    this.initDefaultFileChanges();
-    this.initDefaultCommunications();
-    this.clearedAt = savedClearedAt;
-    this.activeHandoff = null;
-    this.broadcast({
-      type: 'SYNC_STATE',
-      data: this.getStateSnapshot(),
-    });
-  }
-
-  resetWorkflow(workflowTitle) {
-    this.jiraConfluenceItems = [];
-    return this.loadDemoWorkflow(workflowTitle);
-  }
-
   resetForProject(projectDir, newAgents) {
     this.clearedAt = Date.now();
-    this.isDemoRunning = false;
-    this.isGhostTeam = false;
     this.jiraConfluenceItems = [];
     this.clearAllAgentBusyTimers();
     if (this.handoffTimeout) {
@@ -1529,7 +1133,6 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
     this.clearedAt = Date.now();
     this.events = [];
     this.tasks = new Map();
-    this.isDemoRunning = false;
     this.roleInvocationMap = new Map();
     this.toolUsageMap = new Map();
     this.tokenUsageMap = new Map();
@@ -1547,14 +1150,12 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
     this.workflowTitle = 'Standby (No active tasks)';
     this.currentPhase = 'Awaiting Sprint Tasks';
 
-    if (this.isGhostTeam) {
-      this.agents.clear();
-      this.isGhostTeam = false;
+    if (this.agents.size === 0) {
       this.latestMilestoneAgentId = null;
       this.latestMilestone = `⚠️ No agents found in ${this.projectName || 'workspace'}. Click "Setup Team" to create your roles & agents.`;
     } else {
-      this.latestMilestone = `👉 Standby on ${this.projectName || 'workspace'}: Ready for agent tasks or click "Demo Agentic Workflow".`;
-      this.latestMilestoneAgentId = this.agents.size > 0 ? this.agents.keys().next().value : 'project-manager';
+      this.latestMilestone = `👉 Standby on ${this.projectName || 'workspace'}: Ready for agent tasks.`;
+      this.latestMilestoneAgentId = this.agents.keys().next().value;
       for (const [id, agent] of this.agents.entries()) {
         agent.status = 'available';
         agent.currentTask = null;
@@ -1564,8 +1165,8 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
         agent.taskCompletedAt = null;
         agent.taskDurationSec = null;
       }
-      this.initStandbyRoleAnalytics();
     }
+    this.initStandbyRoleAnalytics();
 
     this.clearAllAgentBusyTimers();
     this.broadcast({

@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { OfficeState } from '../types/office';
-import { Users, Play, Square, Wifi, Mic, Settings, Folder, Pencil, Volume2, VolumeX, RotateCcw, Sun, Moon } from 'lucide-react';
+import { Users, Wifi, Mic, Settings, Folder, Pencil, Volume2, VolumeX, RotateCcw, Sun, Moon } from 'lucide-react';
 import { voiceService } from '../services/voiceService';
 import { getTheme, setTheme, Theme } from '../services/theme';
 
 interface HeaderProps {
   state: OfficeState | null;
   connected: boolean;
-  isDemo: boolean;
-  onToggleDemo: () => void;
   onClearState?: () => void;
   recorderSlot?: React.ReactNode;
   onOpenVoice?: () => void;
@@ -21,8 +19,6 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   state,
   connected,
-  isDemo,
-  onToggleDemo,
   onClearState,
   recorderSlot,
   onOpenVoice,
@@ -113,11 +109,6 @@ export const Header: React.FC<HeaderProps> = ({
               <Pencil className="w-2.5 h-2.5 text-sand-400 group-hover:text-brand-600 shrink-0 ml-0.5" />
             </button>
 
-            {isDemo && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
-                DEMO SPRINT
-              </span>
-            )}
           </div>
         </div>
 
@@ -196,36 +187,6 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Workflow Recorder */}
           {recorderSlot}
-
-          {/* Demo Agentic Workflow Button */}
-          <button
-            onClick={() => {
-              if (isDemo) {
-                voiceService.stop();
-              }
-              onToggleDemo();
-            }}
-            title={isDemo ? 'Stop Demo' : 'Demo Agentic Workflow'}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer ${
-              isDemo
-                ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20'
-                : 'bg-brand-600 hover:bg-brand-700 text-white shadow-brand-600/20 active:scale-95'
-            }`}
-          >
-            {isDemo ? (
-              <>
-                <Square className="w-3.5 h-3.5 fill-current" />
-                <span className="hidden sm:inline">Stop Demo</span>
-                <span className="sm:hidden">Stop</span>
-              </>
-            ) : (
-              <>
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span className="hidden sm:inline">Demo Agentic Workflow</span>
-                <span className="sm:hidden">Demo</span>
-              </>
-            )}
-          </button>
 
           {/* Reset / Clear State Button */}
           {onClearState && (

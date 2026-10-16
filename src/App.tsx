@@ -19,7 +19,6 @@ export const App: React.FC = () => {
   const [state, setState] = useState<OfficeState | null>(null);
   const [events, setEvents] = useState<NormalizedEvent[]>([]);
   const [connected, setConnected] = useState<boolean>(false);
-  const [isDemo, setIsDemo] = useState<boolean>(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
   const [viewMode, setViewMode] = useState<'floor' | 'terminal_grid'>('floor');
@@ -164,12 +163,6 @@ export const App: React.FC = () => {
               } else if (Array.isArray(syncData.agents)) {
                 setHasCustomAgentsConfig(syncData.agents.length > 0);
               }
-              if (typeof syncData.isDemoRunning === 'boolean') {
-                setIsDemo(syncData.isDemoRunning);
-                if (!syncData.isDemoRunning) {
-                  voiceService.stop();
-                }
-              }
               if (syncData.workflow?.projectPath) {
                 setProjectPath(syncData.workflow.projectPath);
               }
@@ -180,25 +173,12 @@ export const App: React.FC = () => {
                 setEvents(syncData.events);
               }
             }
-          } else if (parsed.type === 'DEMO_STATE') {
-            const running = Boolean(parsed.isDemo);
-            setIsDemo(running);
-            if (!running) {
-              voiceService.stop();
-            }
-            if (parsed.state) setState(parsed.state);
           } else if (parsed.type === 'STATE_UPDATE') {
             setState(parsed.state);
             if (typeof parsed.state?.hasCustomAgentsConfig === 'boolean') {
               setHasCustomAgentsConfig(parsed.state.hasCustomAgentsConfig);
             } else if (Array.isArray(parsed.state?.agents)) {
               setHasCustomAgentsConfig(parsed.state.agents.length > 0);
-            }
-            if (typeof parsed.state?.isDemoRunning === 'boolean') {
-              setIsDemo(parsed.state.isDemoRunning);
-              if (!parsed.state.isDemoRunning) {
-                voiceService.stop();
-              }
             }
             if (parsed.state?.workflow?.projectPath) {
               setProjectPath(parsed.state.workflow.projectPath);
@@ -230,12 +210,6 @@ export const App: React.FC = () => {
           } else if (parsed.type === 'EVENT') {
             if (parsed.state) {
               setState(parsed.state);
-              if (typeof parsed.state.isDemoRunning === 'boolean') {
-                setIsDemo(parsed.state.isDemoRunning);
-                if (!parsed.state.isDemoRunning) {
-                  voiceService.stop();
-                }
-              }
             }
             if (parsed.data) {
               setEvents((prev) => [parsed.data, ...prev.slice(0, 500)]);
@@ -309,26 +283,6 @@ export const App: React.FC = () => {
     } catch (e) {}
   }, []);
 
-  const handleToggleDemo = async () => {
-    try {
-      const willStop = isDemo;
-      if (willStop) {
-        voiceService.stop();
-      }
-      const endpoint = willStop ? '/api/demo/stop' : '/api/demo/start';
-      setIsDemo(!willStop);
-      const res = await fetch(endpoint, { method: 'POST' });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.state) {
-          setState(json.state);
-        }
-      }
-    } catch (e) {
-      console.error('Error toggling demo mode:', e);
-    }
-  };
-
   const handleClearState = async () => {
     try {
       voiceService.stop();
@@ -341,7 +295,6 @@ export const App: React.FC = () => {
         const json = await res.json();
         if (json.state) setState(json.state);
       }
-      setIsDemo(false);
       setEvents([]);
     } catch (e) {
       console.error('Error clearing state:', e);
@@ -366,8 +319,6 @@ export const App: React.FC = () => {
       <Header
         state={state}
         connected={connected}
-        isDemo={isDemo}
-        onToggleDemo={handleToggleDemo}
         onClearState={handleClearState}
         recorderSlot={
           <WorkflowRecorder
@@ -462,8 +413,6 @@ export const App: React.FC = () => {
         isOpen={isVoiceOpen}
         onClose={() => setIsVoiceOpen(false)}
         state={state}
-        isDemo={isDemo}
-        onToggleDemo={handleToggleDemo}
         onClearState={handleClearState}
         onSelectAgent={(agent) => setSelectedAgent(agent)}
         listenTrigger={voiceListenTrigger}

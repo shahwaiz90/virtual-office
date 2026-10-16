@@ -1,39 +1,22 @@
 const assert = require('assert');
 const http = require('http');
 const { EventBus } = require('../server/eventBus');
-const { DemoSimulator } = require('../server/demoSimulator');
 const { app } = require('../server/index');
 
 async function runDeliverablesHubTestSuite() {
   console.log('🧪 Starting Role Deliverables Hub Automated Test Suite (TEST-201)...');
 
   // =========================================================================
-  // SCENARIO 1: Seed Deliverables Initialization Across 4 Roles
+  // SCENARIO 1: No sample deliverables exist
   // =========================================================================
-  console.log('\n▶ Scenario 1: Verifying seed deliverables initialization across 4 roles...');
+  console.log('\n▶ Scenario 1: Verifying no sample deliverables are seeded...');
   const testBus = new EventBus();
 
   assert.ok(testBus.deliverables instanceof Map, 'eventBus.deliverables must be a Map');
-  assert.strictEqual(testBus.deliverables.size, 0, 'Sample deliverables must not be seeded outside demo mode');
+  assert.strictEqual(testBus.deliverables.size, 0, 'No sample deliverables are seeded');
+  assert.strictEqual(typeof testBus.initDefaultDeliverables, 'undefined', 'The sample-deliverable seeder is gone');
 
-  // Sample deliverables are demo-only data
-  testBus.initDefaultDeliverables();
-  assert.ok(testBus.deliverables.size >= 4, `Expected at least 4 seed deliverables, got ${testBus.deliverables.size}`);
-
-  const seedDeliverables = Array.from(testBus.deliverables.values());
-  const rolesFound = new Set(seedDeliverables.map(d => d.roleSlug));
-  assert.ok(rolesFound.has('pm'), 'Deliverables must contain PM deliverable');
-  assert.ok(rolesFound.has('tech-lead'), 'Deliverables must contain Tech Lead deliverable');
-  assert.ok(rolesFound.has('dev'), 'Deliverables must contain Developer deliverable');
-  assert.ok(rolesFound.has('qa'), 'Deliverables must contain QA deliverable');
-
-  const typesFound = new Set(seedDeliverables.map(d => d.type));
-  assert.ok(typesFound.has('prd'), 'Deliverables must include PRD type');
-  assert.ok(typesFound.has('architecture'), 'Deliverables must include architecture type');
-  assert.ok(typesFound.has('source_code'), 'Deliverables must include source_code type');
-  assert.ok(typesFound.has('test_report'), 'Deliverables must include test_report type');
-
-  console.log(`  ✅ Scenario 1 Passed: Initialized ${seedDeliverables.length} seed deliverables across all 4 key roles.`);
+  console.log('  ✅ Scenario 1 Passed: The hub starts empty.');
 
   // =========================================================================
   // SCENARIO 2: recordDeliverable(item) - 4 Role Deliverables, Normalization & Deduplication
@@ -136,7 +119,7 @@ async function runDeliverablesHubTestSuite() {
   const snapshot = testBus.getStateSnapshot();
 
   assert.ok(Array.isArray(snapshot.deliverables), 'snapshot.deliverables must be an array');
-  assert.ok(snapshot.deliverables.length >= 8, `Expected at least 8 deliverables in snapshot, got ${snapshot.deliverables.length}`);
+  assert.ok(snapshot.deliverables.length >= 4, `Expected the 4 recorded deliverables in snapshot, got ${snapshot.deliverables.length}`);
 
   // Check required fields on every deliverable in snapshot
   const requiredFields = ['id', 'title', 'type', 'role', 'roleSlug', 'status', 'summary', 'content', 'deliveredTo', 'metadata'];
@@ -160,8 +143,16 @@ async function runDeliverablesHubTestSuite() {
   // =========================================================================
   console.log('\n▶ Scenario 4: Verifying REST API endpoints (GET, POST, DELETE)...');
 
-  // Seed the global bus with the demo's sample deliverables so the API has data to filter
-  require('../server/eventBus').eventBus.initDefaultDeliverables();
+  // Record one deliverable per role on the global bus, as agents do, so the API has data to filter
+  const globalBus = require('../server/eventBus').eventBus;
+  for (const [agentId, role, type] of [
+    ['tech-pm', 'Product Manager', 'prd'],
+    ['web-tech-lead', 'Tech Lead', 'architecture'],
+    ['web-dev', 'Developer', 'source_code'],
+    ['web-tester', 'QA Engineer', 'test_report'],
+  ]) {
+    globalBus.recordDeliverable({ id: `api-${type}`, title: `${type} deliverable`, type, role, agentId, status: 'delivered', content: type, format: 'markdown' });
+  }
 
   // Start an ephemeral HTTP test server
   const testServer = http.createServer(app);
@@ -286,36 +277,6 @@ async function runDeliverablesHubTestSuite() {
   } finally {
     await new Promise((resolve) => testServer.close(resolve));
   }
-
-  // =========================================================================
-  // SCENARIO 5: DemoSimulator Integration
-  // =========================================================================
-  console.log('\n▶ Scenario 5: Verifying DemoSimulator deliverable recording integration...');
-  const simBus = new EventBus();
-  simBus.deliverables.clear();
-  assert.strictEqual(simBus.deliverables.size, 0, 'Cleared deliverables for simulation check');
-
-  const simulator = new DemoSimulator(simBus);
-  // Verify simulator contains steps that invoke recordDeliverable
-  const steps = simulator.buildScriptSteps();
-  assert.ok(Array.isArray(steps) && steps.length > 0, 'DemoSimulator must generate execution steps');
-
-  // Execute demo steps synchronously to verify deliverables are emitted
-  for (const step of steps) {
-    if (typeof step.run === 'function') {
-      step.run();
-    }
-  }
-
-  assert.ok(simBus.deliverables.size >= 4, `Expected at least 4 deliverables produced during simulation, got ${simBus.deliverables.size}`);
-
-  const simDeliverableTypes = Array.from(simBus.deliverables.values()).map(d => d.type);
-  assert.ok(simDeliverableTypes.includes('prd'), 'Simulator must emit PRD deliverable');
-  assert.ok(simDeliverableTypes.includes('architecture'), 'Simulator must emit architecture deliverable');
-  assert.ok(simDeliverableTypes.includes('source_code'), 'Simulator must emit source_code deliverable');
-  assert.ok(simDeliverableTypes.includes('test_report'), 'Simulator must emit test_report deliverable');
-
-  console.log(`  ✅ Scenario 5 Passed: DemoSimulator recorded ${simBus.deliverables.size} deliverables during end-to-end workflow execution.`);
 
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🎉 ALL ROLE DELIVERABLES HUB TESTS PASSED (100%)!');

@@ -221,7 +221,6 @@ Return ONLY a JSON array (no markdown, no prose). Each item:
 
     this.currentRunningTaskId = taskId;
     task.column = 'in_progress';
-    task.progress = 25;
     task.logs = task.logs || [];
     task.logs.push(`[${new Date().toLocaleTimeString()}] Spawning agent ${agent.name} via OpenCode...`);
 
@@ -274,17 +273,10 @@ INSTRUCTIONS:
           if (task.logs.length > 50) task.logs.shift();
           task.logs.push(trimmed);
 
-          // Stream real tool activity
-          if (trimmed.includes('write') || trimmed.includes('edit') || trimmed.includes('create')) {
-            agent.status = 'coding';
-            agent.activityMessage = trimmed.slice(0, 50);
-          } else if (trimmed.includes('test') || trimmed.includes('verify')) {
-            agent.status = 'testing';
-            agent.activityMessage = trimmed.slice(0, 50);
-          }
+          // Show the agent's latest output line; no status or progress is guessed from its words
+          agent.activityMessage = trimmed.slice(0, 50);
         }
 
-        task.progress = Math.min(85, task.progress + 5);
         this.eventBus.broadcast({
           type: 'STATE_UPDATE',
           state: this.eventBus.getStateSnapshot(),
