@@ -2151,7 +2151,7 @@ function parseTranscriptStep(step, convId = '') {
       const activeViewerAgent = stepAgent;
       const realArchTask = openTaskOf(stepAgent);
 
-      const isJiraConfluenceDoc = cleanRelPath.includes('jira') || cleanRelPath.includes('confluence') || /DXDT-\d+/i.test(cleanRelPath);
+      const isJiraConfluenceDoc = cleanRelPath.includes('jira') || cleanRelPath.includes('confluence') || /\b[A-Z][A-Z0-9]+-\d+\.md$/.test(cleanRelPath);
       if (isJiraConfluenceDoc) {
         const keyMatch = cleanRelPath.match(/([A-Za-z0-9_]+-\d+)/);
         const ticketKey = keyMatch ? keyMatch[1] : null;
@@ -2286,8 +2286,10 @@ function parseTranscriptStep(step, convId = '') {
 
       const callerAgent = stepAgent;
       if (isJiraCmd) {
-        const ticketKey = jiraUrlMatch ? jiraUrlMatch[1] : (jiraKeyMatch ? jiraKeyMatch[1] : 'JIRA-TICKET');
-        const jiraUrl = jiraUrlMatch ? jiraUrlMatch[0] : (ticketKey ? `https://dm.stc.com.sa/browse/${ticketKey}` : null);
+        const ticketKey = jiraUrlMatch ? jiraUrlMatch[1] : (jiraKeyMatch ? jiraKeyMatch[1] : null);
+        // Link to the ticket only on the server the user configured (JIRA_BASE_URL); never a guessed host
+        const jiraBase = require('./integrations').serverUrl('jira', getProjectRoot());
+        const jiraUrl = jiraUrlMatch ? jiraUrlMatch[0] : (ticketKey && jiraBase ? `${jiraBase}/browse/${ticketKey}` : null);
         const executor = stepAgent;
         eventBus.emitEvent({
           agentId: executor.id,
@@ -2297,18 +2299,19 @@ function parseTranscriptStep(step, convId = '') {
             sourceType: 'jira',
             ticketKey,
             url: jiraUrl,
-            title: `Jira Ticket ${ticketKey}`,
+            title: ticketKey ? `Jira Ticket ${ticketKey}` : 'Jira ticket',
             command: cmd,
             tool: 'read_jira.py',
-            details: `Accessed Jira Ticket ${ticketKey} specifications`,
-            milestone: `🎫 ${executor.name} opened Jira ticket: ${ticketKey}`,
+            details: ticketKey ? `Accessed Jira Ticket ${ticketKey} specifications` : `Ran: ${cmd.slice(0, 80)}`,
+            milestone: `🎫 ${executor.name} opened Jira ticket${ticketKey ? `: ${ticketKey}` : ''}`,
             milestoneAgentId: executor.id,
             phase: eventBus.currentPhase || 'Intake & Planning',
           },
         });
       } else if (isConfCmd) {
         const pageId = confPageMatch ? confPageMatch[1] : null;
-        const confUrl = confUrlMatch ? confUrlMatch[0] : (pageId ? `https://dm.stc.com.sa/wiki/pages/viewpage.action?pageId=${pageId}` : null);
+        const confBase = require('./integrations').serverUrl('confluence', getProjectRoot());
+        const confUrl = confUrlMatch ? confUrlMatch[0] : (pageId && confBase ? `${confBase}/pages/viewpage.action?pageId=${pageId}` : null);
         const executor = stepAgent;
         eventBus.emitEvent({
           agentId: executor.id,

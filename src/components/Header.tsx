@@ -80,9 +80,14 @@ export const Header: React.FC<HeaderProps> = ({
         .then((r) => r.json())
         .then((json) => {
           if (cancelled || !json?.integrations) return;
-          const missing = Object.entries(json.integrations as Record<string, { configured: boolean; usedBy: string[]; envVar: string; setup: string }>)
+          type Status = { configured: boolean; tokenSet: boolean; server: string | null; usedBy: string[]; envVar: string; baseVar: string; setup: string };
+          const missing = Object.entries(json.integrations as Record<string, Status>)
             .filter(([, v]) => !v.configured && v.usedBy.length > 0)
-            .map(([k, v]) => ({ name: k === 'jira' ? 'Jira' : 'Confluence', envVar: v.envVar, setup: v.setup }));
+            .map(([k, v]) => ({
+              name: k === 'jira' ? 'Jira' : 'Confluence',
+              envVar: [!v.server && v.baseVar, !v.tokenSet && v.envVar].filter(Boolean).join(', '),
+              setup: v.setup,
+            }));
           setMissingTokens(missing);
         })
         .catch(() => {});

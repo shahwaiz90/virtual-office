@@ -102,20 +102,22 @@ That's it! The visualizer will:
 
 ## 🔑 Jira & Confluence Access (Optional)
 
-The `read-jira` and `read-confluence` skills fetch tickets and pages with `scripts/read_jira.py` and `scripts/read_confluence.py`. Each needs a personal access token in an environment variable:
+The `read-jira` and `read-confluence` skills fetch tickets and pages with `scripts/read_jira.py` and `scripts/read_confluence.py`. Each needs your server URL and a personal access token:
 
-| Variable | Used by | Where to create the token |
+| Variable | Example | Used by |
 | :--- | :--- | :--- |
-| `JIRA_PATH` | `read-jira` | Jira > your avatar > Profile > Personal Access Tokens > Create token |
-| `CONFLUENCE_PATH` | `read-confluence` | Confluence > your avatar > Settings > Personal Access Tokens > Create token |
+| `JIRA_BASE_URL` | `https://jira.your-company.com` | `read-jira` |
+| `JIRA_PATH` | personal access token (Jira > your avatar > Profile > Personal Access Tokens) | `read-jira` |
+| `CONFLUENCE_BASE_URL` | `https://confluence.your-company.com` | `read-confluence` |
+| `CONFLUENCE_PATH` | personal access token (Confluence > your avatar > Settings > Personal Access Tokens) | `read-confluence` |
 
 Set them in **one** of these ways:
 
-1. **Project file (recommended):** copy `.env.example` to `.env.local` in the project root and fill in the tokens. `.env.local` is gitignored.
-2. **Shell:** `export JIRA_PATH="<token>"` (add it to `~/.zshrc` to keep it across terminals).
-3. **One run only:** `python3 scripts/read_jira.py DXDT-25243 --token <token>` (`--pat` for Confluence).
+1. **Project file (recommended):** `cp .env.example .env.local` in the project root and replace the placeholders. `.env.local` is gitignored.
+2. **Shell:** `export JIRA_BASE_URL="https://jira.your-company.com"` and `export JIRA_PATH="<token>"` (add them to `~/.zshrc` to keep them).
+3. **One run only:** `python3 scripts/read_jira.py https://jira.your-company.com/browse/PROJ-123 --token <token>` (`--pat` for Confluence).
 
-Without a token the scripts stop with these instructions, and the portal header shows **`JIRA_PATH not set`** (or `CONFLUENCE_PATH`) while a role on your team uses the skill. The tokens are only sent to your Jira/Confluence server, and the portal never displays them.
+Open **Integrations** (key icon in the portal header) to see what is set, get the exact lines to add, and **Test connection**. Without a setting the scripts stop with these instructions, and the header shows what is missing while a role on your team uses the skill. Tokens are only sent to the server you configure, and the portal never displays them.
 
 ---
 

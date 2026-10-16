@@ -4,12 +4,14 @@ import { KeyRound, X, Check, Copy, ExternalLink, Loader2, RefreshCw, AlertCircle
 interface IntegrationStatus {
   name: string;
   configured: boolean;
+  tokenSet: boolean;
   source: string | null;
   envVar: string;
+  baseVar: string;
   usedBy: string[];
-  server: string;
+  server: string | null;
   tokenPage: string | null;
-  steps: { envLine: string; copyEnv: string; shell: string; oneRun: string };
+  steps: { baseLine: string; envLine: string; copyEnv: string; shell: string; oneRun: string };
 }
 
 interface TestResult {
@@ -134,7 +136,7 @@ export const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({ isOpen, on
                     <div>
                       <h3 className="text-sm font-bold text-sand-900">{it.name}</h3>
                       <p className="text-[11px] text-sand-500">
-                        Reads <code className="font-mono">{it.envVar}</code>
+                        Reads <code className="font-mono">{it.baseVar}</code> and <code className="font-mono">{it.envVar}</code>
                         {it.server ? <> · server <code className="font-mono">{it.server}</code></> : null}
                         {' · '}
                         {it.usedBy.length ? <>used by {it.usedBy.map((a) => <code key={a} className="font-mono">{a} </code>)}</> : 'no role on this team uses it'}
@@ -145,14 +147,16 @@ export const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({ isOpen, on
                         it.configured ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'
                       }`}
                     >
-                      {it.configured ? `Token set (${it.source})` : 'Not set'}
+                      {it.configured
+                        ? `Ready (token from ${it.source})`
+                        : `Missing: ${[!it.server && it.baseVar, !it.tokenSet && it.envVar].filter(Boolean).join(', ')}`}
                     </span>
                   </div>
 
                   {!it.configured && (
                     <ol className="space-y-2.5 text-xs text-sand-700 list-decimal pl-4">
                       <li className="space-y-1.5">
-                        <span>Create a personal access token in {it.name}.</span>
+                        <span>Create a personal access token in {it.name}{it.tokenPage ? '.' : ' (avatar > profile/settings > Personal Access Tokens).'}</span>
                         {it.tokenPage && (
                           <a
                             href={it.tokenPage}
@@ -167,11 +171,13 @@ export const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({ isOpen, on
                       <li className="space-y-1.5">
                         <span>In the project root, copy <code className="font-mono">.env.example</code> to <code className="font-mono">.env.local</code> (it is gitignored):</span>
                         <CopyLine id={`${id}-copy`} text={it.steps.copyEnv} />
-                        <span className="block">Then set this line in <code className="font-mono">.env.local</code>:</span>
+                        <span className="block">Then set your server URL and token in <code className="font-mono">.env.local</code>:</span>
+                        <CopyLine id={`${id}-base`} text={it.steps.baseLine} />
                         <CopyLine id={`${id}-env`} text={it.steps.envLine} />
                       </li>
                       <li className="space-y-1.5">
-                        <span>Or set it in your shell (add it to <code className="font-mono">~/.zshrc</code> to keep it):</span>
+                        <span>Or set them in your shell (add them to <code className="font-mono">~/.zshrc</code> to keep them):</span>
+                        <CopyLine id={`${id}-shell-base`} text={`export ${it.steps.baseLine}`} />
                         <CopyLine id={`${id}-shell`} text={it.steps.shell} />
                       </li>
                       <li>
@@ -186,7 +192,7 @@ export const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({ isOpen, on
                       onClick={() => test(id)}
                       disabled={!it.configured || testing === id}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-50 cursor-pointer"
-                      title={it.configured ? `Sign in to ${it.name} once with the stored token` : `Set ${it.envVar} first`}
+                      title={it.configured ? `Sign in to ${it.name} once with the stored token` : `Set ${it.baseVar} and ${it.envVar} first`}
                     >
                       {testing === id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlugZap className="w-3.5 h-3.5" />}
                       Test connection
@@ -202,7 +208,7 @@ export const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({ isOpen, on
             })}
 
           <p className="text-[11px] text-sand-400">
-            The portal never stores or displays tokens. A connection test sends the token only to {integrations?.jira?.server || 'your Jira/Confluence server'}.
+            The portal never stores or displays tokens. A connection test sends the token only to the server URL you configured.
           </p>
         </div>
       </div>
