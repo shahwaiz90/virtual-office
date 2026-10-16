@@ -119,7 +119,7 @@ function newestSourceMtime(dir) {
       newest = Math.max(newest, stat.mtimeMs);
     }
   };
-  for (const rel of ['src', 'index.html', 'vite.config.ts']) walk(path.join(dir, rel));
+  for (const rel of ['src', 'index.html', 'vite.config.mts', 'tailwind.config.cjs']) walk(path.join(dir, rel));
   return newest;
 }
 

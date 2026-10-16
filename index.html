@@ -16,46 +16,6 @@
         if (theme === 'dark') document.documentElement.classList.add('dark');
       })();
     </script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      // Every palette resolves to a CSS variable from src/styles/tokens.css so themes swap values, not classes
-      (function () {
-        var palettes = ["sand", "brand", "clay", "olive", "slate", "gray", "zinc", "neutral", "stone", "indigo", "violet", "purple", "fuchsia", "pink", "rose", "red", "orange", "amber", "yellow", "lime", "green", "emerald", "teal", "cyan", "sky", "blue"];
-        var steps = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950'];
-        var colors = {};
-        palettes.forEach(function (p) {
-          colors[p] = {};
-          steps.forEach(function (s) {
-            colors[p][s] = 'rgb(var(--c-' + p + '-' + s + ') / <alpha-value>)';
-          });
-        });
-        var token = function (name) { return 'rgb(var(--' + name + ') / <alpha-value>)'; };
-        colors.surface = { DEFAULT: token('surface'), raised: token('surface-raised') };
-        colors.canvas = token('canvas');
-        colors.fg = { DEFAULT: token('fg'), muted: token('fg-muted'), subtle: token('fg-subtle') };
-        colors.line = { DEFAULT: token('line'), strong: token('line-strong') };
-        colors.accent = { DEFAULT: token('accent'), hover: token('accent-hover'), soft: token('accent-soft') };
-        colors.success = token('success');
-        colors.warning = token('warning');
-        colors.danger = token('danger');
-        colors.info = token('info');
-        colors.scrim = token('scrim');
-        tailwind.config = {
-          darkMode: 'class',
-          theme: {
-            extend: {
-              colors: colors,
-              fontFamily: {
-                sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-                mono: ['"JetBrains Mono"', 'monospace'],
-              },
-              boxShadow: { card: 'var(--shadow-card)', pop: 'var(--shadow-pop)' },
-              borderRadius: { token: 'var(--radius-md)' },
-            },
-          },
-        };
-      })();
-    </script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
       body {

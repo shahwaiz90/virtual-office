@@ -123,7 +123,7 @@ export const App: React.FC = () => {
     const connectWs = () => {
       // Compute WebSocket URL
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      // Same host as the page: in dev the Vite server proxies /ws to the portal (vite.config.ts)
+      // Same host as the page: in dev the Vite server proxies /ws to the portal (vite.config.mts)
       const host = window.location.host;
       const wsUrl = `${protocol}//${host}/ws`;
 
