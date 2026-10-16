@@ -240,149 +240,102 @@ function findSkillsDirectory(customRoot) {
   return path.join(root, '.agents/skills');
 }
 
-// Fallback default 4-role team template when no agents.json is present
-const DEFAULT_FALLBACK_AGENTS = [
-  {
-    id: 'project-manager',
-    name: 'Project Manager',
-    role: 'Delivery Lead & Sprint Orchestrator',
-    badge: 'PM',
-    description: 'Manages project intake, scopes requirements, coordinates workflows, and delivers final reports.',
-    skills: ['requirement-analysis', 'sprint-planning', 'pm-reporting'],
-    allowed_tools: ['view_file', 'invoke_subagent', 'send_message', 'read_url_content'],
-    prohibited_actions: ['No direct application code modifications'],
-    delegation_targets: ['tech-lead', 'user'],
-  },
-  {
-    id: 'tech-lead',
-    name: 'Technical Lead',
-    role: 'System Architect & Code Reviewer',
-    badge: 'LEAD',
-    description: 'Plans architecture boundaries, pre-maps impacted files, specifies unit tests, and conducts code reviews.',
-    skills: ['architecture', 'impact-analysis', 'code-review'],
-    allowed_tools: ['view_file', 'git_diff', 'invoke_subagent', 'send_message'],
-    prohibited_actions: ['No direct code writing (review and planning only)'],
-    delegation_targets: ['developer', 'tester'],
-  },
-  {
-    id: 'developer',
-    name: 'Developer',
-    role: 'Core Feature Engineer',
-    badge: 'DEV',
-    description: 'Sole code author: implements feature layers, writes unit tests, and documents implementation.',
-    skills: ['feature-implementation', 'unit-tests', 'refactoring'],
-    allowed_tools: ['write_to_file', 'replace_file_content', 'view_file', 'run_command'],
-    prohibited_actions: ['No altering architectural boundaries without lead approval'],
-    delegation_targets: ['tech-lead'],
-  },
-  {
-    id: 'tester',
-    name: 'Tester / QA',
-    role: 'Quality Assurance & Verification',
-    badge: 'QA',
-    description: 'Executes automated test suites, validates regressions, and generates verification reports.',
-    skills: ['test-automation', 'regression-testing'],
-    allowed_tools: ['run_command', 'git_diff'],
-    prohibited_actions: ['No modifying production code'],
-    delegation_targets: ['developer', 'project-manager'],
-  },
-];
-
 // Curated palette array for deterministic assignment to any arbitrary list of agents
-// Refined, humanized modern design tokens for up to 12+ unique roles
+// Warm earthy palette matching the portal's beige/teal identity, for up to 12+ unique roles.
+// Every themeColor keeps white badge text at WCAG AA contrast (>= 4.5:1).
 const CURATED_PALETTES = [
   {
-    themeColor: '#4f46e5', // Royal Indigo (Management / PM)
-    lightColor: '#eef2ff',
-    clothingColor: '#4338ca',
+    themeColor: '#b04e30', // Terracotta (Management / PM)
+    lightColor: '#f7edea',
+    clothingColor: '#8d3e26',
     accessory: 'clipboard',
     hairColor: '#3e2723',
     skinColor: '#f5d0b5',
   },
   {
-    themeColor: '#0f766e', // Deep Teal / Ocean (Tech Lead / Architect)
-    lightColor: '#f0fdfa',
-    clothingColor: '#115e59',
+    themeColor: '#0f766b', // Deep Teal (Tech Lead / Architect)
+    lightColor: '#e7f1f0',
+    clothingColor: '#0c5e56',
     accessory: 'glasses',
     hairColor: '#212121',
     skinColor: '#ebd2b4',
   },
   {
-    themeColor: '#7c3aed', // Modern Violet (Fullstack / Frontend)
-    lightColor: '#f5f3ff',
-    clothingColor: '#6d28d9',
+    themeColor: '#946a12', // Ochre (Fullstack / Frontend)
+    lightColor: '#f4f0e7',
+    clothingColor: '#76550e',
     accessory: 'headphones',
     hairColor: '#4e342e',
     skinColor: '#ffd7ba',
   },
   {
-    themeColor: '#e11d48', // Warm Coral / Rose (QA & Test Automation)
-    lightColor: '#fff1f2',
-    clothingColor: '#be123c',
+    themeColor: '#5f6b28', // Olive (QA & Test Automation)
+    lightColor: '#eff0ea',
+    clothingColor: '#4c5620',
     accessory: 'toolbelt',
     hairColor: '#e0a96d',
     skinColor: '#f8d5c2',
   },
   {
-    themeColor: '#0284c7', // Sky Blue (Backend / Core API Services)
-    lightColor: '#f0f9ff',
-    clothingColor: '#0369a1',
+    themeColor: '#2a7584', // Sea Teal (Backend / Core API Services)
+    lightColor: '#eaf1f3',
+    clothingColor: '#225e6a',
     accessory: 'tablet',
     hairColor: '#1c1917',
     skinColor: '#fed7aa',
   },
   {
-    themeColor: '#059669', // Emerald Green (Security & Compliance)
-    lightColor: '#ecfdf5',
-    clothingColor: '#047857',
+    themeColor: '#4a7344', // Moss (Security & Compliance)
+    lightColor: '#edf1ec',
+    clothingColor: '#3b5c36',
     accessory: 'badge',
     hairColor: '#451a03',
     skinColor: '#ffedd5',
   },
   {
-    themeColor: '#d97706', // Warm Amber (DevOps / CI/CD / Cloud Infra)
-    lightColor: '#fffbeb',
-    clothingColor: '#b45309',
+    themeColor: '#a5531a', // Burnt Orange (DevOps / CI/CD / Cloud Infra)
+    lightColor: '#f6eee8',
+    clothingColor: '#844215',
     accessory: 'server',
     hairColor: '#292524',
     skinColor: '#fed7aa',
   },
   {
-    themeColor: '#c026d3', // Fuchsia / Magenta (UI/UX & Product Design)
-    lightColor: '#fdf4ff',
-    clothingColor: '#a21caf',
+    themeColor: '#a94d62', // Clay Rose (UI/UX & Product Design)
+    lightColor: '#f6edef',
+    clothingColor: '#873e4e',
     accessory: 'palette',
     hairColor: '#3b0764',
     skinColor: '#fce7f3',
   },
   {
-    themeColor: '#0891b2', // Cyan (Mobile Engineering: iOS & Android)
-    lightColor: '#ecfeff',
-    clothingColor: '#0e7490',
+    themeColor: '#4b755a', // Sage (Mobile Engineering: iOS & Android)
+    lightColor: '#edf1ef',
+    clothingColor: '#3c5e48',
     accessory: 'phone',
     hairColor: '#18181b',
     skinColor: '#fef08a',
   },
   {
-    themeColor: '#dc2626', // Crimson (Release Manager & Operations)
-    lightColor: '#fef2f2',
-    clothingColor: '#b91c1c',
+    themeColor: '#9e3f2c', // Brick (Release Manager & Operations)
+    lightColor: '#f5ecea',
+    clothingColor: '#7e3223',
     accessory: 'radio',
     hairColor: '#262626',
     skinColor: '#fed7aa',
   },
   {
-    themeColor: '#ea580c', // Bright Orange (Data Engineer & AI / ML)
-    lightColor: '#fff7ed',
-    clothingColor: '#c2410c',
+    themeColor: '#79566a', // Aubergine (Data Engineer & AI / ML)
+    lightColor: '#f2eef0',
+    clothingColor: '#614555',
     accessory: 'chip',
     hairColor: '#1c1917',
     skinColor: '#fde047',
   },
   {
-    themeColor: '#16a34a', // Forest Green (Performance & SRE)
-    lightColor: '#f0fdf4',
-    clothingColor: '#15803d',
+    themeColor: '#2f6b4f', // Pine (Performance & SRE)
+    lightColor: '#eaf0ed',
+    clothingColor: '#26563f',
     accessory: 'gauge',
     hairColor: '#27272a',
     skinColor: '#fed7aa',
@@ -1046,146 +999,6 @@ function discoverAgents(customProjectDir, explicitConfigPath) {
   });
 }
 
-/**
- * Generates in-memory ghost agents for demo simulation when workspace has 0 configured agents.
- * Strictly in-memory with zero disk pollution.
- */
-function generateGhostAgents() {
-  const slots = generateOfficeSlots(4);
-  const ghostSpecs = [
-    {
-      id: 'tech-pm',
-      name: 'Scrum Master',
-      role: 'Scrum Master',
-      badgeText: 'PM',
-      badge: 'PM',
-      avatarUrl: '/assets/pm.png',
-      isPrimary: true,
-      is_primary: true,
-      description: 'Facilitates agile ceremony, user story intake, and Definition of Done verification.',
-      skills: [
-        { id: 'sprint-planning', name: 'Sprint Planning', description: 'Sprint backlog ingestion & DoD verification' },
-        { id: 'backlog-grooming', name: 'Backlog Grooming', description: 'Scrum facilitation and agile delivery' },
-      ],
-      skillIds: ['sprint-planning', 'backlog-grooming'],
-      allowedTools: ['read_file', 'write_to_file', 'run_command', 'git_diff'],
-    },
-    {
-      id: 'tech-lead',
-      name: 'Technical Lead',
-      role: 'Technical Lead',
-      badgeText: 'LEAD',
-      badge: 'LEAD',
-      avatarUrl: '/assets/techlead.png',
-      isPrimary: false,
-      is_primary: false,
-      description: 'Technical lead responsible for architecture boundaries, interface contracts, and code reviews.',
-      skills: [
-        { id: 'architecture-review', name: 'Architecture Review', description: 'System boundaries & API specifications' },
-        { id: 'contract-boundaries', name: 'Contract Boundaries', description: 'System boundary architecture spike' },
-      ],
-      skillIds: ['architecture-review', 'contract-boundaries'],
-      allowedTools: ['read_file', 'write_to_file', 'run_command', 'git_diff', 'invoke_subagent'],
-    },
-    {
-      id: 'core-dev',
-      name: 'Feature Developer',
-      role: 'Feature Developer',
-      badgeText: 'DEV',
-      badge: 'DEV',
-      avatarUrl: '/assets/developer.png',
-      isPrimary: false,
-      is_primary: false,
-      description: 'Core software engineer responsible for feature implementation and test-driven development.',
-      skills: [
-        { id: 'feature-implementation', name: 'Feature Implementation', description: 'TDD feature implementation' },
-        { id: 'unit-testing', name: 'Unit Testing', description: 'Local unit and integration test coverage' },
-      ],
-      skillIds: ['feature-implementation', 'unit-testing'],
-      allowedTools: ['read_file', 'write_to_file', 'run_command', 'git_diff'],
-    },
-    {
-      id: 'mobile-qa',
-      name: 'QA Tester',
-      role: 'QA Tester',
-      badgeText: 'QA',
-      badge: 'QA',
-      avatarUrl: '/assets/qa.png',
-      isPrimary: false,
-      is_primary: false,
-      description: 'QA engineer responsible for automated testing, regression suites, and acceptance verification.',
-      skills: [
-        { id: 'test-automation', name: 'Test Automation', description: 'Automated test suite execution' },
-        { id: 'regression-testing', name: 'Regression Testing', description: 'Regression verification & DoD certification' },
-      ],
-      skillIds: ['test-automation', 'regression-testing'],
-      allowedTools: ['read_file', 'run_command', 'git_diff'],
-    },
-  ];
-
-  return ghostSpecs.map((spec, index) => {
-    const slot = slots[index] || slots[0];
-    const palette = CURATED_PALETTES[index % CURATED_PALETTES.length];
-    const theme = {
-      themeColor: palette.themeColor,
-      lightColor: palette.lightColor,
-      badge: spec.badge,
-      hairColor: palette.hairColor,
-      skinColor: palette.skinColor,
-      clothingColor: palette.clothingColor,
-      accessory: palette.accessory,
-      station: `${spec.id}-station`,
-      stationName: `${spec.name} Station`,
-      deskPosition: { ...slot.deskPosition },
-      roomBounds: { ...slot.roomBounds },
-      avatarUrl: spec.avatarUrl,
-      facing: slot.facing,
-      isPrimary: spec.isPrimary,
-    };
-
-    return {
-      id: spec.id,
-      name: spec.name,
-      role: spec.role,
-      origin: 'in-memory-ghost',
-      aliases: [],
-      badgeText: spec.badgeText,
-      badge: spec.badge,
-      activeRoleBadge: `🎭 **Active Role**: **${spec.name}** (\`${spec.id}\`)`,
-      description: spec.description,
-      skills: spec.skills,
-      skillIds: spec.skillIds,
-      allowedTools: spec.allowedTools,
-      enable_subagent_tools: spec.id === 'tech-lead',
-      enable_write_tools: true,
-      enable_mcp_tools: false,
-      prohibitedActions: [],
-      delegationTargets: [],
-      delegation_targets: [],
-      isPrimary: spec.isPrimary,
-      is_primary: spec.is_primary,
-      isSubagent: !spec.isPrimary,
-      is_subagent: !spec.isPrimary,
-      theme,
-      avatarUrl: spec.avatarUrl,
-      status: 'available',
-      currentTask: null,
-      currentFile: null,
-      lastTool: null,
-      delegatedBy: null,
-      parentAgent: spec.isPrimary ? null : 'tech-pm',
-      currentPosition: { ...theme.deskPosition },
-      targetPosition: { ...theme.deskPosition },
-      activityMessage: 'Ready at workstation',
-      taskStartedAt: null,
-      taskCompletedAt: null,
-      taskDurationSec: null,
-      totalWorkTimeSec: 0,
-      updatedAt: new Date().toISOString(),
-    };
-  });
-}
-
 module.exports = {
   discoverAgents,
   discoverAgentsFromFolders,
@@ -1197,8 +1010,6 @@ module.exports = {
   getProjectRoot,
   setProjectRoot,
   PROJECT_ROOT,
-  DEFAULT_FALLBACK_AGENTS,
   generateOfficeSlots,
   CURATED_PALETTES,
-  generateGhostAgents,
 };

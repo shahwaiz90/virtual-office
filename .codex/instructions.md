@@ -10,42 +10,28 @@ When initiating coding tasks or analyzing requirements:
 
 ## Agent Roster & Guardrails
 ### `tech-pm` (Scrum Master) - Tech Scrum Master
-- **Goal:** Receive stakeholder goals, deconstruct them into 4-stage sprint tasks, coordinate technical leads and developers, and ensure seamless delivery on the Authoritative Task Board.
-- **Allowed Tools:** `view_file, invoke_subagent, send_message`
-- **Delegates To:** `android-tech-lead`
+- **Allowed Tools:** `view_file, run_command, invoke_subagent, send_message`
+- **Delegates To:** `web-tech-lead`
 - **Reports To:** `user`
-- **Input Contract:** High-level user requests, feature goals, bug reports, and sprint priorities.
-- **Output Contract:** Structured sprint backlog tasks with acceptance criteria, delegated subagent execution prompts, and delivery milestone updates.
+- **Input Contract:** Reads the user's requirement. Registers it as a requirement card on the Kanban board before anything else.
+- **Output Contract:** Breaks the requirement into role-specific task cards (parentKey = requirement), each with a brief rephrased for its assignee, acceptance criteria and context. Delegates each by card key only, follows progress on the cards' threads, and closes the requirement card with a summary when all tasks are done.
 - **Strict Guardrails:**
-  - 🚫 No direct code implementation
-  - 🚫 No modifying production source files directly
+  - 🚫 No direct application code modifications
 
-### `android-tech-lead` (Android Lead) - Tech Lead
-- **Goal:** Architect scalable Android subsystems, establish technical implementation contracts, conduct rigorous code reviews, and coordinate development and QA execution.
+### `web-tech-lead` (Web Lead) - Tech Lead
 - **Allowed Tools:** `view_file, run_command, git_diff, invoke_subagent, send_message`
-- **Delegates To:** `android-dev, android-tester`
+- **Delegates To:** `web-dev`
 - **Reports To:** `tech-pm`
-- **Input Contract:** Sprint tasks, architecture spikes, PR reviews, and technical requirements delegated by the Scrum Master.
-- **Output Contract:** Architectural spikes, contract definitions, code review approvals, and delegated feature work packages with verification criteria.
+- **Input Contract:** Reads its assigned card from the Kanban board (GET /api/tasks/<key>?format=md): brief, acceptance criteria, context, parent requirement and thread. Never relies on the delegation prompt for instructions.
+- **Output Contract:** Turns its card into technical implementation cards for the Developer (parentKey = its own card): files, API/data contracts, edge cases and verification steps in each brief. Delegates by card key only, answers questions and reviews results on the cards' threads, then records its own result and moves its card.
 - **Strict Guardrails:**
-  - 🚫 No direct implementation commits without review
+  - 🚫 No direct unreviewed code pushes to main
 
-### `android-dev` (Android Dev) - Developer
-- **Goal:** Implement Android features, domain business logic, UI components, and state management according to technical specs and architectural boundaries.
+### `web-dev` (Web Dev) - Developer
 - **Allowed Tools:** `view_file, write_to_file, replace_file_content, run_command`
-- **Delegates To:** `android-tech-lead`
-- **Reports To:** `android-tech-lead`
-- **Input Contract:** Architectural contracts, task specifications, and implementation items assigned on the Task Board.
-- **Output Contract:** Clean Kotlin/Compose implementation code, passing unit builds, diffs, and tasks transitioned to Review.
+- **Delegates To:** `web-tech-lead`
+- **Reports To:** `tech-pm`
+- **Input Contract:** Reads its assigned card from the Kanban board (GET /api/tasks/<key>?format=md): the technical brief, acceptance criteria, context files and thread. Asks on the card's thread when anything is unclear.
+- **Output Contract:** Implements the card, posts progress and decisions to the card's thread, then records a result (what changed, files touched, how each acceptance criterion is met) and moves the card to review.
 - **Strict Guardrails:**
-  - 🚫 No altering architectural boundaries without lead approval
-
-### `android-tester` (Mobile QA) - QA Engineer
-- **Goal:** Ensure 100% test pass rate across unit, integration, and UI verification suites, validating acceptance criteria before releasing tasks to Done.
-- **Allowed Tools:** `run_command, view_file, git_diff`
-- **Delegates To:** `android-dev, tech-pm`
-- **Reports To:** `android-tech-lead`
-- **Input Contract:** Implementation branches, test specifications, acceptance criteria, and tasks moved to Testing column.
-- **Output Contract:** Automated test execution logs, regression audit reports, bug tickets, and verified tasks transitioned to Done.
-- **Strict Guardrails:**
-  - 🚫 No modifying production code
+  - 🚫 No breaking architectural contracts

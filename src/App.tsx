@@ -7,10 +7,11 @@ import { LiveLogs } from './components/LiveLogs';
 import { AgentDrawer } from './components/AgentDrawer';
 import { ToolAnalyticsSection } from './components/ToolAnalyticsSection';
 import { WorkflowRecorder } from './components/WorkflowRecorder';
-import { SiriVoiceAssistant } from './components/SiriVoiceAssistant';
+// import { SiriVoiceAssistant } from './components/SiriVoiceAssistant';
 import { SettingsModal } from './components/SettingsModal';
 import { ChangeDirectoryModal } from './components/ChangeDirectoryModal';
 import { TeamOnboardingModal } from './components/TeamOnboardingModal';
+import { RoleDeliverablesHub } from './components/RoleDeliverablesHub';
 import { voiceService } from './services/voiceService';
 import { Sparkles, Users } from 'lucide-react';
 
@@ -18,9 +19,9 @@ export const App: React.FC = () => {
   const [state, setState] = useState<OfficeState | null>(null);
   const [events, setEvents] = useState<NormalizedEvent[]>([]);
   const [connected, setConnected] = useState<boolean>(false);
-  const [isDemo, setIsDemo] = useState<boolean>(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
+  const [viewMode, setViewMode] = useState<'floor' | 'terminal_grid'>('floor');
   const [isVoiceOpen, setIsVoiceOpen] = useState<boolean>(false);
   const [voiceListenTrigger, setVoiceListenTrigger] = useState<number>(0);
 
@@ -38,14 +39,14 @@ export const App: React.FC = () => {
   const [projectName, setProjectName] = useState<string>('');
   const [projectPort, setProjectPort] = useState<string>('');
 
-  // Distinct Browser Tab Titles: Virtual Office — [projectName] (:port)
+  // Distinct Browser Tab Titles: Agent Command Center — [projectName] (:port)
   useEffect(() => {
     const rawPort = projectPort || window.location.port || (window.location.protocol === 'https:' ? '443' : '3000');
     const nameStr =
       projectName ||
       (projectPath ? projectPath.split(/[/\\]/).filter(Boolean).pop() : '') ||
-      'Virtual Office';
-    document.title = `Virtual Office — [${nameStr}] (:${rawPort})`;
+      'Agent Command Center';
+    document.title = `Agent Command Center — [${nameStr}] (:${rawPort})`;
   }, [projectName, projectPath, projectPort]);
 
   const handleOpenTeamStudio = (agentId?: string | null) => {
@@ -154,34 +155,24 @@ export const App: React.FC = () => {
         try {
           const parsed = JSON.parse(eventMsg.data);
           if (parsed.type === 'SYNC_STATE') {
-            setState(parsed.data);
-            if (typeof parsed.data?.hasCustomAgentsConfig === 'boolean') {
-              setHasCustomAgentsConfig(parsed.data.hasCustomAgentsConfig);
-            } else if (Array.isArray(parsed.data?.agents)) {
-              setHasCustomAgentsConfig(parsed.data.agents.length > 0);
-            }
-            if (typeof parsed.data?.isDemoRunning === 'boolean') {
-              setIsDemo(parsed.data.isDemoRunning);
-              if (!parsed.data.isDemoRunning) {
-                voiceService.stop();
+            const syncData = parsed.data || parsed.state;
+            if (syncData) {
+              setState(syncData);
+              if (typeof syncData.hasCustomAgentsConfig === 'boolean') {
+                setHasCustomAgentsConfig(syncData.hasCustomAgentsConfig);
+              } else if (Array.isArray(syncData.agents)) {
+                setHasCustomAgentsConfig(syncData.agents.length > 0);
+              }
+              if (syncData.workflow?.projectPath) {
+                setProjectPath(syncData.workflow.projectPath);
+              }
+              if (syncData.workflow?.projectName) {
+                setProjectName(syncData.workflow.projectName);
+              }
+              if (Array.isArray(syncData.events)) {
+                setEvents(syncData.events);
               }
             }
-            if (parsed.data?.workflow?.projectPath) {
-              setProjectPath(parsed.data.workflow.projectPath);
-            }
-            if (parsed.data?.workflow?.projectName) {
-              setProjectName(parsed.data.workflow.projectName);
-            }
-            if (Array.isArray(parsed.data?.events)) {
-              setEvents(parsed.data.events);
-            }
-          } else if (parsed.type === 'DEMO_STATE') {
-            const running = Boolean(parsed.isDemo);
-            setIsDemo(running);
-            if (!running) {
-              voiceService.stop();
-            }
-            if (parsed.state) setState(parsed.state);
           } else if (parsed.type === 'STATE_UPDATE') {
             setState(parsed.state);
             if (typeof parsed.state?.hasCustomAgentsConfig === 'boolean') {
@@ -189,22 +180,22 @@ export const App: React.FC = () => {
             } else if (Array.isArray(parsed.state?.agents)) {
               setHasCustomAgentsConfig(parsed.state.agents.length > 0);
             }
-            if (typeof parsed.state?.isDemoRunning === 'boolean') {
-              setIsDemo(parsed.state.isDemoRunning);
-              if (!parsed.state.isDemoRunning) {
-                voiceService.stop();
-              }
-            }
             if (parsed.state?.workflow?.projectPath) {
               setProjectPath(parsed.state.workflow.projectPath);
             }
             if (parsed.state?.workflow?.projectName) {
               setProjectName(parsed.state.workflow.projectName);
             }
-            // Announce active handoff if present in state update
+            if (Array.isArray(parsed.state?.events)) {
+              setEvents(parsed.state.events);
+            } else if (Array.isArray(parsed.data?.events)) {
+              setEvents(parsed.data.events);
+            }
+            // Announce active handoff if present in state update (voice commented out for now)
             if (parsed.state?.activeHandoff && parsed.state.activeHandoff.id !== lastHandoffAnnouncedRef.current) {
               const ho = parsed.state.activeHandoff;
               lastHandoffAnnouncedRef.current = ho.id;
+              /*
               voiceService.speakHandoff(
                 ho.fromName || 'Agent',
                 ho.fromRole || 'Lead',
@@ -214,21 +205,17 @@ export const App: React.FC = () => {
                 ho.fromBadge,
                 ho.toBadge
               );
+              */
             }
           } else if (parsed.type === 'EVENT') {
             if (parsed.state) {
               setState(parsed.state);
-              if (typeof parsed.state.isDemoRunning === 'boolean') {
-                setIsDemo(parsed.state.isDemoRunning);
-                if (!parsed.state.isDemoRunning) {
-                  voiceService.stop();
-                }
-              }
             }
             if (parsed.data) {
               setEvents((prev) => [parsed.data, ...prev.slice(0, 500)]);
 
-              // Spoken Agent Handoff: audibly announce task delegation between agents with short badges
+              // Spoken Agent Handoff: audibly announce task delegation between agents (commented out for now)
+              /*
               if (parsed.data.type === 'agent_handoff' || parsed.data.payload?.handoffTo) {
                 const payload = parsed.data.payload || {};
                 const handoffId = payload.taskId || parsed.data.eventId || `${payload.handoffFrom}_${payload.handoffTo}`;
@@ -258,6 +245,7 @@ export const App: React.FC = () => {
                   voiceService.speakHandoff(fromName, fromRole, toName, toRole, taskTitle, fromBadge, toBadge);
                 }
               }
+              */
             }
           }
         } catch (e) {
@@ -288,33 +276,12 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Ensure dark mode class and storage are cleared
+  // Clear the retired dark-mode flag; the theme now lives in services/theme.ts ('vo-theme')
   useEffect(() => {
-    document.documentElement.classList.remove('dark');
     try {
       localStorage.removeItem('virtual_office_dark_mode');
     } catch (e) {}
   }, []);
-
-  const handleToggleDemo = async () => {
-    try {
-      const willStop = isDemo;
-      if (willStop) {
-        voiceService.stop();
-      }
-      const endpoint = willStop ? '/api/demo/stop' : '/api/demo/start';
-      setIsDemo(!willStop);
-      const res = await fetch(endpoint, { method: 'POST' });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.state) {
-          setState(json.state);
-        }
-      }
-    } catch (e) {
-      console.error('Error toggling demo mode:', e);
-    }
-  };
 
   const handleClearState = async () => {
     try {
@@ -328,7 +295,6 @@ export const App: React.FC = () => {
         const json = await res.json();
         if (json.state) setState(json.state);
       }
-      setIsDemo(false);
       setEvents([]);
     } catch (e) {
       console.error('Error clearing state:', e);
@@ -343,19 +309,23 @@ export const App: React.FC = () => {
   const toolStats = hasAgents ? (state?.toolUsageAnalytics || []) : [];
   const skillStats = hasAgents ? (state?.skillUsageAnalytics || []) : [];
   const roleStats = hasAgents ? (state?.roleInvocationAnalytics || []) : [];
+  const tokenStats = hasAgents ? (state?.tokenUsageAnalytics || []) : [];
   const fileChanges = hasAgents ? (state?.fileChanges || []) : [];
   const communications = hasAgents ? (state?.communications || []) : [];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans">
+    <div className="min-h-screen bg-sand-50 text-sand-800 flex flex-col font-sans">
       {/* Top Header & Live Metrics */}
       <Header
         state={state}
         connected={connected}
-        isDemo={isDemo}
-        onToggleDemo={handleToggleDemo}
         onClearState={handleClearState}
-        recorderSlot={<WorkflowRecorder canvasElement={canvasElement} />}
+        recorderSlot={
+          <WorkflowRecorder
+            canvasElement={canvasElement}
+            isTerminalGrid={viewMode === 'terminal_grid'}
+          />
+        }
         onOpenVoice={handleOpenVoice}
         onOpenSettings={() => setIsSettingsOpen(true)}
         projectPath={projectPath}
@@ -376,19 +346,31 @@ export const App: React.FC = () => {
             onEditAgent={(agent) => handleOpenTeamStudio(agent.id)}
             onEditTeam={() => handleOpenTeamStudio()}
             isLoading={state === null}
+            events={eventsToDisplay}
+            onViewModeChange={setViewMode}
           />
         </section>
 
         {/* Authoritative Kanban Task Board with Assigned Roles */}
         <section>
-          <KanbanBoard tasks={tasks} agents={agents} />
+          <KanbanBoard
+            tasks={tasks}
+            agents={agents}
+            activeSprintId={state?.activeSprintId}
+            activeSprintPath={state?.activeSprintPath}
+            sprints={state?.sprints}
+          />
         </section>
+
+        {/* Role Deliverables & Artifacts Hub */}
+        <RoleDeliverablesHub deliverables={state?.deliverables || []} />
 
         {/* Comprehensive Analytics Section: Tools, Skills, Roles, File Changes, and Agent Comms */}
         <ToolAnalyticsSection
           toolStats={toolStats}
           skillStats={skillStats}
           roleStats={roleStats}
+          tokenStats={tokenStats}
           fileChanges={fileChanges}
           communications={communications}
           agents={agents}
@@ -400,19 +382,20 @@ export const App: React.FC = () => {
         </section>
       </main>
 
-      {/* Floating Siri Quick-Orb Trigger (Bottom-Right) */}
+      {/* Floating Siri Quick-Orb Trigger (Bottom-Right) - Temporarily commented out
       {!isVoiceOpen && (
         <button
           onClick={handleOpenVoice}
           title="Open AI Office Assistant (Voice / Text)"
-          className="fixed bottom-5 right-5 z-40 group flex items-center gap-2.5 px-3.5 py-2.5 rounded-full bg-white/90 text-slate-800 border border-slate-200/90 shadow-xl backdrop-blur-xl hover:shadow-2xl active:scale-95 transition-all cursor-pointer"
+          className="fixed bottom-5 right-5 z-40 group flex items-center gap-2.5 px-3.5 py-2.5 rounded-full bg-surface/90 text-sand-800 border border-sand-200/90 shadow-xl backdrop-blur-xl hover:shadow-2xl active:scale-95 transition-all cursor-pointer"
         >
           <div className="relative w-7 h-7 rounded-full bg-gradient-to-tr from-pink-500 via-purple-600 to-cyan-400 flex items-center justify-center shadow-md">
-            <div className="w-2 h-2 rounded-full bg-white/90 animate-ping" />
+            <div className="w-2 h-2 rounded-full bg-surface/90 animate-ping" />
           </div>
           <span className="text-xs font-semibold pr-1">Assistant</span>
         </button>
       )}
+      */}
 
       {/* Slide-in Agent Details Drawer */}
       <AgentDrawer
@@ -425,17 +408,16 @@ export const App: React.FC = () => {
         onEditAgent={(ag) => handleOpenTeamStudio(ag.id)}
       />
 
-      {/* Apple Siri Non-Blocking Voice Assistant */}
+      {/* Apple Siri Non-Blocking Voice Assistant - Temporarily commented out
       <SiriVoiceAssistant
         isOpen={isVoiceOpen}
         onClose={() => setIsVoiceOpen(false)}
         state={state}
-        isDemo={isDemo}
-        onToggleDemo={handleToggleDemo}
         onClearState={handleClearState}
         onSelectAgent={(agent) => setSelectedAgent(agent)}
         listenTrigger={voiceListenTrigger}
       />
+      */}
 
       {/* Preferences & Voice Settings Modal */}
       <SettingsModal
@@ -469,6 +451,22 @@ export const App: React.FC = () => {
         initialAgentId={editingAgentId}
         onSaved={() => {
           checkAgentConfig();
+          fetch('/api/state')
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.success && d.state) {
+                setState(d.state);
+              }
+            })
+            .catch(() => {});
+          fetch('/api/events')
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.success && Array.isArray(d.events)) {
+                setEvents(d.events);
+              }
+            })
+            .catch(() => {});
         }}
       />
     </div>

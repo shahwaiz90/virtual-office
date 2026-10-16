@@ -4,7 +4,10 @@ const os = require('os');
 const cp = require('child_process');
 const chokidar = require('chokidar');
 const { eventBus } = require('./eventBus');
-const { getProjectRoot } = require('./agentDiscovery');
+const { getProjectRoot, discoverAgents } = require('./agentDiscovery');
+const { autoDiscoverAndRegisterAgents } = require('./agentRuntimeRegistry');
+const { listClaudeTranscripts, toTranscriptSteps, usageFromEntry } = require('./claudeTranscripts');
+const { appendThreadEntry, effectiveColumn, rosterHasTester } = require('./taskBoard');
 
 /**
  * Validates whether a file path or directory strictly belongs to the currently active project root
@@ -24,6 +27,33 @@ function isPathInProject(targetPath) {
   } catch {
     return false;
   }
+}
+
+/**
+ * Normalizes an absolute or foreign file path to a clean path relative to project root
+ */
+function toRelativePath(filePath) {
+  if (!filePath || typeof filePath !== 'string') return '';
+  const root = getProjectRoot();
+  try {
+    const abs = path.resolve(filePath);
+    if (root) {
+      const rel = path.relative(root, abs).replace(/\\/g, '/');
+      if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+        return rel;
+      }
+    }
+  } catch {}
+  let clean = filePath.replace(/^file:\/\/\/?/, '').replace(/^[a-zA-Z]:[/\\]/, '').replace(/^\/+/, '');
+  const projMatch = clean.match(/(?:Virtual Office|virtual-office)[/\\]+(.+)$/i);
+  if (projMatch && projMatch[1]) {
+    return projMatch[1].replace(/\\/g, '/');
+  }
+  const knownPrefix = clean.match(/(?:^|[/\\])(src|server|tests|test|components|services|types|utils|\.agents|\.codex|\.claude|dist)[/\\](.+)$/i);
+  if (knownPrefix) {
+    return `${knownPrefix[1]}/${knownPrefix[2]}`.replace(/\\/g, '/');
+  }
+  return path.basename(clean);
 }
 
 const conversationProjectMatch = new Map();
@@ -235,6 +265,39 @@ function getAgentSkillTitle(agent, keywords = [], fallback = '') {
 }
 
 /**
+ * Normalizes a task key without rewriting it (trim + strip markdown). Keys are owned by the agent.
+ */
+function sanitizeTaskKey(key) {
+  if (!key) return '';
+  return String(key).trim().replace(/^[*`#\s]+|[*`#\s]+$/g, '');
+}
+
+/**
+ * Light cleanup of an agent-written title: strips markdown decoration and whitespace only.
+ * The agent's wording is preserved exactly (no keyword substitution, no canned titles).
+ */
+function sanitizeTaskTitle(title) {
+  if (!title) return '';
+  return String(title)
+    .replace(/\r?\n/g, ' ')
+    .replace(/^[\s*`#>]+|[\s*`#]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Derives a title when the agent did not provide one: uses the agent's own first sentence
+ * (of the title or description), capped in length. Never forces Plan/Build/Review/Test prefixes.
+ */
+function formatConciseTaskTitle(rawTitle, description = '', roleOrStage = '') {
+  const source = sanitizeTaskTitle(rawTitle) || sanitizeTaskTitle(String(description || '').split(/\n|(?<=[.!?])\s/)[0]);
+  if (!source) return '';
+  const { OrchestrationRules } = require('./orchestrationRules');
+  return OrchestrationRules.distillShortTopic(source);
+}
+
+
+/**
  * Dynamically resolves an upstream agent from agents.json that delegates to targetAgent
  */
 function findDelegatorAgent(targetAgent, preferredDelegator, fallbackAgent) {
@@ -335,138 +398,561 @@ function formatDeliverableTitle(skillTitle, defaultAction) {
   return `${skillTitle} ${filtered.join(' ')}`.replace(/\s+&\s*$/, '').trim();
 }
 
-/**
- * Ensures clean, self-descriptive role-delegated deliverables exist on the Authoritative Task Board,
- * dynamically built from the project's actual agents.json configuration.
- */
-function ensureRoleDeliverables(featureTitle = '') {
-  const agentList = Array.from(eventBus.agents.values());
-  if (agentList.length === 0) return;
+/** True when the board has any card (every card on it comes from a real agent or the user). */
+function hasRealAgentTasks(tasksMap) {
+  return Boolean(tasksMap && tasksMap.size > 0);
+}
 
+/**
+ * Extracts structured engineering tasks from markdown tables and bullet lists
+ */
+function parseRealTasksFromContent(content, source = '') {
+  const tasks = [];
+  if (!content || typeof content !== 'string') return tasks;
+
+  // 1. Markdown table: | Task Key | Stage | Task Title | Assignee | Status | or | Task Key | Title | Assignee | Status |
+  const lines = content.split('\n');
+  let inTable = false;
+  let colIndices = null;
+  for (const line of lines) {
+    if (
+      line.includes('| Task ID |') ||
+      line.includes('|Task ID|') ||
+      line.includes('| task id |') ||
+      line.includes('| Task Key |') ||
+      line.includes('|Task Key|')
+    ) {
+      inTable = true;
+      const headers = line.split('|').map((s) => s.trim().toLowerCase()).filter(Boolean);
+      colIndices = {
+        key: headers.findIndex((h) => h.includes('id') || h.includes('key')),
+        stage: headers.findIndex((h) => h.includes('stage') || h.includes('phase')),
+        title: headers.findIndex((h) => h.includes('title') || (h.includes('task') && !h.includes('id') && !h.includes('key'))),
+        assignee: headers.findIndex((h) => h.includes('assign') || h.includes('owner') || h.includes('agent')),
+        status: headers.findIndex((h) => h.includes('status') || h.includes('state') || h.includes('column')),
+      };
+      continue;
+    }
+    if (inTable) {
+      if (!line.trim().startsWith('|') || line.includes('---')) {
+        if (!line.includes('---') && !line.trim().startsWith('|')) {
+          inTable = false;
+          colIndices = null;
+        }
+        continue;
+      }
+      const parts = line.split('|').map((s) => s.trim().replace(/^[*`]+|[*`]+$/g, '')).filter(Boolean);
+      if (parts.length >= 2) {
+        let rawKey = parts[0];
+        let stage = '';
+        let title = '';
+        let assignedTo = '';
+        let statusRaw = 'Queued';
+
+        if (colIndices && colIndices.key !== -1 && colIndices.title !== -1) {
+          rawKey = parts[colIndices.key] || parts[0];
+          title = colIndices.title !== -1 ? (parts[colIndices.title] || '') : '';
+          assignedTo = colIndices.assignee !== -1 ? (parts[colIndices.assignee] || '') : '';
+          stage = colIndices.stage !== -1 ? (parts[colIndices.stage] || '') : '';
+          statusRaw = colIndices.status !== -1 ? (parts[colIndices.status] || 'Queued') : 'Queued';
+        } else if (parts.length >= 5) {
+          stage = parts[1];
+          title = parts[2];
+          assignedTo = parts[3];
+          statusRaw = parts[4] || 'Queued';
+        } else {
+          title = parts[1];
+          assignedTo = parts[2];
+          statusRaw = parts[3] || 'Queued';
+        }
+
+        if (/^[A-Z0-9_-]+$/i.test(rawKey) && title && !rawKey.toLowerCase().includes('task')) {
+          const cleanKey = sanitizeTaskKey(rawKey);
+          const cleanTitle = title ? sanitizeTaskTitle(String(title).trim().replace(/^[*`#]+|[*`#]+$/g, '')) : formatConciseTaskTitle(title, stage, assignedTo);
+          tasks.push({
+            key: cleanKey,
+            id: `TASK-${cleanKey}`,
+            title: cleanTitle,
+            description: stage ? `${stage}: ${title}` : title,
+            assignedTo,
+            statusRaw,
+            source,
+          });
+        }
+      }
+    }
+  }
+
+  // 2. Markdown bullet list: - **PLAN-305: Architecture & UX Contract** (`android-tech-lead`): Description
+  const bulletRegex =
+    /- \*\*([A-Z0-9_-]+):\s*([^(*]+)\*\*\s*\((?:`?([^)`]+)`?)\):?\s*([\s\S]*?)(?=(?:\n- \*\*|\n###|\n##|$))/gi;
+  let match;
+  while ((match = bulletRegex.exec(content)) !== null) {
+    const rawKey = match[1].trim();
+    const cleanKey = sanitizeTaskKey(rawKey);
+    const title = match[2].trim();
+    const cleanTitle = title ? sanitizeTaskTitle(String(title).trim().replace(/^[*`#]+|[*`#]+$/g, '')) : formatConciseTaskTitle(title, desc, assignedTo);
+    const assignedTo = match[3].trim();
+    const desc = match[4].trim().replace(/^[\s\S]*?-\s*/, '').replace(/\n\s*-\s*/g, '; ');
+    if (!tasks.some((t) => t.key === cleanKey)) {
+      tasks.push({
+        key: cleanKey,
+        id: `TASK-${cleanKey}`,
+        title: cleanTitle,
+        description: desc || title,
+        assignedTo,
+        statusRaw: 'In Progress',
+        source,
+      });
+    }
+  }
+
+  // 3. Numbered or backticked sprint task bullets: e.g. 1. `PLAN-391`: **Title** (`web-tech-lead`) — Description
+  const inlineTaskRegex =
+    /(?:^|\n)\s*(?:[-*]|\d+\.)\s*(?:\*\*|`)+([A-Z]{2,8}-\d+)(?:\*\*|`)*\s*:\s*(?:\*\*)?([^(*\n]+?)(?:\*\*)?\s*(?:\((?:`?([^)`\n]+)`?)\))?(?:\s*[-:—]+\s*([^\n]+))?/gi;
+  let inlineMatch;
+  while ((inlineMatch = inlineTaskRegex.exec(content)) !== null) {
+    const rawKey = inlineMatch[1].trim();
+    const cleanKey = sanitizeTaskKey(rawKey);
+    const rawTitle = (inlineMatch[2] || '').trim().replace(/^[*`#]+|[*`#]+$/g, '');
+    const assignedTo = (inlineMatch[3] || '').trim();
+    const desc = (inlineMatch[4] || rawTitle).trim();
+    if (cleanKey && rawTitle && !tasks.some((t) => t.key === cleanKey)) {
+      tasks.push({
+        key: cleanKey,
+        id: `TASK-${cleanKey}`,
+        title: sanitizeTaskTitle(rawTitle),
+        description: sanitizeTaskTitle(desc),
+        assignedTo,
+        statusRaw: 'Assigned',
+        source,
+      });
+    }
+  }
+
+  return tasks;
+}
+
+let isPersistingSprintTasks = false;
+
+/**
+ * Persists all current real tasks in eventBus.tasks directly to the active sprint's tasks.json
+ */
+let pendingSprintPersist = false;
+
+function persistActiveSprintTasks(root) {
+  if (isPersistingSprintTasks) {
+    // Don't drop the update; write the latest state once the current write settles
+    pendingSprintPersist = true;
+    return;
+  }
+  isPersistingSprintTasks = true;
+  try {
+    const projectRoot = root || getProjectRoot();
+    const sprintInfo = getActiveSprintInfo(projectRoot);
+    const sprintDir = path.join(projectRoot, sprintInfo.path);
+    if (!fs.existsSync(sprintDir)) {
+      fs.mkdirSync(sprintDir, { recursive: true });
+    }
+    const sprintTasksJsonPath = path.join(sprintDir, 'tasks.json');
+    const tasksList = Array.from(eventBus.tasks.values());
+    const payload = {
+      sprintId: sprintInfo.id || sprintInfo.activeSprintId || 'sprint-1',
+      version: '1.0.0',
+      updatedAt: new Date().toISOString(),
+      tasks: tasksList,
+    };
+    fs.writeFileSync(sprintTasksJsonPath, JSON.stringify(payload, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[Watchers] Failed to persist active sprint tasks:', e.message);
+  } finally {
+    setTimeout(() => {
+      isPersistingSprintTasks = false;
+      if (pendingSprintPersist) {
+        pendingSprintPersist = false;
+        persistActiveSprintTasks(root);
+      }
+    }, 350);
+  }
+}
+
+const isText = (v) => typeof v === 'string' && v.trim() !== '';
+const isList = (v) => Array.isArray(v);
+const isContext = (v) => isText(v) || (v && typeof v === 'object');
+
+/**
+ * Card fields written by the delegating agent. A re-registration may update them; anything it
+ * leaves out keeps its previous value. The thread is append-only (see taskBoard.appendThreadEntry).
+ */
+function carriedTaskFields(taskData, existing) {
+  const fields = [
+    ['type', isText],
+    ['parentKey', isText],
+    ['brief', isText],
+    ['acceptanceCriteria', isList],
+    ['dependsOn', isList],
+    ['context', isContext],
+    ['result', isText],
+    ['logs', isList],
+    ['sourceConversation', isText],
+  ];
+  const out = {};
+  for (const [name, valid] of fields) {
+    if (valid(taskData[name])) out[name] = name === 'parentKey' ? sanitizeTaskKey(taskData[name]) : taskData[name];
+    else if (existing && existing[name] !== undefined) out[name] = existing[name];
+  }
+  out.thread = existing && Array.isArray(existing.thread) ? existing.thread : isList(taskData.thread) ? taskData.thread : [];
+  return out;
+}
+
+/**
+ * Registers a genuine agent-delegated task into eventBus.tasks
+ */
+function registerRealAgentTask(taskData, options = {}) {
+  const agentList = Array.from(eventBus.agents.values());
   const pmAgent = getResolvedAgent('pm', 0);
   const leadAgent = getResolvedAgent('lead', 1);
   const devAgent = getResolvedAgent('dev', 2);
   const testerAgent = getResolvedAgent('test', 3);
 
-  const cleanFeature = featureTitle ? ` (${featureTitle.slice(0, 30)})` : '';
+  // Resolve assigned agent
+  const assignRaw = (taskData.assignedTo || '').toLowerCase().trim();
+  let assigned = assignRaw && agentList.find(
+    (a) =>
+      a.id.toLowerCase() === assignRaw ||
+      (a.name && a.name.toLowerCase() === assignRaw) ||
+      (a.role && a.role.toLowerCase().includes(assignRaw))
+  );
+  if (!assigned) {
+    if (assignRaw.includes('lead') || assignRaw.includes('architect')) assigned = leadAgent;
+    else if (assignRaw.includes('dev') || assignRaw.includes('developer') || assignRaw.includes('code')) assigned = devAgent;
+    else if (assignRaw.includes('test') || assignRaw.includes('qa')) assigned = testerAgent;
+    else if (assignRaw.includes('pm') || assignRaw.includes('scrum')) assigned = pmAgent;
+    else if (!assignRaw) assigned = pmAgent; // unassigned work goes to the orchestrator to delegate
+    else assigned = devAgent;
+  }
 
-  // Dynamically resolve delegation chains directly from agents.json
-  const leadDelegator = findDelegatorAgent(leadAgent, pmAgent);
-  const devDelegator = findDelegatorAgent(devAgent, leadAgent);
-  const testerDelegator = findDelegatorAgent(testerAgent, leadAgent);
+  // Resolve delegator agent (who gave this task to assigned)
+  let delegator = pmAgent;
+  if (taskData.delegatedBy) {
+    const delRaw = taskData.delegatedBy.toLowerCase();
+    const matched = agentList.find(
+      (a) => a.id.toLowerCase() === delRaw || (a.name && a.name.toLowerCase() === delRaw)
+    );
+    if (matched) delegator = matched;
+  } else {
+    if (assigned.id === leadAgent.id) delegator = pmAgent;
+    else if (assigned.id === devAgent.id || assigned.id === testerAgent.id) delegator = leadAgent;
+    else delegator = pmAgent;
+  }
 
-  // Dynamically derive deliverable titles from agents.json skills, role, and name
-  const leadArchSkill = getAgentSkillTitle(leadAgent, ['architecture', 'impact', 'design', 'plan'], 'Feature Architecture');
-  const devFeatSkill = getAgentSkillTitle(devAgent, ['feature', 'compose', 'viewmodel', 'repository', 'implementation'], 'Core Feature');
-  const testerVerifySkill = getAgentSkillTitle(testerAgent, ['test', 'regression', 'unit', 'qa', 'automation'], 'Automated Unit & Regression');
-  const leadReviewSkill = getAgentSkillTitle(leadAgent, ['review', 'quality', 'audit', 'gate'], 'Architectural Quality Gate');
-  const pmDeliverySkill = getAgentSkillTitle(pmAgent, ['reporting', 'delivery', 'sprint', 'sign-off'], 'Delivery Verification & Release Sign-Off');
-
-  const archTitle = formatDeliverableTitle(leadArchSkill, 'Scope Analysis');
-  const devTitle = formatDeliverableTitle(devFeatSkill, 'Implementation & Refactoring') + cleanFeature;
-  const testTitle = formatDeliverableTitle(testerVerifySkill, 'Test Verification & Regression Analysis');
-  const revTitle = formatDeliverableTitle(leadReviewSkill, 'Architectural Quality Gate & Review');
-  const relTitle = formatDeliverableTitle(pmDeliverySkill, 'Delivery Verification & Release Sign-Off');
-
-  const deliverables = [
-    {
-      id: 'DELIV-1',
-      key: `${leadAgent.badge || 'ARCH'}-101`,
-      title: archTitle,
-      description: `Analyze component boundaries, data flow, and file dependencies according to ${leadAgent.role || leadAgent.name}`,
-      assignedTo: leadAgent.id,
-      delegatedBy: leadDelegator.id,
-      delegatedByRole: leadDelegator.role || leadDelegator.name,
-      column: 'backlog',
-      skill: leadArchSkill,
-      progress: 0,
-    },
-    {
-      id: 'DELIV-2',
-      key: `${devAgent.badge || 'DEV'}-101`,
-      title: devTitle,
-      description: `Implement domain business logic, UI components, and state management according to ${devAgent.role || devAgent.name}`,
-      assignedTo: devAgent.id,
-      delegatedBy: devDelegator.id,
-      delegatedByRole: devDelegator.role || devDelegator.name,
-      column: 'backlog',
-      skill: devFeatSkill,
-      progress: 0,
-    },
-    {
-      id: 'DELIV-3',
-      key: `${testerAgent.badge || 'TEST'}-101`,
-      title: testTitle,
-      description: `Execute automated test suites to ensure 100% pass rate with zero regressions according to ${testerAgent.role || testerAgent.name}`,
-      assignedTo: testerAgent.id,
-      delegatedBy: testerDelegator.id,
-      delegatedByRole: testerDelegator.role || testerDelegator.name,
-      column: 'backlog',
-      skill: testerVerifySkill,
-      progress: 0,
-    },
-    {
-      id: 'DELIV-4',
-      key: 'REV-101',
-      title: revTitle,
-      description: `Verify boundary compliance, code quality standards, and immutability according to ${leadAgent.role || leadAgent.name}`,
-      assignedTo: leadAgent.id,
-      delegatedBy: devAgent.id,
-      delegatedByRole: devAgent.role || devAgent.name,
-      column: 'backlog',
-      skill: leadReviewSkill,
-      progress: 0,
-    },
-    {
-      id: 'DELIV-5',
-      key: 'REL-101',
-      title: relTitle,
-      description: `Validate acceptance criteria, collate delivery artifacts, and broadcast sign-off according to ${pmAgent.role || pmAgent.name}`,
-      assignedTo: pmAgent.id,
-      delegatedBy: testerAgent.id,
-      delegatedByRole: testerAgent.role || testerAgent.name,
-      column: 'backlog',
-      skill: pmDeliverySkill,
-      progress: 0,
-    },
-  ];
-
+  let rawKey = sanitizeTaskKey(taskData.key);
+  if (!rawKey && taskData.id) rawKey = String(taskData.id).replace(/^TASK-/, '');
+  if (!rawKey) {
+    const { OrchestrationRules } = require('./orchestrationRules');
+    const prefix = OrchestrationRules.resolveTeamRoles(agentList).platformBadge;
+    rawKey = `${prefix}-${OrchestrationRules.highestKeyNumber(eventBus.tasks) + 1}`;
+  }
+  const cleanKey = sanitizeTaskKey(rawKey);
+  const taskId = taskData.id || `TASK-${cleanKey}`;
   const now = new Date().toISOString();
-  for (const d of deliverables) {
-    if (!eventBus.tasks.has(d.id)) {
-      eventBus.tasks.set(d.id, {
-        ...d,
-        createdAt: d.createdAt || now,
-        updatedAt: d.updatedAt || now,
-      });
+
+  // Column mapping
+  const st = (taskData.statusRaw || taskData.column || '').toLowerCase();
+  let col = 'assigned';
+  if (st.includes('done') || st.includes('completed') || st.includes('verified') || st.includes('pass')) {
+    col = 'done';
+  } else if (st.includes('test')) {
+    col = 'testing';
+  } else if (st.includes('review') || st.includes('gate')) {
+    col = 'review';
+  } else if (st.includes('progress') || st.includes('active') || st.includes('implement')) {
+    col = 'in_progress';
+  } else if (st.includes('queued') || st.includes('backlog')) {
+    col = 'backlog';
+  }
+
+  const existing = eventBus.tasks.get(taskId);
+  const explicitTitle = taskData.title ? String(taskData.title).trim().replace(/^[*`#]+|[*`#]+$/g, '') : '';
+  const cleanTitle = (explicitTitle ? sanitizeTaskTitle(explicitTitle) : formatConciseTaskTitle(taskData.title, taskData.description, taskData.assignedTo)) || cleanKey;
+  const cleanDesc = String(taskData.description || taskData.brief || (existing && existing.description) || taskData.title || '').trim();
+  const targetCol = existing && existing.column === 'done' ? 'done' : effectiveColumn(taskData.column || (existing ? existing.column : col));
+  const finalProgress = taskData.progress !== undefined ? taskData.progress : (targetCol === 'done' ? 100 : 0);
+
+  const taskObj = {
+    id: taskId,
+    key: cleanKey,
+    title: cleanTitle,
+    description: cleanDesc,
+    assignedTo: assigned.id,
+    delegatedBy: delegator.id,
+    delegatedByRole: taskData.delegatedByRole || delegator.role || delegator.name,
+    column: targetCol,
+    skill:
+      taskData.skill ||
+      (assigned.skills && assigned.skills[0]
+        ? assigned.skills[0].id || assigned.skills[0].name || assigned.skills[0]
+        : 'task-decomposition'),
+    progress: finalProgress,
+    ...carriedTaskFields(taskData, existing),
+    createdAt: existing ? existing.createdAt : (taskData.createdAt || now),
+    updatedAt: now,
+  };
+
+  eventBus.tasks.set(taskId, taskObj);
+
+  // A brief written for the assignee is the handoff message itself: record it on the card's thread
+  const handoffRecorded = taskObj.thread.some(
+    (m) => m.kind === 'handoff' && m.text === taskObj.brief && (m.to || taskObj.assignedTo) === taskObj.assignedTo
+  );
+  if (taskObj.brief && !handoffRecorded) {
+    appendThreadEntry(taskObj, { agentId: taskObj.delegatedBy, to: taskObj.assignedTo, kind: 'handoff', text: taskObj.brief });
+  }
+
+  if (!options.skipPersist) {
+    persistActiveSprintTasks();
+    const snap = eventBus.getStateSnapshot();
+    eventBus.broadcast({
+      type: 'SYNC_STATE',
+      data: snap,
+      state: snap,
+    });
+  }
+
+  return taskObj;
+}
+
+/**
+ * Master multi-sprint registry helpers
+ */
+function resolveSprintIndex(root) {
+  const projectRoot = root || getProjectRoot();
+  const sprintsDir = path.join(projectRoot, '.agents', 'sprints');
+  const indexPath = path.join(sprintsDir, 'index.json');
+
+  if (fs.existsSync(indexPath)) {
+    try {
+      const content = fs.readFileSync(indexPath, 'utf8');
+      const parsed = JSON.parse(content);
+      if (parsed && parsed.activeSprintId && Array.isArray(parsed.sprints)) {
+        return parsed;
+      }
+    } catch (e) {
+      console.error('[Watchers] Error reading sprints index.json:', e.message);
     }
   }
 
-  // Support arbitrary developer agent definitions (monorepos, specialized agents, etc.)
-  for (const agent of agentList) {
-    const customTaskId = `DELIV-${agent.id}`;
-    if (!eventBus.tasks.has(customTaskId) && !deliverables.some((d) => d.assignedTo === agent.id)) {
-      const delegator = findDelegatorAgent(agent, pmAgent);
-      const skill = getAgentSkillTitle(agent, [], agent.role || agent.name);
-      eventBus.tasks.set(customTaskId, {
-        id: customTaskId,
-        key: `${agent.badge || 'AGENT'}-101`,
-        title: `${skill} - ${agent.name}`,
-        description: agent.description || `Deliverable for ${agent.role || agent.name}`,
-        assignedTo: agent.id,
-        delegatedBy: delegator.id,
-        delegatedByRole: delegator.role || delegator.name,
-        column: 'backlog',
-        skill,
-        progress: 0,
-        createdAt: now,
-        updatedAt: now,
-      });
+  // If not existing, create default sprint-1
+  const defaultIndex = {
+    activeSprintId: 'sprint-1',
+    sprints: [
+      {
+        id: 'sprint-1',
+        number: 1,
+        name: 'Sprint 1',
+        path: '.agents/sprints/sprint-1',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  };
+
+  try {
+    if (!fs.existsSync(sprintsDir)) {
+      fs.mkdirSync(sprintsDir, { recursive: true });
     }
+    fs.writeFileSync(indexPath, JSON.stringify(defaultIndex, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[Watchers] Failed to create default sprints index:', e.message);
+  }
+
+  return defaultIndex;
+}
+
+function saveSprintIndex(root, indexData) {
+  const projectRoot = root || getProjectRoot();
+  const sprintsDir = path.join(projectRoot, '.agents', 'sprints');
+  const indexPath = path.join(sprintsDir, 'index.json');
+  try {
+    if (!fs.existsSync(sprintsDir)) {
+      fs.mkdirSync(sprintsDir, { recursive: true });
+    }
+    fs.writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf8');
+    return true;
+  } catch (e) {
+    console.error('[Watchers] Failed to save sprints index:', e.message);
+    return false;
   }
 }
 
-eventBus.ensureRoleDeliverables = ensureRoleDeliverables;
+function getActiveSprintInfo(root) {
+  const index = resolveSprintIndex(root);
+  const activeSprint = index.sprints.find((s) => s.id === index.activeSprintId) || index.sprints[0] || {
+    id: 'sprint-1',
+    number: 1,
+    name: 'Sprint 1',
+    path: '.agents/sprints/sprint-1',
+    status: 'active',
+    createdAt: new Date().toISOString(),
+  };
+  return {
+    ...activeSprint,
+    activeSprintId: index.activeSprintId,
+    sprints: index.sprints,
+  };
+}
+
+/**
+ * Starts a new isolated sprint folder and archives previous sprints (Clean Slate)
+ */
+function startNewSprint(root, goalTitle) {
+  const projectRoot = root || getProjectRoot();
+  const index = resolveSprintIndex(projectRoot);
+  const sprints = index.sprints || [];
+
+  let nextNum = 1;
+  for (const s of sprints) {
+    if (s.number && s.number >= nextNum) {
+      nextNum = s.number + 1;
+    }
+  }
+  if (nextNum === 1 && sprints.length > 0) {
+    nextNum = sprints.length + 1;
+  }
+
+  const sprintId = `sprint-${nextNum}`;
+  const sprintPath = `.agents/sprints/${sprintId}`;
+  const sprintAbsPath = path.join(projectRoot, '.agents', 'sprints', sprintId);
+
+  try {
+    const assetsDir = path.join(sprintAbsPath, 'assets');
+    fs.mkdirSync(assetsDir, { recursive: true });
+
+    const initialTasksData = {
+      sprintId,
+      version: '1.0.0',
+      updatedAt: new Date().toISOString(),
+      tasks: [],
+    };
+    fs.writeFileSync(path.join(sprintAbsPath, 'tasks.json'), JSON.stringify(initialTasksData, null, 2), 'utf8');
+
+    const sprintPlanContent = `# Sprint ${nextNum} Plan\n\n## Sprint Details\n- **Sprint ID**: \`${sprintId}\`\n- **Path**: \`${sprintPath}/\`\n- **Status**: Active\n- **Goal**: ${goalTitle || 'Sprint Execution'}\n- **Created**: ${new Date().toISOString()}\n`;
+    fs.writeFileSync(path.join(sprintAbsPath, 'sprint-plan.md'), sprintPlanContent, 'utf8');
+
+    const updatedSprints = sprints.map((s) => {
+      if (s.id === index.activeSprintId && s.status === 'active') {
+        return { ...s, status: 'completed' };
+      }
+      return s;
+    });
+
+    const newSprint = {
+      id: sprintId,
+      number: nextNum,
+      name: `Sprint ${nextNum}`,
+      path: sprintPath,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+    };
+    updatedSprints.push(newSprint);
+
+    const newIndex = {
+      activeSprintId: sprintId,
+      sprints: updatedSprints,
+    };
+    saveSprintIndex(projectRoot, newIndex);
+
+    eventBus.tasks.clear();
+    if (eventBus.fileChanges && Array.isArray(eventBus.fileChanges)) {
+      eventBus.fileChanges = [];
+    }
+    if (typeof eventBus.setSprintState === 'function') {
+      eventBus.setSprintState(sprintId, sprintPath, updatedSprints);
+    }
+
+    const snap = eventBus.getStateSnapshot();
+    eventBus.broadcast({
+      type: 'SYNC_STATE',
+      data: snap,
+      state: snap,
+    });
+
+    return newSprint;
+  } catch (e) {
+    console.error('[Watchers] Failed to auto-start new sprint:', e.message);
+    return null;
+  }
+}
+
+/**
+ * Scans active brain directories and workspace sprint plans for genuine agent tasks
+ */
+function syncRealTasksFromFiles() {
+  const root = getProjectRoot();
+  const sprintInfo = getActiveSprintInfo(root);
+
+  // Sync eventBus sprint state
+  if (eventBus && typeof eventBus.setSprintState === 'function') {
+    eventBus.setSprintState(sprintInfo.activeSprintId, sprintInfo.path, sprintInfo.sprints);
+  }
+
+  // Strictly use Active Sprint's tasks.json (.agents/sprints/<activeSprintId>/tasks.json)
+  const activeSprintTasksJson = path.join(root, sprintInfo.path, 'tasks.json');
+  if (fs.existsSync(activeSprintTasksJson)) {
+    return syncTasksFromJson(activeSprintTasksJson);
+  }
+
+  // Fallback: If no tasks.json exists, scan local sprint plans and active brain directories
+  const homeDir = os.homedir();
+  const brainDir = path.join(homeDir, '.gemini/antigravity/brain');
+  const filesToScan = [];
+
+  const rootCandidates = [
+    path.join(root, 'sprint-plan.md'),
+    path.join(root, '.agents/sprint-plan.md'),
+    path.join(root, '.agents/tasks.md'),
+  ];
+  for (const c of rootCandidates) {
+    if (fs.existsSync(c)) filesToScan.push(c);
+  }
+
+  if (fs.existsSync(brainDir)) {
+    try {
+      const convEntries = fs.readdirSync(brainDir, { withFileTypes: true });
+      for (const entry of convEntries) {
+        if (!entry.isDirectory()) continue;
+        const convPath = path.join(brainDir, entry.name);
+        try {
+          const files = fs.readdirSync(convPath);
+          for (const f of files) {
+            if (f.startsWith('sprint-plan') && f.endsWith('.md')) {
+              filesToScan.push(path.join(convPath, f));
+            }
+          }
+        } catch (e) {}
+      }
+    } catch (e) {}
+  }
+
+  let count = 0;
+  for (const filePath of filesToScan) {
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      const parsed = parseRealTasksFromContent(content, filePath);
+      for (const t of parsed) {
+        registerRealAgentTask(t);
+        count++;
+      }
+    } catch (e) {}
+  }
+
+  if (count > 0) {
+    const snap = eventBus.getStateSnapshot();
+    eventBus.broadcast({ type: 'SYNC_STATE', data: snap, state: snap });
+  }
+}
+
+eventBus.resyncRealTasks = () => syncRealTasksFromFiles();
 
 /**
  * Resolves scratch task directory across varied project layouts
@@ -650,7 +1136,49 @@ function setupWatchers(newRoot) {
   // 5. Transcript Tailer
   setupTranscriptTailer();
 
+  // 6. Sync Real Agent Tasks from workspace and artifacts
+  try {
+    syncRealTasksFromFiles();
+  } catch (e) {
+    console.error('[Watchers] Error syncing real tasks on startup:', e.message);
+  }
+
   return { workspaceWatcher: activeWorkspaceWatcher };
+}
+
+let isSyncingRoles = false;
+let roleReloadTimer = null;
+
+function reloadAgentRolesFromDisk(root) {
+  if (isSyncingRoles) return;
+  if (roleReloadTimer) clearTimeout(roleReloadTimer);
+  roleReloadTimer = setTimeout(() => {
+    try {
+      isSyncingRoles = true;
+      autoDiscoverAndRegisterAgents(root);
+      const discovered = discoverAgents(root);
+      if (discovered && discovered.length > 0) {
+        eventBus.agents.clear();
+        const activeIds = new Set(discovered.map((a) => a.id));
+        for (const a of discovered) {
+          eventBus.agents.set(a.id, a);
+        }
+        // Purge events/tasks from removed agents
+        eventBus.events = eventBus.events.filter((e) => activeIds.has(e.agentId));
+        for (const [tId, t] of eventBus.tasks.entries()) {
+          if (t.assignedTo && !activeIds.has(t.assignedTo)) {
+            eventBus.tasks.delete(tId);
+          }
+        }
+        eventBus.broadcast({
+          type: 'SYNC_STATE',
+          data: eventBus.getStateSnapshot(),
+        });
+      }
+    } finally {
+      setTimeout(() => { isSyncingRoles = false; }, 300);
+    }
+  }, 250);
 }
 
 /**
@@ -687,7 +1215,12 @@ function setupWorkspaceWatcher() {
       ignored: (testPath) => {
         const norm = testPath.replace(/\\/g, '/');
         // Allow .agents and .opencode directories
-        if (norm.includes('/.agents/') || norm.includes('/.opencode/')) {
+        if (
+          norm.endsWith('/.agents') ||
+          norm.includes('/.agents/') ||
+          norm.endsWith('/.opencode') ||
+          norm.includes('/.opencode/')
+        ) {
           return false;
         }
         return ignoredPatterns.some((p) => p.test(norm));
@@ -699,6 +1232,7 @@ function setupWorkspaceWatcher() {
     });
     workspaceWatcher.on('add', (filePath) => scheduleWorkspaceChange(filePath, 'created'));
     workspaceWatcher.on('change', (filePath) => scheduleWorkspaceChange(filePath, 'modified'));
+    workspaceWatcher.on('unlink', (filePath) => scheduleWorkspaceChange(filePath, 'deleted'));
     console.log(`[Watchers] Workspace file monitor active on ${currentRoot}`);
     return workspaceWatcher;
   } catch (err) {
@@ -720,11 +1254,93 @@ function scheduleWorkspaceChange(filePath, action) {
   );
 }
 
+function isNewerCard(current, fromFile) {
+  const a = Date.parse(current.updatedAt || '') || 0;
+  const b = Date.parse(fromFile.updatedAt || '') || 0;
+  const threadA = Array.isArray(current.thread) ? current.thread.length : 0;
+  const threadB = Array.isArray(fromFile.thread) ? fromFile.thread.length : 0;
+  return a > b || threadA > threadB;
+}
+
+function syncTasksFromJson(filePath, options = {}) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return [];
+    // Board writes not yet on disk (a throttled persist): memory is newer than the file
+    if (!options.force && (isPersistingSprintTasks || pendingSprintPersist)) return [];
+    const content = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(content);
+    const tasksArr = Array.isArray(parsed) ? parsed : (parsed.tasks || []);
+
+    // Clear in-memory tasks before registering so deletions from tasks.json immediately take effect,
+    // but never let an older copy of a card replace a newer one written through the board API
+    const inMemory = new Map(eventBus.tasks);
+    eventBus.tasks.clear();
+
+    const registered = [];
+    for (const t of tasksArr) {
+      if (!t || !(t.title || t.key)) continue;
+      const current = inMemory.get(t.id || `TASK-${sanitizeTaskKey(t.key)}`);
+      if (!options.force && current && isNewerCard(current, t)) {
+        eventBus.tasks.set(current.id, current);
+        registered.push(current);
+        continue;
+      }
+      const reg = registerRealAgentTask(t, { skipPersist: true });
+      if (reg) registered.push(reg);
+    }
+    const snap = eventBus.getStateSnapshot();
+    eventBus.broadcast({
+      type: 'SYNC_STATE',
+      data: snap,
+      state: snap,
+    });
+    return registered;
+  } catch (e) {
+    console.error('[Watchers] Failed to sync tasks from tasks.json:', e.message);
+    return [];
+  }
+}
+
 function handleWorkspaceFileChange(filePath, action) {
   const norm = filePath.replace(/\\/g, '/');
   const fileName = path.basename(filePath);
   const ext = path.extname(filePath).toLowerCase();
   const relPath = path.relative(getProjectRoot(), filePath).replace(/\\/g, '/');
+
+  // When .agents/sprints/**/tasks.json or .agents/sprints/index.json changes or is updated
+  if (relPath.includes('.agents/sprints/') || fileName === 'tasks.json' || fileName === 'index.json') {
+    if (fileName === 'index.json' && relPath.includes('sprints')) {
+      const sprintInfo = getActiveSprintInfo(getProjectRoot());
+      if (eventBus && typeof eventBus.setSprintState === 'function') {
+        eventBus.setSprintState(sprintInfo.activeSprintId, sprintInfo.path, sprintInfo.sprints);
+      }
+      syncRealTasksFromFiles();
+      return;
+    }
+    if (fileName === 'tasks.json') {
+      if (isPersistingSprintTasks) return;
+      const sprintInfo = getActiveSprintInfo(getProjectRoot());
+      const activeSprintTasksJson = path.join(getProjectRoot(), sprintInfo.path, 'tasks.json').replace(/\\/g, '/');
+      if (norm === activeSprintTasksJson) {
+        syncTasksFromJson(filePath);
+      }
+      return;
+    }
+  }
+
+  // When .agents/registry.yaml, .agents/agents.json, agents.json, or .agents/definitions/*.md changes or is unlinked, trigger reloadAgentRolesFromDisk
+  const isAgentConfig =
+    relPath === '.agents/registry.yaml' ||
+    relPath === '.agents/agents.json' ||
+    relPath === 'agents.json' ||
+    fileName === 'registry.yaml' ||
+    fileName === 'agents.json' ||
+    (relPath.includes('.agents/definitions/') && relPath.endsWith('.md')) ||
+    (norm.includes('/.agents/definitions/') && norm.endsWith('.md'));
+
+  if (isAgentConfig) {
+    reloadAgentRolesFromDisk(getProjectRoot());
+  }
 
   // Handle scratch tasks explicitly
   if (relPath.includes('scratch/') || relPath.includes('.agents/scratch/')) {
@@ -732,142 +1348,35 @@ function handleWorkspaceFileChange(filePath, action) {
     return;
   }
 
-  const devAgent = getResolvedAgent('dev', 2);
-  const testerAgent = getResolvedAgent('test', 3);
-  const leadAgent = getResolvedAgent('lead', 1);
-  const pmAgent = getResolvedAgent('pm', 0);
+  // A save on disk doesn't say who made it or which card it belongs to (it may be the user's own
+  // editor), so it is recorded as an unattributed file change and never touches the board.
+  // Agent edits are attributed from their transcripts instead.
+  recordDiskFileChange(filePath, relPath, action);
+}
 
-  // 1. Test Files -> Tester / QA Agent
-  const isTest =
-    fileName.includes('.test.') ||
-    fileName.includes('.spec.') ||
-    fileName.endsWith('Test.kt') ||
-    fileName.endsWith('Test.java') ||
-    fileName.endsWith('Tests.swift') ||
-    fileName.endsWith('Test.ts') ||
-    fileName.endsWith('Test.js') ||
-    fileName.startsWith('test_') ||
-    relPath.includes('/tests/') ||
-    relPath.includes('/test/') ||
-    relPath.includes('/__tests__/');
-
-  // 2. Documentation / Specs / Plans -> Tech Lead or PM
-  const isDocOrPlan =
-    ext === '.md' ||
-    ext === '.mdx' ||
-    relPath.includes('/docs/') ||
-    relPath.includes('/specs/') ||
-    relPath.includes('/architecture/') ||
-    relPath.includes('PRD') ||
-    relPath.includes('RFC');
-
-  // 3. Build & Configuration
-  const isConfig =
-    fileName === 'package.json' ||
-    fileName === 'pom.xml' ||
-    fileName.startsWith('build.gradle') ||
-    fileName === 'Cargo.toml' ||
-    fileName === 'go.mod' ||
-    fileName === 'Podfile' ||
-    fileName === 'requirements.txt' ||
-    fileName === 'pyproject.toml' ||
-    ext === '.json' ||
-    ext === '.yaml' ||
-    ext === '.yml' ||
-    ext === '.toml';
-
+/** Records a file change seen on disk, with no author and no card. */
+function recordDiskFileChange(filePath, relPath, action) {
   let contentPreview = '';
   try {
     if (fs.existsSync(filePath) && fs.statSync(filePath).size < 300000) {
-      const raw = fs.readFileSync(filePath, 'utf8');
-      const lines = raw.split('\n');
-      contentPreview = lines.slice(0, 60).join('\n');
+      contentPreview = fs.readFileSync(filePath, 'utf8').split('\n').slice(0, 60).join('\n');
     }
   } catch (e) {}
-
-  let assignedAgent = isTest ? testerAgent : (isDocOrPlan || isConfig ? leadAgent : devAgent);
-
-  const hasActiveWorkflow = eventBus.tasks.size > 0 || eventBus.isDemoRunning;
-  if (!hasActiveWorkflow) {
-    // Project is in Standby mode. Record file change in history, but do not generate sprint deliverables.
-    eventBus.recordFileChange({
-      filePath: relPath,
-      fileName,
-      action: action === 'unlink' ? 'deleted' : 'modified',
-      contentPreview,
-      timestamp: new Date().toISOString(),
-    });
-    return;
-  }
-
-  ensureRoleDeliverables();
-
-  let taskId = 'DELIV-2';
-  let column = 'in_progress';
-  let phase = 'Implementation';
-  let progress = 65;
-
-  if (isTest) {
-    assignedAgent = testerAgent;
-    taskId = 'DELIV-3';
-    column = 'testing';
-    phase = 'Verification';
-    progress = 70;
-    const testTask = eventBus.tasks.get('DELIV-3');
-    if (testTask) {
-      testTask.column = 'testing';
-      testTask.progress = Math.max(testTask.progress || 0, 70);
-      testTask.description = `Authoring and executing test suites around ${fileName}`;
-    }
-  } else if (isDocOrPlan || isConfig) {
-    assignedAgent = leadAgent;
-    taskId = 'DELIV-1';
-    column = 'in_progress';
-    phase = 'Architecture & Planning';
-    progress = 50;
-    const archTask = eventBus.tasks.get('DELIV-1');
-    if (archTask && archTask.column !== 'done') {
-      archTask.column = 'in_progress';
-      archTask.progress = Math.max(archTask.progress || 0, 50);
-      archTask.description = `Refining architectural boundaries and specs in ${fileName}`;
-    }
-  } else {
-    // Normal code edit
-    const devTask = eventBus.tasks.get('DELIV-2');
-    if (devTask) {
-      devTask.column = 'in_progress';
-      devTask.progress = Math.max(devTask.progress || 0, 65);
-      devTask.description = `Implementing and refactoring changes in ${fileName}`;
-    }
-    const archTask = eventBus.tasks.get('DELIV-1');
-    if (archTask && archTask.column !== 'done') {
-      archTask.column = 'done';
-      archTask.progress = 100;
-    }
-  }
-
-  const activeTask = eventBus.tasks.get(taskId);
-
-  eventBus.emitEvent({
-    agentId: assignedAgent.id,
-    type: 'file_modified',
-    payload: {
-      taskId,
-      key: activeTask ? activeTask.key : 'DEV-101',
-      task: activeTask ? activeTask.title : 'Core Feature Implementation & Refactoring',
-      tool: action === 'created' ? 'write_to_file' : 'replace_file_content',
-      file: relPath,
-      fileName,
-      action,
-      contentPreview,
-      linesAdded: contentPreview ? contentPreview.split('\n').length : undefined,
-      details: `${assignedAgent.name} ${action} ${relPath}`,
-      column,
-      progress,
-      phase,
-      milestone: `${assignedAgent.name} updated ${fileName}`,
-    },
+  const deleted = action === 'unlink' || action === 'deleted';
+  // An agent edit already recorded from its transcript is the same save; don't list it again unattributed
+  const recentAgentEdit = eventBus.fileChanges.find(
+    (f) => f.filePath === relPath && f.agentId && Date.now() - new Date(f.timestamp).getTime() < 15000
+  );
+  if (recentAgentEdit && !deleted) return;
+  eventBus.recordFileChange({
+    filePath: relPath,
+    fileName: path.basename(filePath),
+    action: deleted ? 'deleted' : action === 'created' || action === 'add' ? 'created' : 'modified',
+    contentPreview,
+    summary: `${path.basename(filePath)} ${deleted ? 'deleted' : 'saved'} on disk`,
+    timestamp: new Date().toISOString(),
   });
+  eventBus.broadcast({ type: 'STATE_UPDATE', state: eventBus.getStateSnapshot() });
 }
 
 /**
@@ -1003,27 +1512,19 @@ function parseOpenCodeLogLine(line) {
     return; // Command belongs to a different project on this computer
   }
 
-  const devAgent = getResolvedAgent('dev', 2);
-  const testerAgent = getResolvedAgent('test', 3);
-  const leadAgent = getResolvedAgent('lead', 1);
+  // Credit the agent the log line names; otherwise the activity is OpenCode's, not a guessed role
+  const agentMatch = line.match(/\bagent=["']?([a-zA-Z0-9_\-]+)/);
+  const actorId = agentMatch && eventBus.agents.has(agentMatch[1]) ? agentMatch[1] : 'opencode';
 
   // 1. Tool execution (e.g., tool call / tool execution)
   const toolMatch = line.match(/tool=([a-zA-Z0-9_\-]+)/i) || line.match(/message="tool call"[\s\S]*name=([a-zA-Z0-9_\-]+)/i);
   if (toolMatch) {
     const toolName = toolMatch[1];
-    const isTest = toolName.toLowerCase().includes('test');
-    const assigned = isTest ? testerAgent : devAgent;
-
-    // Emits tool execution for Live Terminal Logs and Avatar activity bubbles, without creating messy raw cards!
     eventBus.emitEvent({
-      agentId: assigned.id,
+      agentId: actorId,
       type: 'tool_executing',
       timestamp: lineTimestamp || new Date().toISOString(),
-      payload: {
-        tool: toolName,
-        task: `Executing ${toolName}`,
-        details: `OpenCode invoking tool: ${toolName}`,
-      },
+      payload: { tool: toolName, details: `OpenCode invoking tool: ${toolName}` },
     });
     return;
   }
@@ -1047,54 +1548,17 @@ function parseOpenCodeLogLine(line) {
       return;
     }
 
-    const isTest = fullCmd.includes('test') || fullCmd.includes('pytest') || fullCmd.includes('jest') || fullCmd.includes('gradle');
-    const assigned = isTest ? testerAgent : devAgent;
-
-    if (isTest) {
-      if (eventBus.tasks.size > 0 || eventBus.isDemoRunning) {
-        ensureRoleDeliverables();
-        const devTask = eventBus.tasks.get('DELIV-2');
-        if (devTask && devTask.column === 'in_progress') {
-          devTask.column = 'review';
-          devTask.progress = 90;
-        }
-        const testTask = eventBus.tasks.get('DELIV-3');
-        if (testTask) {
-          testTask.column = 'testing';
-          testTask.progress = 75;
-          testTask.description = `Executing automated test suite: ${baseCmd}`;
-        }
-      }
-      eventBus.emitEvent({
-        agentId: assigned.id,
-        type: 'command_executing',
-        timestamp: lineTimestamp || new Date().toISOString(),
-        payload: {
-          taskId: 'DELIV-3',
-          key: testTask ? testTask.key : `${testerAgent.badge || 'TEST'}-101`,
-          task: testTask ? testTask.title : 'Automated Unit & Regression Test Verification',
-          tool: 'run_command',
-          command: fullCmd.substring(0, 100),
-          details: `Executing test suite: ${baseCmd}`,
-          column: 'testing',
-          progress: 75,
-          phase: 'Verification',
-          milestone: `${assigned.name} running: ${baseCmd}`,
-          milestoneAgentId: assigned.id,
-        },
-      });
-    } else {
-      eventBus.emitEvent({
-        agentId: assigned.id,
-        type: 'command_executing',
-        timestamp: lineTimestamp || new Date().toISOString(),
-        payload: {
-          tool: 'run_command',
-          command: fullCmd.substring(0, 100),
-          details: `Running: ${fullCmd.substring(0, 80)}`,
-        },
-      });
-    }
+    // A command is activity, not a card move: no column, progress or test verdict is inferred from it
+    eventBus.emitEvent({
+      agentId: actorId,
+      type: 'command_executing',
+      timestamp: lineTimestamp || new Date().toISOString(),
+      payload: {
+        tool: 'run_command',
+        command: fullCmd.substring(0, 100),
+        details: `Running: ${fullCmd.substring(0, 80)}`,
+      },
+    });
   }
 }
 
@@ -1127,93 +1591,8 @@ function setupScratchWatcher() {
 }
 
 function handleScratchFileChange(filePath, action) {
-  const norm = filePath.replace(/\\/g, '/');
-  const fileName = path.basename(filePath);
-  const relPath = path.relative(getProjectRoot(), filePath).replace(/\\/g, '/');
-
-  const pmAgent = getResolvedAgent('pm', 0);
-  const leadAgent = getResolvedAgent('lead', 1);
-  const devAgent = getResolvedAgent('dev', 2);
-  const testerAgent = getResolvedAgent('test', 3);
-
-  if (norm.includes('/pm/estimation.md') || norm.includes('estimation')) {
-    eventBus.emitEvent({
-      agentId: pmAgent.id,
-      type: 'task_started',
-      payload: {
-        task: 'Intake & Minute Estimation',
-        file: relPath,
-        tool: 'write_to_file',
-        details: `${pmAgent.name} ${action} estimation report in ${relPath}`,
-        taskId: 'TASK-1',
-        column: 'done',
-        phase: 'Intake & Sizing',
-        milestone: 'Sprint minute estimations collated under 10-minute SLA.',
-      },
-    });
-  } else if (norm.includes('/lead/architecture-plan.md') || norm.includes('architecture')) {
-    eventBus.emitEvent({
-      agentId: leadAgent.id,
-      type: 'planning_started',
-      payload: {
-        task: 'Architecture Plan & Interface Scoping',
-        file: relPath,
-        tool: 'write_to_file',
-        details: `${leadAgent.name} ${action} architecture specification`,
-        taskId: 'TASK-2',
-        column: 'done',
-        phase: 'Architecture Locked',
-        milestone: 'Architecture plan & unit test specifications approved.',
-      },
-    });
-  } else if (norm.includes('implementation') || norm.includes('/dev/')) {
-    eventBus.emitEvent({
-      agentId: devAgent.id,
-      type: 'file_modified',
-      payload: {
-        task: 'Feature Implementation & Unit Tests',
-        file: relPath,
-        tool: 'write_to_file',
-        details: `${devAgent.name} logged progress in ${relPath}`,
-        taskId: 'TASK-3',
-        column: 'in_progress',
-        phase: 'Implementation',
-      },
-    });
-  } else if (norm.includes('test') || norm.includes('/tester/')) {
-    eventBus.emitEvent({
-      agentId: testerAgent.id,
-      type: 'test_result',
-      payload: {
-        task: 'Unit Test Verification',
-        file: relPath,
-        tool: 'run_command',
-        command: 'npm test',
-        details: `${testerAgent.name} logged test results`,
-        testsPassed: 10,
-        testsFailed: 0,
-        taskId: 'TASK-5',
-        column: 'done',
-        phase: 'Verification',
-        milestone: 'Test verification report generated with zero regressions.',
-      },
-    });
-  } else if (norm.includes('delivery') || norm.includes('signoff') || norm.includes('summary')) {
-    eventBus.emitEvent({
-      agentId: pmAgent.id,
-      type: 'task_completed',
-      payload: {
-        task: 'Final Delivery & Sign-Off',
-        file: relPath,
-        tool: 'write_to_file',
-        details: `${pmAgent.name} finalized delivery report`,
-        taskId: 'TASK-6',
-        column: 'done',
-        phase: 'Delivered',
-        milestone: 'Feature delivered and verified for stakeholder sign-off.',
-      },
-    });
-  }
+  // A scratch note is just a file; its name says nothing about test results or delivery
+  recordDiskFileChange(filePath, path.relative(getProjectRoot(), filePath).replace(/\\/g, '/'), action);
 }
 
 /**
@@ -1289,10 +1668,28 @@ function scanAndWatchTranscripts(brainDir) {
   for (const c of candidates) {
     attachTranscriptTail(c);
   }
+
+  // Claude Code sessions (~/.claude/projects/<slug>/*.jsonl) belong to this project by location
+  for (const { filePath, sessionId, agentType } of listClaudeTranscripts(root)) {
+    attachTranscriptTail(filePath, { format: 'claude', convId: `claude-${sessionId}`, agentType });
+  }
+
+  // Sprint-plan discovery only runs while the sprint has no tasks.json. Once it does, the in-memory
+  // board is authoritative: reloading the file on this 4s poll would revert API writes not yet persisted.
+  const sprintInfo = getActiveSprintInfo(root);
+  if (!fs.existsSync(path.join(root, sprintInfo.path, 'tasks.json'))) {
+    syncRealTasksFromFiles();
+  }
 }
 
-function attachTranscriptTail(filePath) {
+function attachTranscriptTail(filePath, options = {}) {
   if (!filePath || !fs.existsSync(filePath)) return;
+
+  if (options.format === 'claude') {
+    if (activeTranscriptWatchers.has(filePath)) return;
+    attachTailState(filePath, options.convId, 'claude', options.agentType || null);
+    return;
+  }
 
   try {
     const parentDir = path.dirname(filePath);
@@ -1319,6 +1716,14 @@ function attachTranscriptTail(filePath) {
 
     if (activeTranscriptWatchers.has(filePath)) return;
 
+    attachTailState(filePath, convId, 'antigravity');
+  } catch (err) {
+    console.error(`[Watchers] Error attaching transcript tail for ${filePath}:`, err.message);
+  }
+}
+
+function attachTailState(filePath, convId, format, agentType = null) {
+  try {
     const stats = fs.statSync(filePath);
     // Start tailing from recent bytes to catch active turns (last 20KB),
     // or from the current end of file if office state was cleared/reset.
@@ -1326,7 +1731,10 @@ function attachTranscriptTail(filePath) {
     const state = {
       filePath,
       convId,
+      format,
+      agentType,
       offset: initialOffset,
+      promptTaskId: null,
     };
     activeTranscriptWatchers.set(filePath, state);
 
@@ -1361,24 +1769,142 @@ function readTranscriptChunk(state) {
     const bufferSize = stats.size - state.offset;
     const buffer = Buffer.alloc(bufferSize);
     fs.readSync(fd, buffer, 0, bufferSize, state.offset);
-    state.offset = stats.size;
     fs.closeSync(fd);
 
-    const chunk = buffer.toString('utf8');
+    // Only consume complete lines; a line still being written is picked up on the next read
+    const lastNewline = buffer.lastIndexOf(0x0a);
+    if (lastNewline === -1) return;
+    state.offset += lastNewline + 1;
+
+    const chunk = buffer.subarray(0, lastNewline).toString('utf8');
     const lines = chunk.split('\n');
 
     for (const line of lines) {
       if (!line.trim()) continue;
+      let entry;
       try {
-        const step = JSON.parse(line);
-        parseTranscriptStep(step, convId);
+        entry = JSON.parse(line);
       } catch (e) {
-        // partial line
+        continue; // partial line
+      }
+      if (state.format === 'claude') {
+        handleClaudeEntry(entry, state);
+      } else {
+        parseTranscriptStep(entry, convId);
       }
     }
   } catch (err) {
     // Read error
   }
+}
+
+/**
+ * Feeds one Claude Code JSONL entry through the shared transcript parser and keeps
+ * a Kanban card for each prompt: created when the prompt arrives, done when the turn ends.
+ */
+function handleClaudeEntry(entry, state) {
+  recordClaudeTokenUsage(entry, state);
+  const steps = toTranscriptSteps(entry, isPathInProject);
+  for (const step of steps) {
+    if (step.created_at && eventBus.isBeforeReset(step.created_at)) continue;
+
+    // After a server restart the tail state is new; recover this conversation's open prompt card
+    if (!state.promptTaskId && !state.agentType) {
+      const open = Array.from(eventBus.tasks.values()).find(
+        (t) => t.sourceConversation === state.convId && t.type === 'requirement' && t.column !== 'done'
+      );
+      if (open) state.promptTaskId = open.id;
+    }
+
+    let promptCardId = null;
+    if (step.type === 'USER_INPUT' && state.promptTaskId) {
+      // The previous turn never reported an end (interrupted); the user has moved on, so close it
+      completeClaudePromptCard(state.promptTaskId, step);
+      state.promptTaskId = null;
+    }
+    if (step.type === 'USER_INPUT') {
+      promptCardId = `TASK-CC-${hashString(`${state.convId}:${step.claude.uuid}`)}`;
+      const seen = eventBus.tasks.get(promptCardId);
+      if (seen) {
+        // Replayed prompt (e.g. after a restart): don't restart its sprint or reopen its card
+        state.promptTaskId = seen.column === 'done' ? null : seen.id;
+        continue;
+      }
+    }
+
+    // A team subagent's own transcript: credit its actions to that role
+    if (state.agentType && eventBus.agents.has(state.agentType)) {
+      step.actorAgentId = state.agentType;
+    }
+
+    // The file's location already proves which project the session belongs to
+    conversationProjectMatch.set(state.convId, true);
+    parseTranscriptStep(step, state.convId);
+
+    if (step.type === 'USER_INPUT') {
+      const prompt = step.claude.prompt;
+      const firstLine = prompt.split('\n').map((l) => l.trim()).filter(Boolean)[0] || prompt;
+      const task = registerRealAgentTask({
+        id: promptCardId,
+        // The user's request, owned by the orchestrator, who breaks it into role-specific task cards
+        type: 'requirement',
+        sourceConversation: state.convId,
+        title: firstLine.length > 80 ? firstLine.slice(0, 77) + '...' : firstLine,
+        description: prompt.slice(0, 2000),
+        assignedTo: getResolvedAgent('pm', 0).id,
+        delegatedBy: getResolvedAgent('pm', 0).id,
+        delegatedByRole: 'User',
+        column: 'in_progress',
+        createdAt: step.created_at,
+      });
+      state.promptTaskId = task ? task.id : null;
+    } else if (step.claude && step.claude.turnEnded && state.promptTaskId) {
+      completeClaudePromptCard(state.promptTaskId, step);
+      state.promptTaskId = null;
+    }
+  }
+}
+
+/** Credits each assistant message's token usage once, to the subagent's role or else the orchestrator. */
+function recordClaudeTokenUsage(entry, state) {
+  const found = usageFromEntry(entry);
+  if (!found) return;
+  if (entry.timestamp && eventBus.isBeforeReset(entry.timestamp)) return;
+  // A message's content blocks are consecutive entries carrying the same usage: count it once
+  if (found.messageId) {
+    if (state.lastUsageId === found.messageId) return;
+    state.lastUsageId = found.messageId;
+  }
+  const agentId = state.agentType && eventBus.agents.has(state.agentType) ? state.agentType : getResolvedAgent('pm', 0).id;
+  eventBus.recordTokenUsage(agentId, found.usage);
+}
+
+function completeClaudePromptCard(taskId, step) {
+  const task = eventBus.tasks.get(taskId);
+  if (!task || task.column === 'done') return;
+  // The turn ended, but sub-tasks still open mean the request isn't done; they close it when they finish
+  const openChildren = Array.from(eventBus.tasks.values()).filter((t) => t.parentKey === task.key && t.column !== 'done');
+  if (openChildren.length) return;
+  task.column = 'done';
+  task.progress = 100;
+  task.updatedAt = new Date().toISOString();
+  persistActiveSprintTasks();
+  eventBus.emitEvent({
+    agentId: task.assignedTo,
+    type: 'subagent_completed',
+    timestamp: step.created_at,
+    payload: {
+      taskId: task.id,
+      key: task.key,
+      task: task.title,
+      column: 'done',
+      progress: 100,
+      phase: 'Done',
+      milestone: `🎉 Task completed: ${task.title}`,
+      milestoneAgentId: task.assignedTo,
+      details: (step.content || '').substring(0, 150).replace(/\n/g, ' '),
+    },
+  });
 }
 
 function cleanStringVal(val) {
@@ -1396,10 +1922,14 @@ function parseTranscriptStep(step, convId = '') {
   const content = typeof step.content === 'string' ? step.content : '';
   const toolCalls = step.tool_calls || [];
 
-  const devAgent = getResolvedAgent('dev', 2);
-  const testerAgent = getResolvedAgent('test', 3);
-  const leadAgent = getResolvedAgent('lead', 1);
   const pmAgent = getResolvedAgent('pm', 0);
+  // The role that actually took this step, when the transcript says so (a Claude Code subagent)
+  const actor = step.actorAgentId ? eventBus.agents.get(step.actorAgentId) || null : null;
+  // Without a named subagent the step is the main session's, which plays the orchestrator
+  const stepAgent = actor || pmAgent;
+  const openTaskOf = (agent) =>
+    agent ? Array.from(eventBus.tasks.values()).find((t) => t.assignedTo === agent.id && t.column !== 'done') || null : null;
+  const ownOpenTask = () => openTaskOf(actor);
 
   // If conversation was confirmed to belong to a DIFFERENT project, drop it completely!
   if (convId && conversationProjectMatch.get(convId) === false) {
@@ -1438,7 +1968,15 @@ function parseTranscriptStep(step, convId = '') {
     }
   }
 
-  // 2. Subagent Completion Messages -> Transition open TASK-SUB-* tasks to done (progress: 100)
+  // Parse any genuine sprint tasks from content (messages containing task tables or task bullets)
+  if (content) {
+    const foundTasks = parseRealTasksFromContent(content, convId);
+    for (const ft of foundTasks) {
+      registerRealAgentTask(ft);
+    }
+  }
+
+  // 2. Subagent Completion Messages -> Transition open tasks to done (progress: 100)
   const isSubagentMessage =
     content.includes('<SYSTEM_MESSAGE>') ||
     /<SYSTEM_MESSAGE>/i.test(content) ||
@@ -1446,69 +1984,25 @@ function parseTranscriptStep(step, convId = '') {
     (/\[Message\]/i.test(content) && /sender=/i.test(content));
 
   if (isSubagentMessage) {
-    const isCompletion = /(?:^|[^a-zA-Z])(completed|complete|done|finished)(?:[^a-zA-Z]|$)/i.test(content);
-    if (isCompletion) {
-      let detectedAgentId = null;
-      const senderMatch = content.match(/sender=([^\s\]]+)/i);
-      if (senderMatch) {
-        const senderStr = senderMatch[1].split('/')[0].toLowerCase();
-        const agentList = Array.from(eventBus.agents.values());
-        const matched = agentList.find(
-          (a) => a.id.toLowerCase() === senderStr || a.name.toLowerCase() === senderStr
-        );
-        if (matched) detectedAgentId = matched.id;
-      }
-
-      const subTasksToComplete = [];
-      for (const [tId, task] of eventBus.tasks.entries()) {
-        const isSubTask =
-          (typeof tId === 'string' && tId.startsWith('TASK-SUB-')) ||
-          (task && typeof task.id === 'string' && task.id.startsWith('TASK-SUB-'));
-        if (isSubTask && task && task.column !== 'done') {
-          task.column = 'done';
-          task.progress = 100;
-          task.updatedAt = new Date().toISOString();
-          subTasksToComplete.push(task);
-        }
-      }
-
-      if (subTasksToComplete.length > 0) {
-        for (const task of subTasksToComplete) {
-          eventBus.emitEvent({
-            agentId: detectedAgentId || task.assignedTo || devAgent.id,
-            type: 'subagent_completed',
-            timestamp: step.created_at || new Date().toISOString(),
-            payload: {
-              taskId: task.id,
-              key: task.key,
-              task: task.title,
-              column: 'done',
-              progress: 100,
-              milestone: `🎉 Subagent task completed: ${task.title || task.id}`,
-              milestoneAgentId: detectedAgentId || task.assignedTo || devAgent.id,
-              details: content.substring(0, 150).replace(/\n/g, ' '),
-              phase: 'Execution',
-            },
-          });
-        }
-      } else {
-        eventBus.emitEvent({
-          agentId: detectedAgentId || devAgent.id,
-          type: 'subagent_completed',
-          timestamp: step.created_at || new Date().toISOString(),
-          payload: {
-            phase: 'Execution',
-            milestone: `🎉 Subagent execution completed`,
-            milestoneAgentId: detectedAgentId || devAgent.id,
-            details: content.substring(0, 150).replace(/\n/g, ' '),
-          },
-        });
-      }
+    // A subagent's message is activity. Its card closes only when the card is moved on the board,
+    // never because the message contains words like "done" or "completed".
+    const senderMatch = content.match(/sender=([^\s\]]+)/i);
+    const senderStr = senderMatch ? senderMatch[1].split('/')[0].toLowerCase() : '';
+    const sender = senderStr
+      ? Array.from(eventBus.agents.values()).find((a) => a.id.toLowerCase() === senderStr || a.name.toLowerCase() === senderStr)
+      : null;
+    if (sender) {
+      eventBus.emitEvent({
+        agentId: sender.id,
+        type: 'subagent_message',
+        timestamp: step.created_at || new Date().toISOString(),
+        payload: { details: content.substring(0, 150).replace(/\n/g, ' ') },
+      });
     }
     if (toolCalls.length === 0) return;
   }
 
-  // 3. User Input Prompt -> PM creates card ONLY if conversation belongs to this project
+  // 3. User Input Prompt -> Activate PM (Scrum Master) FIRST
   if (step.type === 'USER_INPUT' || step.source === 'USER_EXPLICIT') {
     if (convId && conversationProjectMatch.get(convId) === undefined) {
       resolveConversationProject(convId);
@@ -1530,68 +2024,33 @@ function parseTranscriptStep(step, convId = '') {
       const firstLine = promptText.split('\n').map((s) => s.trim()).filter(Boolean)[0] || promptText;
       const displayTitle = firstLine.length > 60 ? firstLine.slice(0, 57) + '...' : firstLine;
 
-      ensureRoleDeliverables(displayTitle);
-      eventBus.workflowTitle = `${eventBus.projectName} • ${displayTitle}`;
-      eventBus.currentPhase = 'Sprint Execution';
-
-      const archTask = eventBus.tasks.get('DELIV-1');
-      if (archTask) {
-        archTask.description = `Scope boundaries, architecture contracts, and implementation plan for: ${displayTitle}`;
-        archTask.column = 'assigned';
-        archTask.updatedAt = new Date().toISOString();
+      // Automatic Clean Slate on New Requirement (Option 2):
+      // If previous tasks exist and are all completed, auto-archive them and provision a clean sprint
+      const realTasks = Array.from(eventBus.tasks.values());
+      if (realTasks.length > 0 && realTasks.every((t) => t.column === 'done')) {
+        startNewSprint(getProjectRoot(), displayTitle);
       }
+
+      eventBus.workflowTitle = `${eventBus.projectName} • ${displayTitle}`;
+      eventBus.currentPhase = 'Intake & Planning';
 
       eventBus.emitEvent({
         agentId: pmAgent.id,
         type: 'agent_active',
         timestamp: step.created_at || new Date().toISOString(),
         payload: {
-          taskId: 'DELIV-1',
-          key: archTask ? archTask.key : `${leadAgent.badge || 'ARCH'}-101`,
-          task: archTask ? archTask.title : 'Architecture Scope Analysis',
-          column: 'in_progress',
           details: promptText,
-          assignedTo: leadAgent.id,
+          assignedTo: pmAgent.id,
           delegatedBy: pmAgent.id,
           delegatedByRole: pmAgent.role || pmAgent.name,
           allowedSkill: 'task-decomposition',
-          progress: 35,
           phase: 'Intake & Planning',
-          milestone: `New task intake: "${displayTitle}"`,
+          milestone: `👑 ${pmAgent.name} (${pmAgent.id}) intake: "${displayTitle}"`,
           milestoneAgentId: pmAgent.id,
         },
       });
     }
     return;
-  }
-
-  // 3. Detect model completion / delivery announcements
-  if (step.type === 'PLANNER_RESPONSE' && content && toolCalls.length === 0) {
-    const isDelivery = /deliver|sign-?off|ready for stakeholder|production ready|completed the task|finished the work/i.test(content);
-    const isFixed = /fixed the issue|successfully resolved|all tests passed|tests are green|changes have been verified|successfully updated/i.test(content);
-
-    if (isDelivery || isFixed) {
-      for (const [tId, task] of eventBus.tasks.entries()) {
-        if (task.column === 'in_progress' || task.column === 'testing' || task.column === 'review') {
-          task.column = 'done';
-          task.progress = 100;
-          task.updatedAt = new Date().toISOString();
-        }
-      }
-
-      eventBus.emitEvent({
-        agentId: isFixed ? testerAgent.id : pmAgent.id,
-        type: isFixed ? 'test_result' : 'task_completed',
-        timestamp: step.created_at || new Date().toISOString(),
-        payload: {
-          phase: 'Delivered',
-          column: 'done',
-          milestone: `🎉 ${isFixed ? 'Verification passed' : 'Feature Delivered'}: ${content.substring(0, 65).replace(/\n/g, ' ')}...`,
-          milestoneAgentId: isFixed ? testerAgent.id : pmAgent.id,
-          details: content.substring(0, 150),
-        },
-      });
-    }
   }
 
   // 3. Detect role header in content: 🎭 **Active Role**: **<Role Name>** (`<role-id>`)
@@ -1627,15 +2086,11 @@ function parseTranscriptStep(step, convId = '') {
       const fromAg = agentList.find((a) => a.id.toLowerCase() === fromAgent.toLowerCase()) || { id: fromAgent, name: fromAgent, role: 'Agent' };
       const toAg = agentList.find((a) => a.id.toLowerCase() === toAgent.toLowerCase()) || { id: toAgent, name: toAgent, role: 'Agent' };
 
-      const taskId = `TASK-HO-${Date.now().toString().slice(-4)}`;
-      const taskKey = `${toAg.badge || 'TASK'}-${Math.floor(Math.random() * 899 + 100)}`;
-
+      // The marker names no card, so this is shown as a handoff only; no card or key is invented
       eventBus.emitEvent({
         agentId: fromAgent,
         type: 'agent_handoff',
         payload: {
-          taskId,
-          key: taskKey,
           fromAgent,
           toAgent,
           assignedTo: toAgent,
@@ -1665,28 +2120,44 @@ function parseTranscriptStep(step, convId = '') {
       if (targetPath && path.isAbsolute(targetPath) && !isPathInProject(targetPath)) {
         continue; // Strictly ignore files from other projects
       }
-      const fileName = path.basename(targetPath) || targetPath || 'source file';
+      const cleanRelPath = toRelativePath(targetPath);
+      const fileName = path.basename(targetPath) || cleanRelPath || 'source file';
 
-      const hasActiveWorkflow = eventBus.tasks.size > 0 || eventBus.isDemoRunning;
-      if (hasActiveWorkflow) {
-        ensureRoleDeliverables();
-        const archTask = eventBus.tasks.get('DELIV-1');
-        if (archTask && archTask.column !== 'done') {
-          archTask.column = 'in_progress';
-          archTask.progress = Math.max(archTask.progress || 0, 40);
-          archTask.description = `Analyzing boundaries and dependencies in ${fileName}`;
-        }
+      const activeViewerAgent = stepAgent;
+      const realArchTask = openTaskOf(stepAgent);
+
+      const isJiraConfluenceDoc = cleanRelPath.includes('jira') || cleanRelPath.includes('confluence') || /DXDT-\d+/i.test(cleanRelPath);
+      if (isJiraConfluenceDoc) {
+        const keyMatch = cleanRelPath.match(/([A-Za-z0-9_]+-\d+)/);
+        const ticketKey = keyMatch ? keyMatch[1] : null;
+        eventBus.emitEvent({
+          agentId: activeViewerAgent.id,
+          type: 'jira_confluence_lookup',
+          timestamp: step.created_at || new Date().toISOString(),
+          payload: {
+            sourceType: ticketKey ? 'jira' : 'confluence',
+            ticketKey: ticketKey,
+            title: ticketKey ? `Jira Ticket ${ticketKey}` : `Doc ${cleanRelPath}`,
+            details: `Inspecting ${cleanRelPath}`,
+            milestone: `🎫 ${activeViewerAgent.name} opened ${ticketKey ? `Jira ticket: ${ticketKey}` : cleanRelPath}`,
+            milestoneAgentId: activeViewerAgent.id,
+            phase: eventBus.currentPhase || 'Intake & Planning',
+          },
+        });
       }
 
       eventBus.emitEvent({
-        agentId: leadAgent.id,
+        agentId: activeViewerAgent.id,
         type: 'tool_executing',
         payload: {
-          taskId: hasActiveWorkflow ? 'DELIV-1' : undefined,
+          taskId: realArchTask ? realArchTask.id : undefined,
+          key: realArchTask ? realArchTask.key : undefined,
+          task: realArchTask ? realArchTask.title : undefined,
           tool: 'view_file',
-          file: targetPath,
-          details: `Inspecting ${fileName}`,
-          phase: hasActiveWorkflow ? 'Architecture & Spike' : 'Standby Inspection',
+          file: cleanRelPath,
+          fileName,
+          details: `Inspecting ${cleanRelPath || fileName}`,
+          phase: eventBus.currentPhase === 'Intake & Planning' ? 'Intake & Triage' : 'Architecture & Analysis',
         },
       });
     } else if (name === 'write_to_file' || name === 'replace_file_content') {
@@ -1694,7 +2165,8 @@ function parseTranscriptStep(step, convId = '') {
       if (targetFile && path.isAbsolute(targetFile) && !isPathInProject(targetFile)) {
         continue; // Strictly ignore files from other projects
       }
-      const fileName = path.basename(targetFile) || targetFile || 'codebase';
+      const cleanRelFile = toRelativePath(targetFile);
+      const fileName = path.basename(targetFile) || cleanRelFile || 'codebase';
       const codeContent = cleanStringVal(args.CodeContent || args.code_content || '');
       const replacementContent = cleanStringVal(args.ReplacementContent || args.replacement_content || '');
       const targetContent = cleanStringVal(args.TargetContent || args.target_content || '');
@@ -1703,71 +2175,41 @@ function parseTranscriptStep(step, convId = '') {
       const contentPreview = codeContent || replacementContent || '';
       const action = name === 'write_to_file' ? (args.Overwrite ? 'modified' : 'created') : 'modified';
 
-      const isTest = fileName.toLowerCase().includes('test') || targetFile.toLowerCase().includes('test');
-      const isDocOrPlan = fileName.endsWith('.md') || fileName.endsWith('.yaml') || fileName.endsWith('.json') || fileName.endsWith('.rules');
 
-      const hasActiveWorkflow = eventBus.tasks.size > 0 || eventBus.isDemoRunning;
-
-      let targetTaskId = undefined;
-      let assigned = devAgent;
-      let phase = 'Implementation';
-      let column = 'in_progress';
-      let progress = 65;
-
-      if (hasActiveWorkflow) {
-        ensureRoleDeliverables();
-        targetTaskId = 'DELIV-2';
-
-        if (isTest) {
-          targetTaskId = 'DELIV-3';
-          assigned = testerAgent;
-          phase = 'Verification';
-          column = 'testing';
-          progress = 70;
-          const testTask = eventBus.tasks.get('DELIV-3');
-          if (testTask) {
-            testTask.column = 'testing';
-            testTask.progress = Math.max(testTask.progress || 0, 70);
-            testTask.description = `Authoring and executing test suites around ${fileName}`;
-          }
-        } else if (isDocOrPlan) {
-          targetTaskId = 'DELIV-1';
-          assigned = leadAgent;
-          phase = 'Architecture & Planning';
-          progress = 50;
-          const archTask = eventBus.tasks.get('DELIV-1');
-          if (archTask && archTask.column !== 'done') {
-            archTask.column = 'in_progress';
-            archTask.progress = Math.max(archTask.progress || 0, 50);
-            archTask.description = `Refining architectural boundaries and specs in ${fileName}`;
-          }
-        } else {
-          const archTask = eventBus.tasks.get('DELIV-1');
-          if (archTask && archTask.column !== 'done') {
-            archTask.column = 'done';
-            archTask.progress = 100;
-          }
-          const devTask = eventBus.tasks.get('DELIV-2');
-          if (devTask) {
-            devTask.column = 'in_progress';
-            devTask.progress = Math.max(devTask.progress || 0, 65);
-            devTask.description = `Refactoring and implementing changes in ${fileName}`;
-          }
+      // Extract genuine tasks from file content if markdown/json/yaml
+      if (codeContent && !targetFile.endsWith('tasks.json')) {
+        const found = parseRealTasksFromContent(codeContent, targetFile);
+        for (const ft of found) {
+          registerRealAgentTask(ft);
         }
       }
 
-      const activeTask = eventBus.tasks.get(targetTaskId);
+      // Credited to the agent that made the edit and linked to that agent's own open card only
+      const assigned = stepAgent;
+      const phase = 'Implementation';
+      const column = undefined;
+      const progress = undefined;
+      const targetTask = openTaskOf(stepAgent);
+      const targetTaskId = targetTask ? targetTask.id : undefined;
+      // A subagent starting on its own queued card is real progress; nothing else moves a card here
+      if (actor && targetTask && (targetTask.column === 'assigned' || targetTask.column === 'backlog')) {
+        targetTask.column = 'in_progress';
+        persistActiveSprintTasks();
+      }
+
+      const activeTask = targetTaskId ? eventBus.tasks.get(targetTaskId) : null;
+      const isRealTask = Boolean(activeTask);
 
       eventBus.emitEvent({
         agentId: assigned.id,
         type: 'file_modified',
         timestamp: step.created_at || new Date().toISOString(),
         payload: {
-          taskId: targetTaskId,
-          key: activeTask ? activeTask.key : `${assigned.badge || 'DEV'}-101`,
-          task: activeTask ? activeTask.title : 'Core Feature Implementation & Refactoring',
+          taskId: isRealTask ? activeTask.id : undefined,
+          key: isRealTask ? activeTask.key : undefined,
+          task: isRealTask ? activeTask.title : undefined,
           tool: name,
-          file: targetFile,
+          file: cleanRelFile,
           fileName,
           action,
           contentPreview,
@@ -1788,55 +2230,144 @@ function parseTranscriptStep(step, convId = '') {
         continue; // Strictly ignore commands executed in other directories
       }
       const cmd = cleanStringVal(typeof args === 'string' ? args : (args.CommandLine || args.cmd || ''));
-      const isTest = cmd.includes('test') || cmd.includes('gradlew test') || cmd.includes('pytest') || cmd.includes('jest') || cmd.includes('vitest');
-      const assigned = isTest ? testerAgent : devAgent;
 
-      if (isTest) {
-        if (eventBus.tasks.size > 0 || eventBus.isDemoRunning) {
-          ensureRoleDeliverables();
-          const devTask = eventBus.tasks.get('DELIV-2');
-          if (devTask && devTask.column === 'in_progress') {
-            devTask.column = 'review';
-            devTask.progress = 90;
-          }
-          const testTask = eventBus.tasks.get('DELIV-3');
-          if (testTask) {
-            testTask.column = 'testing';
-            testTask.progress = 75;
-            testTask.description = `Executing automated test suite across target components`;
-          }
-        }
-
+      // Board API calls (reading a card, posting to its thread, moving it) are already applied by the
+      // server; show them as activity but don't let keyword guesses below move cards a second time.
+      if (/https?:\/\/(localhost|127\.0\.0\.1):\d+\/api\/tasks/.test(cmd)) {
+        const boardAgent = stepAgent;
+        const keyMatch = cmd.match(/\/api\/tasks\/([A-Za-z0-9_-]+)/);
         eventBus.emitEvent({
-          agentId: assigned.id,
+          agentId: boardAgent.id,
           type: 'command_executing',
+          timestamp: step.created_at || new Date().toISOString(),
           payload: {
-            taskId: 'DELIV-3',
-            key: testTask ? testTask.key : `${testerAgent.badge || 'TEST'}-101`,
-            task: testTask ? testTask.title : 'Automated Unit & Regression Test Verification',
-            tool: 'run_command',
+            tool: 'kanban_board',
             command: cmd,
-            column: 'testing',
-            progress: 75,
-            details: `Running: ${cmd}`,
-            phase: 'Verification',
+            key: keyMatch && keyMatch[1] !== 'register' ? keyMatch[1] : undefined,
+            details: `Kanban: ${cmd.slice(0, 160)}`,
           },
         });
-      } else {
+        continue;
+      }
+
+      // Detect Jira / Confluence telemetry
+      const jiraUrlMatch = cmd.match(/https?:\/\/[^\s"']+\/browse\/([A-Za-z0-9_]+-\d+)/i);
+      const jiraKeyMatch = cmd.match(/\b([A-Za-z0-9_]+-\d+)\b/);
+      const isJiraCmd = cmd.includes('read_jira.py') || jiraUrlMatch || (cmd.includes('jira') && jiraKeyMatch);
+
+      const confUrlMatch = cmd.match(/https?:\/\/[^\s"']+\/wiki\/[^\s"']*/i);
+      const confPageMatch = cmd.match(/pageId=(\d+)/i) || cmd.match(/pages\/(\d+)/i) || (cmd.includes('read_confluence.py') ? cmd.match(/read_confluence\.py\s+(\d+)/i) : null) || (cmd.includes('confluence') ? cmd.match(/\b(\d{6,})\b/) : null);
+      const isConfCmd = cmd.includes('read_confluence.py') || confUrlMatch || (cmd.includes('confluence') && confPageMatch);
+
+      const callerAgent = stepAgent;
+      if (isJiraCmd) {
+        const ticketKey = jiraUrlMatch ? jiraUrlMatch[1] : (jiraKeyMatch ? jiraKeyMatch[1] : 'JIRA-TICKET');
+        const jiraUrl = jiraUrlMatch ? jiraUrlMatch[0] : (ticketKey ? `https://dm.stc.com.sa/browse/${ticketKey}` : null);
+        const executor = stepAgent;
         eventBus.emitEvent({
-          agentId: assigned.id,
-          type: 'command_executing',
+          agentId: executor.id,
+          type: 'jira_confluence_lookup',
+          timestamp: step.created_at || new Date().toISOString(),
           payload: {
-            tool: 'run_command',
+            sourceType: 'jira',
+            ticketKey,
+            url: jiraUrl,
+            title: `Jira Ticket ${ticketKey}`,
             command: cmd,
-            details: `Running: ${cmd}`,
+            tool: 'read_jira.py',
+            details: `Accessed Jira Ticket ${ticketKey} specifications`,
+            milestone: `🎫 ${executor.name} opened Jira ticket: ${ticketKey}`,
+            milestoneAgentId: executor.id,
+            phase: eventBus.currentPhase || 'Intake & Planning',
+          },
+        });
+      } else if (isConfCmd) {
+        const pageId = confPageMatch ? confPageMatch[1] : null;
+        const confUrl = confUrlMatch ? confUrlMatch[0] : (pageId ? `https://dm.stc.com.sa/wiki/pages/viewpage.action?pageId=${pageId}` : null);
+        const executor = stepAgent;
+        eventBus.emitEvent({
+          agentId: executor.id,
+          type: 'jira_confluence_lookup',
+          timestamp: step.created_at || new Date().toISOString(),
+          payload: {
+            sourceType: 'confluence',
+            pageId,
+            url: confUrl,
+            title: pageId ? `Confluence Page ${pageId}` : 'Confluence Documentation',
+            command: cmd,
+            tool: 'read_confluence.py',
+            details: `Accessed Confluence documentation ${pageId || ''}`,
+            milestone: `📖 ${executor.name} opened Confluence doc: ${pageId || 'Wiki'}`,
+            milestoneAgentId: executor.id,
+            phase: eventBus.currentPhase || 'Intake & Planning',
           },
         });
       }
-    } else if (name === 'search_web' || name === 'read_url_content') {
-      const q = cleanStringVal(args.query || args.Url || 'Research');
+
+      // A command is activity of the agent that ran it; a test command moves no card and implies no verdict
+      const activeDevTask = openTaskOf(stepAgent);
       eventBus.emitEvent({
-        agentId: leadAgent.id,
+        agentId: stepAgent.id,
+        type: 'command_executing',
+        payload: {
+          taskId: activeDevTask ? activeDevTask.id : undefined,
+          key: activeDevTask ? activeDevTask.key : undefined,
+          task: activeDevTask ? activeDevTask.title : undefined,
+          tool: 'run_command',
+          command: cmd,
+          details: `Running: ${cmd}`,
+        },
+      });
+    } else if (name === 'search_web' || name === 'read_url_content') {
+      const q = cleanStringVal(args.query || args.Url || args.url || 'Research');
+      const targetUrl = cleanStringVal(args.Url || args.url || '');
+
+      const jiraUrlMatch = targetUrl.match(/https?:\/\/[^\s"']+\/browse\/([A-Za-z0-9_]+-\d+)/i) || q.match(/https?:\/\/[^\s"']+\/browse\/([A-Za-z0-9_]+-\d+)/i);
+      const confUrlMatch = targetUrl.match(/https?:\/\/[^\s"']+\/wiki\/[^\s"']*/i) || q.match(/https?:\/\/[^\s"']+\/wiki\/[^\s"']*/i);
+      const confPageMatch = targetUrl.match(/pageId=(\d+)/i) || q.match(/pageId=(\d+)/i);
+
+      if (jiraUrlMatch) {
+        const ticketKey = jiraUrlMatch[1];
+        eventBus.emitEvent({
+          agentId: stepAgent.id,
+          type: 'jira_confluence_lookup',
+          timestamp: step.created_at || new Date().toISOString(),
+          payload: {
+            sourceType: 'jira',
+            ticketKey,
+            url: jiraUrlMatch[0],
+            title: `Jira Ticket ${ticketKey}`,
+            command: targetUrl || q,
+            tool: name,
+            details: `Fetched Jira Ticket ${ticketKey} specifications`,
+            milestone: `🎫 Opened Jira ticket: ${ticketKey}`,
+            milestoneAgentId: stepAgent.id,
+            phase: 'Intake & Planning',
+          },
+        });
+      } else if (confUrlMatch || confPageMatch) {
+        const pageId = confPageMatch ? confPageMatch[1] : null;
+        eventBus.emitEvent({
+          agentId: stepAgent.id,
+          type: 'jira_confluence_lookup',
+          timestamp: step.created_at || new Date().toISOString(),
+          payload: {
+            sourceType: 'confluence',
+            pageId,
+            url: targetUrl || q,
+            title: pageId ? `Confluence Page ${pageId}` : 'Confluence Documentation',
+            command: targetUrl || q,
+            tool: name,
+            details: `Accessed Confluence documentation ${pageId || ''}`,
+            milestone: `📖 Opened Confluence doc: ${pageId || 'Wiki'}`,
+            milestoneAgentId: stepAgent.id,
+            phase: 'Intake & Planning',
+          },
+        });
+      }
+
+      eventBus.emitEvent({
+        agentId: stepAgent.id,
         type: 'tool_executing',
         payload: {
           tool: name,
@@ -1852,7 +2383,9 @@ function parseTranscriptStep(step, convId = '') {
         const roleName = cleanStringVal(sub.Role || sub.role || sub.TypeName || sub.type || 'Subagent');
         const typeName = cleanStringVal(sub.TypeName || sub.type || '');
 
-        // Resolve target agent from configured agents or dynamic mapping
+        const aiTitle = cleanStringVal(sub.Description || sub.description || '');
+
+        // Resolve target agent from the roster; subagents outside the team (e.g. a generic explorer) are not team handoffs
         const agentList = Array.from(eventBus.agents.values());
         const targetAgent = agentList.find(
           (a) =>
@@ -1860,40 +2393,100 @@ function parseTranscriptStep(step, convId = '') {
             a.id.toLowerCase() === roleName.toLowerCase() ||
             (a.role && a.role.toLowerCase().includes(roleName.toLowerCase())) ||
             (a.name && a.name.toLowerCase().includes(roleName.toLowerCase()))
-        ) || devAgent;
-
-        const callerAgent = pmAgent;
-
-        // Extract a clean high-level task title from the first sentence of the prompt
-        let taskTitle = prompt.split('\n')[0].replace(/^[#\-*\d.]+\s*/, '').trim();
-        if (taskTitle.length > 65) {
-          taskTitle = taskTitle.slice(0, 62) + '...';
+        );
+        if (!targetAgent) {
+          eventBus.emitEvent({
+            agentId: stepAgent.id,
+            type: 'tool_executing',
+            timestamp: step.created_at || new Date().toISOString(),
+            payload: { tool: 'subagent', details: `Started ${typeName || 'subagent'}: ${aiTitle || prompt.slice(0, 80)}` },
+          });
+          continue;
         }
+
+        // Board-first handoff: the prompt names the card(s) the subagent must read. Prefer the card the
+        // target works on, then one it delegated (a review handed back up), then any card it names.
+        const namedCardKeys = prompt.match(/\b[A-Z][A-Z0-9]+-\d+\b/g) || [];
+        const referencedCards = namedCardKeys
+          .map((k) => Array.from(eventBus.tasks.values()).find((t) => t.key === k))
+          .filter(Boolean);
+        const referencedCard =
+          referencedCards.find((t) => t.assignedTo === targetAgent.id) ||
+          referencedCards.find((t) => t.delegatedBy === targetAgent.id) ||
+          referencedCards[0] ||
+          null;
+        const isReviewHandback = Boolean(referencedCard && referencedCard.assignedTo !== targetAgent.id);
+
+        // If invoking tech-pm, tech-pm is the primary orchestrator being invoked first!
+        const isInvokingPm = targetAgent.id === pmAgent.id || typeName.toLowerCase().includes('pm') || roleName.toLowerCase().includes('scrum');
+        // Handing a card back up for review comes from its assignee; a downward handoff from its delegator
+        const cardSenderId = referencedCard && (isReviewHandback ? referencedCard.assignedTo : referencedCard.delegatedBy);
+        const cardSender = cardSenderId ? eventBus.agents.get(cardSenderId) : null;
+        const callerAgent = cardSender || stepAgent;
+
+        // Parse any real structured tasks within the subagent prompt
+        const parsedPromptTasks = parseRealTasksFromContent(prompt, 'invoke_subagent');
+        for (const pt of parsedPromptTasks) {
+          registerRealAgentTask(pt);
+        }
+
+        // Title written by the delegating AI (Claude's Agent tool description), else the prompt's first line
+        let rawSentence = prompt.split('\n')[0].replace(/^[#\-*\d.]+\s*/, '').trim();
+        let taskTitle = aiTitle || formatConciseTaskTitle(rawSentence, prompt, roleName);
         if (!taskTitle) {
           taskTitle = `Delegate to ${targetAgent.name}: ${roleName}`;
         }
 
-        const taskId = `TASK-SUB-${roleName.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-        const taskKey = `${targetAgent.badge || 'SUB'}-${(Math.abs(hashString(roleName)) % 899 + 100)}`;
+        let activeHandoffTask = referencedCard;
+        if (!activeHandoffTask && parsedPromptTasks.length > 0) {
+          activeHandoffTask = parsedPromptTasks[0];
+        }
+        // A dispatch that names a card ("Your task: WEB-103 ...") is about that card, even when this
+        // process hasn't loaded it (another sprint, a restart mid-replay); never mint a new card for it
+        const dispatchNamesCard = /\b[Yy]our [Tt]ask:?\s*[A-Z][A-Z0-9]+-\d+\b/.test(prompt) || (namedCardKeys.length > 0 && !referencedCard && /\/api\/tasks\//.test(prompt));
+        if (!activeHandoffTask && !isInvokingPm && !dispatchNamesCard) {
+          // Handoff without a card: put it on the board anyway, with the delegator's own words as the brief
+          activeHandoffTask = registerRealAgentTask({
+            title: taskTitle,
+            brief: prompt,
+            description: prompt,
+            assignedTo: targetAgent.id,
+            delegatedBy: callerAgent.id,
+            column: 'in_progress',
+          });
+        }
+
+        if (activeHandoffTask && (activeHandoffTask.column === 'backlog' || activeHandoffTask.column === 'assigned')) {
+          activeHandoffTask.column = 'in_progress';
+          persistActiveSprintTasks();
+        }
+
+        const handoffTaskId = activeHandoffTask ? activeHandoffTask.id : undefined;
+        const handoffTaskKey = activeHandoffTask ? activeHandoffTask.key : undefined;
+        const handoffTaskTitle = activeHandoffTask ? activeHandoffTask.title : taskTitle;
+
+        eventBus.currentPhase = isInvokingPm ? 'Intake & Planning' : 'Sprint Execution';
 
         eventBus.emitEvent({
-          agentId: callerAgent.id,
-          type: 'agent_handoff',
+          agentId: isInvokingPm ? pmAgent.id : callerAgent.id,
+          type: isInvokingPm ? 'agent_active' : 'agent_handoff',
           timestamp: step.created_at || new Date().toISOString(),
           payload: {
-            taskId,
-            key: taskKey,
-            task: taskTitle,
+            taskId: handoffTaskId,
+            key: handoffTaskKey,
+            task: handoffTaskTitle,
             details: prompt,
             fromAgent: callerAgent.id,
             toAgent: targetAgent.id,
             assignedTo: typeName || targetAgent.id,
             delegatedBy: callerAgent.id,
             delegatedByRole: callerAgent.role || callerAgent.name,
-            column: 'in_progress',
+            column: activeHandoffTask ? activeHandoffTask.column : 'in_progress',
             allowedSkill: typeName || 'subagent-delegation',
-            phase: 'Delegation & Execution',
-            milestone: `${callerAgent.name} delegated "${taskTitle}" to ${targetAgent.name}`,
+            phase: isInvokingPm ? 'Intake & Planning' : 'Delegation & Execution',
+            milestone: isInvokingPm
+              ? `👑 ${pmAgent.name} (${pmAgent.id}) orchestrating sprint tasks: "${handoffTaskTitle}"`
+              : `${callerAgent.name} delegated "${handoffTaskTitle}" to ${targetAgent.name}`,
           },
         });
       }
@@ -1901,53 +2494,58 @@ function parseTranscriptStep(step, convId = '') {
       const recipient = cleanStringVal(args.Recipient || args.recipient || '');
       const message = cleanStringVal(args.Message || args.message || '');
       if (message) {
-        let taskTitle = message.split('\n')[0].replace(/^[#\-*\d.]+\s*/, '').trim();
-        if (taskTitle.length > 65) {
-          taskTitle = taskTitle.slice(0, 62) + '...';
+        // Parse any structured sprint tasks in message and immediately persist to active sprint!
+        const parsedMsgTasks = parseRealTasksFromContent(message, 'send_message');
+        for (const mt of parsedMsgTasks) {
+          registerRealAgentTask(mt);
         }
 
-        const agentList = Array.from(eventBus.agents.values());
-        const targetAgent = agentList.find(
-          (a) =>
-            a.id.toLowerCase() === recipient.toLowerCase() ||
-            (a.name && a.name.toLowerCase().includes(recipient.toLowerCase())) ||
-            (a.role && a.role.toLowerCase().includes(recipient.toLowerCase()))
-        ) || devAgent;
+        let rawSentence = message.split('\n')[0].replace(/^[#\-*\d.]+\s*/, '').trim();
+        let taskTitle = formatConciseTaskTitle(rawSentence, message, '');
 
+        // Sender is the agent that took this step; the recipient must be on the roster (no fallback role)
+        const fromAgent = stepAgent;
+        const rq = recipient.toLowerCase();
+        const targetAgent = rq
+          ? Array.from(eventBus.agents.values()).find((a) => a.id.toLowerCase() === rq || (a.name && a.name.toLowerCase() === rq)) || null
+          : null;
         const ts = step.created_at || new Date().toISOString();
+        if (!targetAgent) {
+          eventBus.emitEvent({ agentId: fromAgent.id, type: 'tool_executing', timestamp: ts, payload: { tool: 'send_message', details: `Message to ${recipient || 'unknown recipient'}` } });
+          continue;
+        }
 
         eventBus.recordCommunication({
-          fromAgentId: leadAgent.id,
-          fromAgentName: leadAgent.name,
-          fromAgentRole: leadAgent.role,
+          fromAgentId: fromAgent.id,
+          fromAgentName: fromAgent.name,
+          fromAgentRole: fromAgent.role,
           toAgentId: targetAgent.id,
           toAgentName: targetAgent.name,
           toAgentRole: targetAgent.role,
-          taskKey: 'MSG',
-          taskTitle: taskTitle || 'Agent Communication',
+          taskKey: parsedMsgTasks[0]?.key || '',
+          taskTitle: parsedMsgTasks[0]?.title || taskTitle || '',
           message: message,
           channel: 'subagent_delegation',
           timestamp: ts,
         });
 
         eventBus.emitEvent({
-          agentId: leadAgent.id,
+          agentId: fromAgent.id,
           type: 'agent_handoff',
           timestamp: ts,
           payload: {
-            fromAgent: leadAgent.id,
+            fromAgent: fromAgent.id,
             toAgent: targetAgent.id,
-            task: taskTitle || 'Direct Message',
+            task: parsedMsgTasks[0]?.title || taskTitle || 'Direct Message',
             details: message,
             channel: 'subagent_delegation',
-            phase: 'Communication',
-            milestone: `${leadAgent.name} messaged ${targetAgent.name}: "${taskTitle}"`,
+            milestone: `${fromAgent.name} messaged ${targetAgent.name}: "${parsedMsgTasks[0]?.title || taskTitle}"`,
           },
         });
       }
     } else if (name) {
       eventBus.emitEvent({
-        agentId: devAgent.id,
+        agentId: stepAgent.id,
         type: 'tool_executing',
         payload: {
           tool: name,
@@ -1961,14 +2559,28 @@ function parseTranscriptStep(step, convId = '') {
 module.exports = {
   setupWatchers,
   resetWatchersOffsets,
+  reloadAgentRolesFromDisk,
   handleScratchFileChange,
   handleWorkspaceFileChange,
   parseTranscriptStep,
-  ensureRoleDeliverables,
+  handleClaudeEntry,
   getResolvedAgent,
   resolveConversationProject,
   conversationProjectMatch,
   isPathInProject,
   cleanExtractedUri,
+  syncRealTasksFromFiles,
+  syncTasksFromJson,
+  registerRealAgentTask,
+  persistActiveSprintTasks,
+  parseRealTasksFromContent,
+  formatConciseTaskTitle,
+  sanitizeTaskKey,
+  sanitizeTaskTitle,
+  toRelativePath,
+  resolveSprintIndex,
+  saveSprintIndex,
+  getActiveSprintInfo,
+  startNewSprint,
 };
 

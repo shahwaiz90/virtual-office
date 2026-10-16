@@ -14,14 +14,14 @@ console.log('   Workflow Phase:', snapshot.workflow.phase);
 assert(snapshot.workflow.title.includes('Standby') || snapshot.workflow.title.includes(eventBus.projectName), 
   `Expected Standby workflow title, got: ${snapshot.workflow.title}`);
 assert.strictEqual(snapshot.workflow.phase, 'Standby & Ready');
-console.log('✅ PASS: Standby workflow title and phase initialized cleanly without demo simulation leak!');
+console.log('✅ PASS: Standby workflow title and phase initialized cleanly!');
 
 // 2. Demo Trigger and Clean Reset
-console.log('\nTest 2: Triggering demo then calling clearState() resets cleanly to Standby...');
-eventBus.loadDemoWorkflow('DEMO: FEATURE-101 (Test Demo)');
-const demoSnapshot = eventBus.getStateSnapshot();
-assert.strictEqual(demoSnapshot.workflow.title, 'DEMO: FEATURE-101 (Test Demo)');
-assert.strictEqual(demoSnapshot.workflow.phase, 'Intake & Planning');
+console.log('\nTest 2: An active board then clearState() resets cleanly to Standby...');
+eventBus.workflowTitle = 'Export the board as CSV';
+eventBus.currentPhase = 'Sprint Execution';
+eventBus.tasks.set('TASK-WEB-1', { id: 'TASK-WEB-1', key: 'WEB-1', title: 'Add CSV export', column: 'in_progress', assignedTo: 'web-dev' });
+assert.strictEqual(eventBus.getStateSnapshot().tasks.length, 1);
 
 eventBus.clearState();
 const resetSnapshot = eventBus.getStateSnapshot();

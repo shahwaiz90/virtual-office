@@ -95,17 +95,17 @@ function sanitizeModelResponse(rawText) {
  * Queries the active local OpenCode model with live office state and strict voice guardrails.
  * Any question asked is routed to the connected local model.
  */
-async function queryExistingModel(query, officeState, isDemo = false, timeoutMs = 20000) {
+async function queryExistingModel(query, officeState, timeoutMs = 20000) {
   const q = (query || '').trim();
   const lower = q.toLowerCase();
 
   // 1. FAST-PATH: Immediate local actions that should not wait for model latency
-  if (lower === 'stop' || lower === 'stop demo' || lower === 'stop sprint' || lower === 'pause demo') {
+  if (lower === 'stop' || lower === 'stop speaking' || lower === 'be quiet') {
     return {
-      spokenText: 'Stopping Demo Agentic Workflow now and silencing all speech.',
-      displayText: '⏹️ **Stopping Demo Agentic Workflow**\nSimulation stopped and audio output silenced.',
-      action: { type: 'STOP_DEMO' },
-      highlightBadge: 'STOP DEMO',
+      spokenText: 'Stopping speech.',
+      displayText: '⏹️ **Speech stopped**',
+      action: { type: 'STOP_SPEECH' },
+      highlightBadge: 'STOP',
       usedModel: 'fast-path'
     };
   }
@@ -126,7 +126,7 @@ async function queryExistingModel(query, officeState, isDemo = false, timeoutMs 
   const projectName = officeState?.workflow?.projectName || 'Virtual Office';
   const projectPath = officeState?.workflow?.projectPath || process.cwd();
   const workflowTitle = officeState?.workflow?.title || 'Virtual Office Workspace';
-  const workflowPhase = officeState?.workflow?.phase || (isDemo ? 'In Progress' : 'Standby');
+  const workflowPhase = officeState?.workflow?.phase || 'Standby';
 
   const inProgressCount = tasks.filter((t) => t.column === 'in_progress' || t.column === 'review' || t.column === 'testing').length;
   const doneCount = tasks.filter((t) => t.column === 'done').length;
@@ -139,7 +139,7 @@ async function queryExistingModel(query, officeState, isDemo = false, timeoutMs 
   const systemPrompt = `You are the Voice AI Assistant for the Virtual Office Multi-Agent platform.
 Live Workspace Context:
 - Active Project: ${projectName} (${projectPath})
-- Workflow: ${workflowTitle} (Phase: ${workflowPhase}, Demo Active: ${isDemo})
+- Workflow: ${workflowTitle} (Phase: ${workflowPhase})
 - Configured Agents (${agents.length}):
 ${agentSummaries || '  * No agents currently configured.'}
 - Kanban Deliverables: ${tasks.length} total (${doneCount} Done, ${inProgressCount} In Progress)
@@ -187,12 +187,12 @@ User Voice Query: "${q}"`;
 
       if (timedOut) {
         console.warn(`[VoiceIntelligence] Model query timed out after ${timeoutMs}ms. Falling back.`);
-        return resolve(fallbackHeuristic(q, officeState, isDemo));
+        return resolve(fallbackHeuristic(q, officeState));
       }
 
       if (code !== 0 && !output.trim()) {
         console.warn(`[VoiceIntelligence] Model exited with code ${code}: ${errorOutput}`);
-        return resolve(fallbackHeuristic(q, officeState, isDemo));
+        return resolve(fallbackHeuristic(q, officeState));
       }
 
       const sanitized = sanitizeModelResponse(output);
@@ -200,14 +200,6 @@ User Voice Query: "${q}"`;
       // Infer actions if user command requested a state change
       let action = undefined;
       let highlightBadge = 'MODEL';
-
-      if (
-        (lower.includes('start') || lower.includes('run') || lower.includes('play')) &&
-        (lower.includes('sprint') || lower.includes('demo') || lower.includes('simulation'))
-      ) {
-        action = { type: 'START_DEMO' };
-        highlightBadge = 'START DEMO';
-      }
 
       // Check if user asked to focus a specific agent
       for (const a of agents) {
@@ -231,7 +223,7 @@ User Voice Query: "${q}"`;
     child.on('error', (err) => {
       clearTimeout(timer);
       console.warn(`[VoiceIntelligence] Failed to spawn model: ${err.message}. Using fallback.`);
-      resolve(fallbackHeuristic(q, officeState, isDemo));
+      resolve(fallbackHeuristic(q, officeState));
     });
   });
 }
@@ -239,7 +231,7 @@ User Voice Query: "${q}"`;
 /**
  * Resilient local fallback in case model daemon is unreachable or times out
  */
-function fallbackHeuristic(query, state, isDemo) {
+function fallbackHeuristic(query, state) {
   const q = (query || '').toLowerCase().trim();
   const agents = state?.agents || [];
   const tasks = state?.tasks || [];
@@ -249,14 +241,14 @@ function fallbackHeuristic(query, state, isDemo) {
     const inProgress = tasks.filter((t) => t.column === 'in_progress' || t.column === 'review' || t.column === 'testing').length;
     return {
       spokenText: `Status update for ${projectName}: The workspace has ${agents.length} configured agents with ${inProgress} deliverables currently in pipeline.`,
-      displayText: `🟢 **Workspace: ${projectName}**\n- Configured Agents: **${agents.length}**\n- Deliverables In Progress: **${inProgress}**\n- Health: **100% Operational**`,
+      displayText: `🟢 **Workspace: ${projectName}**\n- Configured Agents: **${agents.length}**\n- Deliverables In Progress: **${inProgress}**`,
       highlightBadge: 'STATUS OK',
       usedModel: 'heuristic-fallback'
     };
   }
 
   return {
-    spokenText: `Regarding "${query}": Workspace ${projectName} is operational with ${agents.length} configured agents.`,
+    spokenText: `Regarding "${query}": Workspace ${projectName} has ${agents.length} configured agents.`,
     displayText: `Query received: *"${query}"*\n\nActive workspace: **${projectName}**\nConfigured agents: **${agents.length}**\nSystem status: **Nominal**`,
     highlightBadge: 'STATUS OK',
     usedModel: 'heuristic-fallback'

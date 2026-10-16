@@ -165,7 +165,7 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
 
   return (
     <div
-      className={`bg-white border border-slate-200/90 rounded-2xl shadow-sm flex flex-col ${
+      className={`bg-surface border border-sand-200/90 rounded-2xl shadow-sm flex flex-col ${
         compactMode ? 'p-3' : 'p-4'
       }`}
       style={{
@@ -175,16 +175,16 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
     >
       {/* Header & Controls */}
       <div
-        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-slate-200 ${
+        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-sand-200 ${
           compactMode ? 'pb-2.5 mb-2.5' : 'pb-3 mb-3'
         }`}
       >
         <div className="flex items-center gap-2">
-          <Terminal className="w-4 h-4 text-indigo-600 shrink-0" />
-          <span className="text-sm font-bold text-slate-800 tracking-tight">
-            {title || 'Real-Time OpenCode Activity Logs'}
+          <Terminal className="w-4 h-4 text-brand-600 shrink-0" />
+          <span className="text-sm font-bold text-sand-800 tracking-tight">
+            {title || 'Real-Time Agent Activity Logs'}
           </span>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-mono font-medium">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-sand-100 text-sand-600 font-mono font-medium">
             {filteredEvents.length} events
           </span>
         </div>
@@ -193,7 +193,7 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={handleCopyLogs}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-sand-100 hover:bg-sand-200 text-sand-700 font-medium transition-colors cursor-pointer"
             title="Copy logs to clipboard"
           >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
@@ -201,7 +201,7 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
           </button>
           <button
             onClick={handleExportJson}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs bg-sand-100 hover:bg-sand-200 text-sand-700 font-medium transition-colors cursor-pointer"
             title="Export logs to JSON"
           >
             <Download className="w-3.5 h-3.5" />
@@ -218,7 +218,7 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
               ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
               : statusTone === 'handoff'
               ? 'bg-amber-50/70 border-amber-200 text-amber-950'
-              : 'bg-slate-50 border-slate-200 text-slate-800'
+              : 'bg-sand-50 border-sand-200 text-sand-800'
           }`}
         >
           <div className="flex items-center gap-2.5 min-w-0">
@@ -235,7 +235,7 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
                     ? 'bg-emerald-500'
                     : statusTone === 'handoff'
                     ? 'bg-amber-500'
-                    : 'bg-slate-400'
+                    : 'bg-sand-400'
                 }`}
               />
             </span>
@@ -244,9 +244,9 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
             <span
               className="text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 shadow-2xs"
               style={{
-                backgroundColor: `${currentAgent.theme?.themeColor || '#6366f1'}18`,
-                color: currentAgent.theme?.themeColor || '#6366f1',
-                border: `1px solid ${currentAgent.theme?.themeColor || '#6366f1'}35`,
+                backgroundColor: `${currentAgent.theme?.themeColor || '#0f766b'}18`,
+                color: currentAgent.theme?.themeColor || '#0f766b',
+                border: `1px solid ${currentAgent.theme?.themeColor || '#0f766b'}35`,
               }}
             >
               {currentAgent.theme?.badge || currentAgent.badgeText || 'AGT'}
@@ -254,8 +254,8 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
 
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold truncate text-slate-900">{currentAgent.name}</span>
-                <span className="text-[11px] text-slate-500 hidden sm:inline">({currentAgent.role})</span>
+                <span className="text-xs font-bold truncate text-sand-900">{currentAgent.name}</span>
+                <span className="text-[11px] text-sand-500 hidden sm:inline">({currentAgent.role})</span>
                 {/* Status Badge */}
                 <span
                   className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0 border ${
@@ -263,14 +263,14 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
                       ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
                       : statusTone === 'handoff'
                       ? 'bg-amber-100 text-amber-800 border-amber-200'
-                      : 'bg-slate-200/70 text-slate-700 border-slate-300'
+                      : 'bg-sand-200/70 text-sand-700 border-sand-300'
                   }`}
                 >
                   {workBadge}
                 </span>
               </div>
               {/* Current Task / Details snippet */}
-              <p className="text-[11px] text-slate-600 truncate mt-0.5 font-medium">
+              <p className="text-[11px] text-sand-600 truncate mt-0.5 font-medium">
                 {workLabel}
               </p>
             </div>
@@ -278,11 +278,11 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
 
           {/* Optional tool or file tag */}
           {latestAgentEvent?.payload?.tool ? (
-            <span className="hidden sm:inline-flex text-[10px] font-mono px-2 py-0.5 rounded bg-white/80 border border-slate-200 text-slate-700 shrink-0">
+            <span className="hidden sm:inline-flex text-[10px] font-mono px-2 py-0.5 rounded bg-surface/80 border border-sand-200 text-sand-700 shrink-0">
               tool: {latestAgentEvent.payload.tool}
             </span>
           ) : currentAgent.lastTool ? (
-            <span className="hidden sm:inline-flex text-[10px] font-mono px-2 py-0.5 rounded bg-white/80 border border-slate-200 text-slate-700 shrink-0">
+            <span className="hidden sm:inline-flex text-[10px] font-mono px-2 py-0.5 rounded bg-surface/80 border border-sand-200 text-sand-700 shrink-0">
               tool: {currentAgent.lastTool}
             </span>
           ) : null}
@@ -293,13 +293,13 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
       <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 mb-2.5">
         {/* Search */}
         <div className="relative flex-1 min-w-0 sm:min-w-[160px]">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+          <Search className="w-3.5 h-3.5 text-sand-400 absolute left-3 top-2.5" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search commands, tools, files..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition-colors"
+            className="w-full bg-sand-50 border border-sand-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-sand-800 placeholder-sand-400 focus:outline-none focus:border-brand-500 focus:bg-surface transition-colors"
           />
         </div>
 
@@ -310,7 +310,7 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
             <select
               value={selectedAgent}
               onChange={(e) => setSelectedAgent(e.target.value)}
-              className="flex-1 sm:flex-initial bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:bg-white transition-colors cursor-pointer"
+              className="flex-1 sm:flex-initial bg-sand-50 border border-sand-200 rounded-lg px-2.5 py-1.5 text-xs text-sand-700 focus:outline-none focus:border-brand-500 focus:bg-surface transition-colors cursor-pointer"
             >
               <option value="all">All Agents</option>
               {agents.map((a) => (
@@ -325,7 +325,7 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
           <select
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value)}
-            className="flex-1 sm:flex-initial bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:bg-white transition-colors cursor-pointer"
+            className="flex-1 sm:flex-initial bg-sand-50 border border-sand-200 rounded-lg px-2.5 py-1.5 text-xs text-sand-700 focus:outline-none focus:border-brand-500 focus:bg-surface transition-colors cursor-pointer"
           >
             <option value="all">All Types</option>
             <option value="agent_handoff">Handoffs</option>
@@ -342,17 +342,17 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
       {/* Log Feed Table / List */}
       <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 font-mono text-xs">
         {agents.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center p-8 bg-slate-50/60 rounded-xl border border-dashed border-slate-200 text-center">
-            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-2.5">
+          <div className="h-full flex flex-col items-center justify-center p-8 bg-sand-50/60 rounded-xl border border-dashed border-sand-200 text-center">
+            <div className="w-10 h-10 rounded-full bg-sand-100 flex items-center justify-center text-sand-400 mb-2.5">
               <Terminal className="w-5 h-5" />
             </div>
-            <h4 className="text-sm font-semibold text-slate-700">Activity Logs On Standby</h4>
-            <p className="text-xs text-slate-500 max-w-sm mt-1">
+            <h4 className="text-sm font-semibold text-sand-700">Activity Logs On Standby</h4>
+            <p className="text-xs text-sand-500 max-w-sm mt-1">
               Event telemetry and streaming terminal logs will stream here when agent workflows are active.
             </p>
           </div>
         ) : filteredEvents.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-slate-400 italic">
+          <div className="h-full flex items-center justify-center text-sand-400 italic">
             No matching events found
           </div>
         ) : (
@@ -362,10 +362,10 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
             const timeStr = new Date(evt.timestamp).toLocaleTimeString();
 
             // Color coding for event types
-            let badgeColor = 'bg-slate-100 text-slate-700 border-slate-200';
+            let badgeColor = 'bg-sand-100 text-sand-700 border-sand-200';
             if (evt.type === 'agent_handoff') badgeColor = 'bg-amber-50 text-amber-800 border-amber-200';
             else if (evt.type === 'command_executing') badgeColor = 'bg-sky-50 text-sky-800 border-sky-200';
-            else if (evt.type === 'file_modified') badgeColor = 'bg-indigo-50 text-indigo-800 border-indigo-200';
+            else if (evt.type === 'file_modified') badgeColor = 'bg-brand-50 text-brand-800 border-brand-200';
             else if (evt.type === 'test_result') badgeColor = 'bg-emerald-50 text-emerald-800 border-emerald-200';
             else if (evt.type === 'error') badgeColor = 'bg-rose-50 text-rose-800 border-rose-200';
 
@@ -374,7 +374,7 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
             return (
               <div
                 key={evt.eventId}
-                className="bg-slate-50/70 border border-slate-200/80 rounded-lg p-2 hover:bg-slate-100/80 transition-colors"
+                className="bg-sand-50/70 border border-sand-200/80 rounded-lg p-2 hover:bg-sand-100/80 transition-colors"
               >
                 <div
                   className="flex items-center gap-2 cursor-pointer"
@@ -383,16 +383,16 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
                   {/* Expand icon */}
                   {hasExpandableContent ? (
                     isExpanded ? (
-                      <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <ChevronDown className="w-3.5 h-3.5 text-sand-400 shrink-0" />
                     ) : (
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <ChevronRight className="w-3.5 h-3.5 text-sand-400 shrink-0" />
                     )
                   ) : (
                     <span className="w-3.5 shrink-0" />
                   )}
 
                   {/* Timestamp */}
-                  <span className="text-[11px] text-slate-400 shrink-0">{timeStr}</span>
+                  <span className="text-[11px] text-sand-400 shrink-0">{timeStr}</span>
 
                   {/* Agent pill */}
                   {agent && (
@@ -414,40 +414,40 @@ export const LiveLogs: React.FC<LiveLogsProps> = ({
                   </span>
 
                   {/* Message / summary */}
-                  <span className="text-slate-800 truncate flex-1 min-w-0 text-left font-sans text-xs">
+                  <span className="text-sand-800 truncate flex-1 min-w-0 text-left font-sans text-xs">
                     {evt.payload.details || evt.payload.command || evt.payload.task || 'Activity event'}
                   </span>
                 </div>
 
                 {/* Expanded Details View */}
                 {isExpanded && (
-                  <div className="mt-2 pt-2 border-t border-slate-200 pl-6 space-y-1.5 text-left text-[11px]">
+                  <div className="mt-2 pt-2 border-t border-sand-200 pl-6 space-y-1.5 text-left text-[11px]">
                     {evt.payload.task && (
                       <div>
-                        <span className="text-slate-500 font-sans">Task: </span>
-                        <span className="text-slate-800 font-sans font-medium">{evt.payload.task}</span>
+                        <span className="text-sand-500 font-sans">Task: </span>
+                        <span className="text-sand-800 font-sans font-medium">{evt.payload.task}</span>
                       </div>
                     )}
                     {evt.payload.file && (
                       <div>
-                        <span className="text-slate-500 font-sans">File: </span>
-                        <span className="text-indigo-600 font-mono font-medium">{evt.payload.file}</span>
+                        <span className="text-sand-500 font-sans">File: </span>
+                        <span className="text-brand-600 font-mono font-medium">{evt.payload.file}</span>
                       </div>
                     )}
                     {evt.payload.tool && (
                       <div>
-                        <span className="text-slate-500 font-sans">Tool: </span>
+                        <span className="text-sand-500 font-sans">Tool: </span>
                         <span className="text-teal-700 font-mono font-medium">{evt.payload.tool}</span>
                       </div>
                     )}
                     {evt.payload.command && (
-                      <div className="bg-slate-900 border border-slate-800 rounded-lg p-2 text-sky-300 overflow-x-auto">
-                        <span className="text-slate-400">$ </span>
+                      <div className="theme-static bg-sand-900 border border-sand-800 rounded-lg p-2 text-sky-300 overflow-x-auto">
+                        <span className="text-sand-400">$ </span>
                         {evt.payload.command}
                       </div>
                     )}
                     {evt.payload.output && (
-                      <div className="bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 whitespace-pre-wrap overflow-x-auto max-h-40">
+                      <div className="theme-static bg-sand-900 border border-sand-800 rounded-lg p-2 text-sand-200 whitespace-pre-wrap overflow-x-auto max-h-40">
                         {evt.payload.output}
                       </div>
                     )}

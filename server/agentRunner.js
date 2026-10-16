@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { resolveOpenCodeBin } = require('./voiceIntelligence');
+const { OrchestrationRules } = require('./orchestrationRules');
 
 class AgentRunner {
   constructor(eventBus, getProjectRoot) {
@@ -14,7 +15,10 @@ class AgentRunner {
   }
 
   /**
-   * Deconstructs a feature goal into 4 dynamic engineering tasks using the local AI model
+   * Breaks a user requirement into the tasks the AI decides it needs (any number, no fixed stages),
+   * registers them on the Kanban board, and hands the first task to its assignee.
+   * If the AI is unavailable, the requirement is registered verbatim as ONE backlog intake card
+   * for the orchestrator to break down — no template tasks are invented.
    */
   async decomposeGoalWithAI(goal, projectRoot, assignerId) {
     const cleanGoal = (goal || '').trim();
@@ -23,148 +27,67 @@ class AgentRunner {
     const agentList = Array.from(this.eventBus.agents.values());
     if (agentList.length === 0) return [];
 
-    // The 1st agent is ALWAYS the primary orchestrator, and all others are its subagents
-    const pm = agentList[0];
-    const lead = agentList[1] || agentList[0];
-    const dev = agentList[2] || agentList[0];
-    const tester = agentList[3] || agentList[0];
+    const { pm } = OrchestrationRules.resolveTeamRoles(agentList);
+    const existingTasks = Array.from(this.eventBus.tasks.values());
 
-    // Determine platform badge prefix
-    let badge = 'TSK';
-    if (lead.id.toLowerCase().includes('android') || lead.badge === 'ANDROID' || (lead.skills && lead.skills.some((s) => (s.id || s).includes('android')))) {
-      badge = 'AND';
-    } else if (lead.id.toLowerCase().includes('ios') || lead.badge === 'IOS' || (lead.skills && lead.skills.some((s) => (s.id || s).includes('ios')))) {
-      badge = 'IOS';
-    } else if (lead.id.toLowerCase().includes('web') || lead.badge === 'WEB' || (lead.skills && lead.skills.some((s) => (s.id || s).includes('web')))) {
-      badge = 'WEB';
-    }
-
-    const timestamp = Date.now();
-    const batchId = Math.random().toString(36).substring(2, 5).toUpperCase();
-
-    // Query AI for dynamic decomposition
     let aiTasks = null;
     try {
-      aiTasks = await this.queryDecompositionModel(cleanGoal, projectRoot, agentList);
+      aiTasks = await this.queryDecompositionModel(cleanGoal, projectRoot, agentList, existingTasks);
     } catch (err) {
-      console.warn('[AgentRunner] AI decomposition fallback:', err.message);
+      console.warn('[AgentRunner] AI decomposition unavailable, registering requirement for orchestrator:', err.message);
     }
 
-    let decomposed = [];
+    let decomposed = OrchestrationRules.normalizeAITasks(aiTasks, agentList, { existingTasks });
+    const fromAI = decomposed.length > 0;
+    if (!fromAI) {
+      decomposed = OrchestrationRules.decomposeSprintGoal(cleanGoal, agentList, { existingTasks });
+    }
+    if (decomposed.length === 0) return [];
 
-    if (Array.isArray(aiTasks) && aiTasks.length >= 3) {
-      // Use AI-generated tasks
-      decomposed = aiTasks.slice(0, 4).map((t, idx) => {
-        const stage = idx === 0 ? 'spike' : idx === 1 ? 'dev' : idx === 2 ? 'review' : 'qa';
-        const assignedAgent = stage === 'spike' || stage === 'review' ? lead : stage === 'dev' ? dev : tester;
-        const delegatedAgent = stage === 'spike' ? pm : stage === 'dev' ? lead : stage === 'review' ? dev : lead;
-        const column = idx === 0 ? 'in_progress' : idx === 1 ? 'assigned' : 'backlog';
-        const progress = idx === 0 ? 30 : 0;
-
-        return {
-          id: `TASK-${timestamp}-${idx + 1}`,
-          key: `${badge}-${batchId}${idx + 1}`,
-          title: t.title || `${cleanGoal} - Step ${idx + 1}`,
-          description: t.description || `Implement deliverables for ${cleanGoal}`,
-          assignedTo: assignedAgent.id,
-          delegatedBy: delegatedAgent.id,
-          delegatedByRole: delegatedAgent.role || delegatedAgent.name,
-          column,
-          skill: t.skill || (stage === 'spike' ? 'task-decomposition' : stage === 'dev' ? 'feature-implementation' : stage === 'review' ? 'code-review' : 'automated-testing'),
-          progress,
-          updatedAt: new Date().toISOString(),
-          logs: [],
-        };
-      });
-    } else {
-      // Dynamic fallback tailored to the user's goal
-      decomposed = [
-        {
-          id: `TASK-${timestamp}-1`,
-          key: `${badge}-${batchId}1`,
-          title: `Architecture Spike: ${cleanGoal}`,
-          description: `Map impacted files, audit boundary contracts, formulate Clean Architecture interfaces, and write technical execution plan.`,
-          assignedTo: lead.id,
-          delegatedBy: pm.id,
-          delegatedByRole: pm.role || pm.name,
-          column: 'in_progress',
-          skill: 'task-decomposition',
-          progress: 35,
-          updatedAt: new Date().toISOString(),
-          logs: [],
-        },
-        {
-          id: `TASK-${timestamp}-2`,
-          key: `${badge}-${batchId}2`,
-          title: `Core Feature Implementation: ${cleanGoal}`,
-          description: `Build domain models, repositories, reactive state flows, and UI composables/components adhering to architecture spike.`,
-          assignedTo: dev.id,
-          delegatedBy: lead.id,
-          delegatedByRole: lead.role || lead.name,
-          column: 'assigned',
-          skill: 'feature-implementation',
-          progress: 0,
-          updatedAt: new Date().toISOString(),
-          logs: [],
-        },
-        {
-          id: `TASK-${timestamp}-3`,
-          key: `${badge}-${batchId}3`,
-          title: `Quality Gate & Code Review: ${cleanGoal}`,
-          description: `10-Point architectural quality review, verify immutability, audit zero memory leaks, and inspect Definition of Done.`,
-          assignedTo: lead.id,
-          delegatedBy: dev.id,
-          delegatedByRole: dev.role || dev.name,
-          column: 'backlog',
-          skill: 'code-review',
-          progress: 0,
-          updatedAt: new Date().toISOString(),
-          logs: [],
-        },
-        {
-          id: `TASK-${timestamp}-4`,
-          key: `${badge}-${batchId}4`,
-          title: `Automated QA & Acceptance Verification: ${cleanGoal}`,
-          description: `Author and execute automated test suites (unit + integration + regression) to certify 100% green pass rate and acceptance criteria.`,
-          assignedTo: tester.id,
-          delegatedBy: lead.id,
-          delegatedByRole: lead.role || lead.name,
-          column: 'backlog',
-          skill: 'automated-testing',
-          progress: 0,
-          updatedAt: new Date().toISOString(),
-          logs: [],
-        },
-      ];
+    // Backlog-first: only start the first task if nothing else is currently active.
+    const activeCols = ['assigned', 'in_progress', 'review', 'testing'];
+    const teamBusy = existingTasks.some((t) => activeCols.includes(t.column));
+    if (fromAI && !teamBusy && decomposed[0].column === 'backlog') {
+      decomposed[0].column = 'in_progress';
     }
 
-    // Register in eventBus
     for (const task of decomposed) {
       this.eventBus.tasks.set(task.id, task);
     }
 
-    lead.status = 'working';
-    lead.currentTask = decomposed[0].title;
-    lead.activityMessage = `Analyzing architecture: ${cleanGoal}`;
+    const first = decomposed[0];
+    const firstAgent = this.eventBus.agents.get(first.assignedTo) || pm;
+    if (first.column === 'in_progress') {
+      firstAgent.status = 'working';
+      firstAgent.currentTask = first.title;
+      firstAgent.activityMessage = first.title;
+    }
 
     this.eventBus.recordCommunication({
       fromAgentId: pm.id,
       fromAgentName: pm.name,
       fromAgentRole: pm.role,
-      toAgentId: lead.id,
-      toAgentName: lead.name,
-      toAgentRole: lead.role,
-      taskKey: decomposed[0].key,
-      taskTitle: decomposed[0].title,
-      message: `Decomposed feature goal "${cleanGoal}" into 4 sprint deliverables on the Authoritative Task Board. Assigning Architecture Spike to Tech Lead.`,
+      toAgentId: firstAgent.id,
+      toAgentName: firstAgent.name,
+      toAgentRole: firstAgent.role,
+      taskKey: first.key,
+      taskTitle: first.title,
+      message: fromAI
+        ? `Broke "${cleanGoal}" into ${decomposed.length} task${decomposed.length === 1 ? '' : 's'}: ${decomposed.map((t) => `${t.key} ${t.title} → ${t.assignedTo}`).join('; ')}`
+        : `Registered requirement "${cleanGoal}" in the backlog for breakdown.`,
       channel: 'subagent_delegation',
       timestamp: new Date().toISOString(),
     });
 
     this.eventBus.workflowTitle = `${this.eventBus.projectName} • ${cleanGoal.slice(0, 32)}`;
     this.eventBus.currentPhase = 'Sprint Execution';
-    this.eventBus.latestMilestone = `Task Decomposed & Assigned: ${cleanGoal}`;
+    this.eventBus.latestMilestone = fromAI ? `Requirement broken into ${decomposed.length} tasks` : `Requirement added to backlog`;
     this.eventBus.latestMilestoneAgentId = pm.id;
+
+    try {
+      const { persistActiveSprintTasks } = require('./watchers');
+      if (typeof persistActiveSprintTasks === 'function') persistActiveSprintTasks(projectRoot);
+    } catch (e) {}
 
     this.eventBus.broadcast({
       type: 'SYNC_STATE',
@@ -175,39 +98,53 @@ class AgentRunner {
   }
 
   /**
-   * Helper that prompts the local model to decompose a goal
+   * Asks the model to break the requirement down. The prompt describes the real team roster and
+   * imposes NO fixed number of tasks, stages or titles.
    */
-  queryDecompositionModel(goal, projectRoot, agentList) {
+  queryDecompositionModel(goal, projectRoot, agentList, existingTasks = []) {
     const opencodeBin = resolveOpenCodeBin();
-    const prompt = `You are a Technical Product Lead. Deconstruct this feature request into 4 engineering tasks:
-1. Architecture Spike (Contract & File boundaries)
-2. Core Feature Implementation
-3. Quality Gate & Code Review
-4. Automated QA Verification
+    const model = process.env.VIRTUAL_OFFICE_DECOMPOSE_MODEL || 'opencode/nemotron-3.5-lightning-free';
+    const roster = agentList
+      .map((a) => {
+        const skills = (a.skills || []).map((s) => (typeof s === 'string' ? s : s.id || s.name)).filter(Boolean);
+        const targets = a.delegation_targets || a.handoffTo || [];
+        const prohibited = a.prohibited_actions || [];
+        return `- ${a.id} (${a.role || a.name})${skills.length ? ` skills: ${skills.join(', ')}` : ''}${targets.length ? `; delegates to: ${targets.join(', ')}` : ''}${prohibited.length ? `; must not: ${prohibited.join('; ')}` : ''}`;
+      })
+      .join('\n');
+    const openTasks = existingTasks
+      .filter((t) => t.column !== 'done')
+      .slice(0, 20)
+      .map((t) => `- ${t.key}: ${t.title} (${t.column})`)
+      .join('\n');
 
-Project: ${path.basename(projectRoot || process.cwd())}
-Feature Goal: "${goal}"
+    const prompt = `You are the Scrum Master for the project "${path.basename(projectRoot || process.cwd())}".
+Break the user's requirement below into the concrete tasks it actually needs.
 
-CRITICAL: Return ONLY a valid JSON array of 4 objects with this exact structure, with no markdown code blocks, backticks, or other text:
-[
-  {"title": "Architecture Spike: ...", "description": "...", "skill": "task-decomposition"},
-  {"title": "Core Implementation: ...", "description": "...", "skill": "feature-implementation"},
-  {"title": "Code Review: ...", "description": "...", "skill": "code-review"},
-  {"title": "Automated Testing: ...", "description": "...", "skill": "automated-testing"}
-]`;
+Rules:
+- Decide the number of tasks yourself from the requirement (a tiny fix may be 1 task, a large feature many). Do NOT use a fixed template such as Plan/Build/Review/Test.
+- Each title must name the specific work (under 60 characters). No generic titles like "Implementation" or "Task 1".
+- Assign every task to an agent id from this roster only, respecting roles and what they must not do:
+${roster}
+- Add review or testing tasks only if they are genuinely useful and a roster agent can do them.
+${openTasks ? `Tasks already on the board (do not duplicate):\n${openTasks}\n` : ''}
+User requirement: """${goal}"""
+
+Return ONLY a JSON array (no markdown, no prose). Each item:
+{"title": "...", "description": "what to do and why", "acceptanceCriteria": ["..."], "assignedTo": "<agent id>", "skill": "<one of the assignee's skills>", "dependsOn": ["<title or key of an earlier task>"]}`;
 
     return new Promise((resolve, reject) => {
       let output = '';
-      const child = spawn(opencodeBin, ['run', '--auto', '-m', 'opencode/nemotron-3.5-lightning-free', prompt], {
+      const child = spawn(opencodeBin, ['run', '--auto', '-m', model, prompt], {
         stdio: ['ignore', 'pipe', 'pipe'],
-        cwd: os.tmpdir(),
+        cwd: projectRoot || os.tmpdir(),
         env: process.env,
       });
 
       const timer = setTimeout(() => {
         try { child.kill('SIGKILL'); } catch (e) {}
         reject(new Error('AI decomposition timed out'));
-      }, 15000);
+      }, 60000);
 
       child.stdout.on('data', (d) => { output += d.toString(); });
       child.on('close', (code) => {
@@ -219,9 +156,9 @@ CRITICAL: Return ONLY a valid JSON array of 4 objects with this exact structure,
           const match = output.match(/\[\s*\{[\s\S]*\}\s*\]/);
           if (match) {
             const parsed = JSON.parse(match[0]);
-            return resolve(parsed);
+            if (Array.isArray(parsed) && parsed.length > 0) return resolve(parsed);
           }
-          reject(new Error('No JSON array found in output'));
+          reject(new Error('No JSON task array found in output'));
         } catch (e) {
           reject(e);
         }
@@ -233,8 +170,39 @@ CRITICAL: Return ONLY a valid JSON array of 4 objects with this exact structure,
     });
   }
 
+  /** Lookup from a dependsOn reference (card key, id, or an earlier task's title) to its card. */
+  dependencyIndex() {
+    const index = new Map();
+    const all = Array.from(this.eventBus.tasks.values());
+    // Titles first so keys and ids win when both match
+    for (const t of all) if (t.title) index.set(String(t.title).trim().toLowerCase(), t);
+    for (const t of all) {
+      if (t.id) index.set(String(t.id).toLowerCase(), t);
+      if (t.key) index.set(String(t.key).toLowerCase(), t);
+    }
+    return index;
+  }
+
+  /** Dependencies of a card that are not done yet (a missing one counts as open). */
+  openDependencies(task, index = this.dependencyIndex()) {
+    return (Array.isArray(task.dependsOn) ? task.dependsOn : [])
+      .map((ref) => ({ ref, card: index.get(String(ref || '').trim().toLowerCase()) || null }))
+      .filter(({ card }) => !card || card.column !== 'done')
+      .map(({ ref, card }) => (card ? card.key : `${ref} (missing)`));
+  }
+
+  /** Cards an agent can start: open work (not in review/testing/done) whose dependencies are done. */
+  runnableTasks(exclude = new Set()) {
+    const index = this.dependencyIndex();
+    return Array.from(this.eventBus.tasks.values()).filter(
+      (t) => ['backlog', 'assigned', 'in_progress'].includes(t.column) && !exclude.has(t.id) && this.openDependencies(t, index).length === 0
+    );
+  }
+
   /**
-   * Executes a specific task on the Authoritative Task Board using real OpenCode
+   * Executes a specific task on the Authoritative Task Board using real OpenCode.
+   * The card's column is the agent's to set through the board API; a clean exit only
+   * means the agent stopped, so an unmoved card goes to review for its delegator.
    */
   async executeTask(taskId) {
     const task = this.eventBus.tasks.get(taskId);
@@ -246,13 +214,17 @@ CRITICAL: Return ONLY a valid JSON array of 4 objects with this exact structure,
       throw new Error(`Task ${taskId} is already executing.`);
     }
 
+    const blockedBy = this.openDependencies(task);
+    if (blockedBy.length) {
+      throw new Error(`Task ${task.key || taskId} is blocked by ${blockedBy.join(', ')}.`);
+    }
+
     const agent = this.eventBus.agents.get(task.assignedTo) || Array.from(this.eventBus.agents.values())[0];
     const projectRoot = this.getProjectRoot();
     const opencodeBin = resolveOpenCodeBin();
 
     this.currentRunningTaskId = taskId;
     task.column = 'in_progress';
-    task.progress = 25;
     task.logs = task.logs || [];
     task.logs.push(`[${new Date().toLocaleTimeString()}] Spawning agent ${agent.name} via OpenCode...`);
 
@@ -275,7 +247,9 @@ INSTRUCTIONS:
 1. Work directly on the real codebase in this project directory.
 2. Read the impacted files, apply the necessary code modifications, create new components or files if required.
 3. If this is a test task, run the test suite and verify pass rate.
-4. Keep all changes clean, minimal, and fully functioning.`;
+4. Keep all changes clean, minimal, and fully functioning.
+5. Your card is http://localhost:3000/api/tasks/${task.key}?format=md. When you finish, move it yourself with
+   POST http://localhost:3000/api/tasks/${task.key}/status {"agentId":"${agent.id}","column":"review" or "done","result":"what you did"}.`;
 
     return new Promise((resolve, reject) => {
       task.logs.push(`[${new Date().toLocaleTimeString()}] Target directory: ${projectRoot}`);
@@ -303,17 +277,10 @@ INSTRUCTIONS:
           if (task.logs.length > 50) task.logs.shift();
           task.logs.push(trimmed);
 
-          // Stream real tool activity
-          if (trimmed.includes('write') || trimmed.includes('edit') || trimmed.includes('create')) {
-            agent.status = 'coding';
-            agent.activityMessage = trimmed.slice(0, 50);
-          } else if (trimmed.includes('test') || trimmed.includes('verify')) {
-            agent.status = 'testing';
-            agent.activityMessage = trimmed.slice(0, 50);
-          }
+          // Show the agent's latest output line; no status or progress is guessed from its words
+          agent.activityMessage = trimmed.slice(0, 50);
         }
 
-        task.progress = Math.min(85, task.progress + 5);
         this.eventBus.broadcast({
           type: 'STATE_UPDATE',
           state: this.eventBus.getStateSnapshot(),
@@ -330,25 +297,18 @@ INSTRUCTIONS:
         this.currentRunningTaskId = null;
 
         if (code === 0) {
-          task.progress = 100;
-          task.logs.push(`[${new Date().toLocaleTimeString()}] ✅ Deliverable successfully completed.`);
-
-          // Transition to next column
-          if (task.title.toLowerCase().includes('spike')) {
-            task.column = 'done';
-            // Unblock implementation task
-            const nextTask = Array.from(this.eventBus.tasks.values()).find((t) => t.column === 'assigned');
-            if (nextTask) nextTask.column = 'in_progress';
-          } else if (task.title.toLowerCase().includes('implementation')) {
+          // Explicit status wins: if the agent moved its card on the board, keep that column
+          const movedByAgent = task.column !== 'in_progress';
+          if (!movedByAgent) {
             task.column = 'review';
-          } else if (task.title.toLowerCase().includes('review')) {
-            task.column = 'testing';
+            task.logs.push(`[${new Date().toLocaleTimeString()}] Agent exited without updating the card; moved to review for ${task.delegatedBy || 'its delegator'}.`);
           } else {
-            task.column = 'done';
+            task.logs.push(`[${new Date().toLocaleTimeString()}] Agent set the card to ${task.column}.`);
           }
+          if (task.column === 'done') task.progress = 100;
 
           agent.status = 'celebrating';
-          agent.activityMessage = `🎉 Completed: ${task.title}`;
+          agent.activityMessage = `Finished: ${task.title} (${task.column})`;
 
           setTimeout(() => {
             if (agent.status === 'celebrating') {
@@ -407,10 +367,19 @@ INSTRUCTIONS:
     }
 
     try {
-      for (const t of allTasks) {
-        if (!this.isPipelineRunning) break;
-        if (t.column === 'done') continue;
-        await this.executeTask(t.id);
+      // Run whatever is unblocked next; a card waiting in review blocks its dependents until it is done
+      const attempted = new Set();
+      while (this.isPipelineRunning) {
+        const next = this.runnableTasks(attempted)[0];
+        if (!next) break;
+        attempted.add(next.id);
+        await this.executeTask(next.id);
+      }
+      const blocked = Array.from(this.eventBus.tasks.values()).filter(
+        (t) => t.column !== 'done' && !attempted.has(t.id) && this.openDependencies(t).length > 0
+      );
+      if (blocked.length) {
+        console.log(`[AgentRunner] Waiting on dependencies: ${blocked.map((t) => `${t.key} ← ${this.openDependencies(t).join(', ')}`).join('; ')}`);
       }
     } catch (err) {
       console.warn('[AgentRunner] Pipeline error:', err.message);

@@ -20,17 +20,18 @@ export default async function virtualOfficePlugin(input) {
     }
   }
 
+  // Events carry only what OpenCode reports: the agent it names (or "opencode"), the tool and its target.
+  // Cards and columns are never inferred here; agents move cards through the board API.
+  const agentOf = (ctx) => ctx.agent || 'opencode';
+
   return {
     'chat.message': async (ctx) => {
       await postEvent({
-        agentId: ctx.agent || 'project-manager',
-        type: 'task_started',
+        agentId: agentOf(ctx),
+        type: 'agent_active',
         payload: {
-          task: 'Task Intake & Scoping',
-          details: ctx.agent ? `Assigned to ${ctx.agent}` : 'Task prompt received by OpenCode',
+          details: 'Prompt received by OpenCode',
           sessionId: ctx.sessionID,
-          phase: 'Intake & Planning',
-          column: 'in_progress',
         },
       });
     },
@@ -40,19 +41,16 @@ export default async function virtualOfficePlugin(input) {
       const args = ctx.args || {};
       const cmd = args.command || args.cmd || '';
       const targetFile = args.path || args.file || args.filePath || '';
-      const isTest = cmd.includes('test') || targetFile.includes('test') || targetFile.includes('spec');
 
       await postEvent({
-        agentId: isTest ? 'tester' : 'developer',
+        agentId: agentOf(ctx),
         type: tool === 'bash' ? 'command_executing' : 'tool_executing',
         payload: {
           tool,
           command: cmd,
           file: targetFile,
-          task: `OpenCode: ${tool}`,
           details: cmd ? `Running: ${cmd.substring(0, 60)}` : `Executing ${tool} on ${targetFile || 'workspace'}`,
           sessionId: ctx.sessionID,
-          column: isTest ? 'testing' : 'in_progress',
         },
       });
     },
@@ -61,24 +59,21 @@ export default async function virtualOfficePlugin(input) {
       const tool = ctx.tool || 'tool';
       const args = ctx.args || {};
       const targetFile = args.path || args.file || args.filePath || '';
-      const isTest = (ctx.args && JSON.stringify(ctx.args).includes('test')) || (output && output.title && output.title.includes('test'));
 
       if (tool === 'write_file' || tool === 'edit_file' || tool === 'replace_file_content' || tool === 'patch') {
         await postEvent({
-          agentId: isTest ? 'tester' : 'developer',
+          agentId: agentOf(ctx),
           type: 'file_modified',
           payload: {
             tool,
             file: targetFile,
-            task: `Editing ${targetFile ? targetFile.split('/').pop() : 'Codebase'}`,
             details: output.title || `Modified ${targetFile}`,
             sessionId: ctx.sessionID,
-            column: isTest ? 'testing' : 'in_progress',
           },
         });
       } else {
         await postEvent({
-          agentId: isTest ? 'tester' : 'developer',
+          agentId: agentOf(ctx),
           type: 'tool_executing',
           payload: {
             tool,

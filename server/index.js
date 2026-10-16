@@ -10,12 +10,11 @@ const WebSocket = require('ws');
 const { eventBus } = require('./eventBus');
 const { discoverAgents, getProjectRoot, setProjectRoot, findAllAgentsConfigFiles, findAgentsConfigFile } = require('./agentDiscovery');
 const { setupWatchers, resetWatchersOffsets } = require('./watchers');
-const { demoSimulator } = require('./demoSimulator');
 const { OFFICIAL_SKILLS, TEAM_TEMPLATES, scaffoldSkillsToProject, getAllSkills, saveSkillFile } = require('./officialSkills');
 const { queryExistingModel } = require('./voiceIntelligence');
 const { AgentRunner } = require('./agentRunner');
 const { autoDiscoverAndRegisterAgents, parseAndRegisterAgents } = require('./agentRuntimeRegistry');
-const { saveRegistry, ensureCanonicalDefinitions } = require('./registry/canonicalRegistry');
+const { saveRegistry, ensureCanonicalDefinitions, syncAll } = require('./registry/canonicalRegistry');
 const {
   registerInstance,
   unregisterInstance,
@@ -132,12 +131,12 @@ app.post('/api/skills/save', (req, res) => {
 // 1h. API: Query Existing Model with Guardrails for Voice Assistant
 app.post('/api/voice/query', async (req, res) => {
   try {
-    const { query, state, isDemo } = req.body;
+    const { query, state } = req.body;
     if (!query || typeof query !== 'string') {
       return res.status(400).json({ success: false, error: 'Query text is required.' });
     }
     const liveState = state || eventBus.getStateSnapshot();
-    const result = await queryExistingModel(query, liveState, Boolean(isDemo));
+    const result = await queryExistingModel(query, liveState);
     res.json({ success: true, ...result });
   } catch (err) {
     console.error('[VoiceQuery] Error executing model voice query:', err);
@@ -168,7 +167,7 @@ app.post('/api/agents/register-runtime', (req, res) => {
 });
 
 // 1d. API: Save & Scaffold Custom Agent Team
-app.post('/api/agents/save', (req, res) => {
+app.post('/api/agents/save', async (req, res) => {
   try {
     const { templateId, agents, scaffoldSkills = true, customSkills = [] } = req.body;
     if (!agents || !Array.isArray(agents) || agents.length === 0) {
@@ -231,6 +230,7 @@ app.post('/api/agents/save', (req, res) => {
         agents: agentsConfig.agents,
       };
       saveRegistry(canonicalObj, root);
+      await syncAll(root);
     } catch (e) {
       console.warn('[save] Could not update canonical registry:', e.message);
     }
@@ -254,7 +254,7 @@ When resolving software requests in this repository:
 2. When creating subagents using \`define_subagent\`:
    - Set \`enable_subagent_tools: true\` for leads/orchestrators that delegate via \`invoke_subagent\`.
    - Set \`enable_write_tools: true\` for implementation and QA specialists.
-3. Follow the 4-stage sprint cycle (Architecture Spike -> Feature Implementation -> Code Review -> QA Acceptance Verification).
+3. Break each user requirement into the specific tasks it needs (no fixed template or task count), register them on the Kanban board, then delegate them (see the \`task-decomposition\` skill).
 `;
     fs.writeFileSync(orchestrationRulePath, orchestrationRuleContent, 'utf8');
 
@@ -313,13 +313,17 @@ ${agentsConfig.agents.map(ag => `- **\`${ag.id}\`** (${ag.name} - *${ag.role}*):
     autoDiscoverAndRegisterAgents(root);
     const discovered = discoverAgents(root);
     eventBus.agents.clear();
+    const activeIds = new Set(discovered.map((a) => a.id));
     for (const a of discovered) {
       eventBus.agents.set(a.id, a);
     }
-    // Clear tasks and advance log offsets so the newly staffed team starts clean on standby
-    eventBus.tasks.clear();
-    eventBus.events = [];
-    eventBus.clearedAt = Date.now();
+    // Purge events/tasks referencing removed agents
+    eventBus.events = eventBus.events.filter((e) => activeIds.has(e.agentId));
+    for (const [tId, t] of eventBus.tasks.entries()) {
+      if (t.assignedTo && !activeIds.has(t.assignedTo)) {
+        eventBus.tasks.delete(tId);
+      }
+    }
     eventBus.workflowTitle = 'Standby (Awaiting agent task)';
     eventBus.currentPhase = 'Standby & Ready';
     eventBus.latestMilestone = `👉 Team staffed with ${discovered.length} agents. Standing by for sprint requests.`;
@@ -432,6 +436,81 @@ app.get('/api/state', (req, res) => {
   res.json({ success: true, state: eventBus.getStateSnapshot() });
 });
 
+// 2b. API: Role Deliverables & Artifacts Hub
+app.get('/api/deliverables', (req, res) => {
+  const { role, agentId, sprintId, type } = req.query;
+  let deliverables = Array.from(eventBus.deliverables.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+
+  if (role) {
+    const rLower = String(role).toLowerCase();
+    deliverables = deliverables.filter(
+      (d) => (d.roleSlug && d.roleSlug.toLowerCase() === rLower) || (d.role && d.role.toLowerCase().includes(rLower))
+    );
+  }
+  if (agentId) {
+    deliverables = deliverables.filter((d) => d.agentId === agentId);
+  }
+  if (sprintId) {
+    deliverables = deliverables.filter((d) => d.sprintId === sprintId);
+  }
+  if (type) {
+    deliverables = deliverables.filter((d) => d.type === type);
+  }
+
+  res.json({
+    success: true,
+    count: deliverables.length,
+    deliverables,
+  });
+});
+
+app.post('/api/deliverables', (req, res) => {
+  try {
+    const item = req.body;
+    if (!item || !item.title) {
+      return res.status(400).json({ success: false, error: 'Deliverable title is required.' });
+    }
+    // A deliverable posted with taskKey is linked to that card (id, sprint, delivered-to, card link)
+    const saved = eventBus.recordDeliverable(taskBoard.normalizeCardDeliverable(item));
+    res.json({
+      success: true,
+      deliverable: saved,
+      state: eventBus.getStateSnapshot(),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/deliverables/:id', (req, res) => {
+  const { id } = req.params;
+  const deliverable = eventBus.deliverables.get(id);
+  if (!deliverable) {
+    return res.status(404).json({ success: false, error: `Deliverable with id "${id}" not found.` });
+  }
+  res.json({ success: true, deliverable });
+});
+
+app.delete('/api/deliverables/:id', (req, res) => {
+  const { id } = req.params;
+  if (!eventBus.deliverables.has(id)) {
+    return res.status(404).json({ success: false, error: `Deliverable with id "${id}" not found.` });
+  }
+  eventBus.deliverables.delete(id);
+  eventBus.broadcast({
+    type: 'DELIVERABLE_DELETED',
+    id,
+    state: eventBus.getStateSnapshot(),
+  });
+  res.json({
+    success: true,
+    message: `Deliverable "${id}" deleted.`,
+    state: eventBus.getStateSnapshot(),
+  });
+});
+
 // 3. API: Chronological Event Logs
 app.get('/api/events', (req, res) => {
   const limit = parseInt(req.query.limit) || 100;
@@ -467,29 +546,8 @@ app.post('/api/events', (req, res) => {
   res.json({ success: true, event: normalized });
 });
 
-// 5. API: Demo Mode Control
-app.post('/api/demo/start', (req, res) => {
-  demoSimulator.start();
-  res.json({
-    success: true,
-    message: 'Demo simulation started',
-    state: eventBus.getStateSnapshot(),
-  });
-});
-
-app.post('/api/demo/stop', (req, res) => {
-  demoSimulator.stop();
-  agentRunner.stop();
-  res.json({
-    success: true,
-    message: 'Demo simulation stopped',
-    state: eventBus.getStateSnapshot(),
-  });
-});
-
 // Clear Office State & Reset to Standby
 app.post('/api/state/clear', (req, res) => {
-  demoSimulator.stop();
   agentRunner.stop();
   resetWatchersOffsets();
   eventBus.clearState();
@@ -498,6 +556,233 @@ app.post('/api/state/clear', (req, res) => {
     message: 'Office state, tasks, and analytics cleared',
     state: eventBus.getStateSnapshot(),
   });
+});
+
+// Register Tasks directly from AI Task Breakdown or Subagents
+app.post('/api/tasks/register', (req, res) => {
+  const root = getProjectRoot();
+  let rawTasks = [];
+  if (Array.isArray(req.body)) {
+    rawTasks = req.body;
+  } else if (Array.isArray(req.body?.tasks)) {
+    rawTasks = req.body.tasks;
+  } else if (req.body && (req.body.title || req.body.key)) {
+    rawTasks = [req.body];
+  } else if (req.body && req.body.task) {
+    rawTasks = [req.body.task];
+  }
+
+  if (!rawTasks || rawTasks.length === 0) {
+    return res.status(400).json({ error: 'No tasks provided' });
+  }
+
+  const { registerRealAgentTask, persistActiveSprintTasks } = require('./watchers');
+  const registered = [];
+  for (const t of rawTasks) {
+    if (t && (t.title || t.key)) {
+      const reg = registerRealAgentTask(t, { skipPersist: true });
+      if (reg) registered.push(reg);
+    }
+  }
+
+  // Re-registering is also how agents move cards: close parents whose sub-tasks are now finished
+  for (const reg of registered) {
+    if (reg.column === 'done' || reg.column === 'review') taskBoard.reconcileParents(reg);
+  }
+
+  // Persist strictly to active sprint folder (.agents/sprints/<activeSprintId>/tasks.json)
+  persistActiveSprintTasks(root);
+
+  // Broadcast state to all WebSocket clients
+  const snap = eventBus.getStateSnapshot();
+  eventBus.broadcast({
+    type: 'SYNC_STATE',
+    data: snap,
+    state: snap,
+  });
+
+  res.json({
+    success: true,
+    count: registered.length,
+    tasks: registered,
+    state: snap,
+  });
+});
+
+// GET all non-mock tasks; optional filters: ?type=requirement&column=in_progress&assignedTo=web-dev
+app.get('/api/tasks', (req, res) => {
+  const { type, column, assignedTo } = req.query;
+  const tasks = Array.from(eventBus.tasks.values())
+    .filter(t => !t.id.startsWith('DELIV-') && !t.id.startsWith('MOCK-'))
+    .filter(t => !type || (t.type || 'task') === type)
+    .filter(t => !column || t.column === column)
+    .filter(t => !assignedTo || t.assignedTo === assignedTo);
+  res.json({
+    success: true,
+    count: tasks.length,
+    tasks,
+  });
+});
+
+// -------------------------------------------------------------
+// Card-level Kanban APIs: the board is the channel between agents.
+// Agents read their task here instead of from the handoff prompt, and talk on the card's thread.
+// -------------------------------------------------------------
+const taskBoard = require('./taskBoard');
+
+function broadcastBoard() {
+  const { persistActiveSprintTasks } = require('./watchers');
+  persistActiveSprintTasks(getProjectRoot());
+  const snap = eventBus.getStateSnapshot();
+  eventBus.broadcast({ type: 'SYNC_STATE', data: snap, state: snap });
+}
+
+// GET /api/tasks/:key - full card with parent, sub-tasks, dependencies and thread.
+// ?format=md returns a plain-text brief for agents.
+app.get('/api/tasks/:key', (req, res) => {
+  const task = taskBoard.findTask(req.params.key);
+  if (!task) return res.status(404).json({ error: `No task ${req.params.key} on the active sprint board` });
+  const detail = taskBoard.getTaskDetail(task);
+  if (req.query.format === 'md') {
+    res.type('text/markdown').send(taskBoard.renderTaskMarkdown(detail));
+    return;
+  }
+  res.json({ success: true, task: detail });
+});
+
+// POST /api/tasks/:key/thread - { agentId, text, kind?, to? } agent-to-agent message on the card
+app.post('/api/tasks/:key/thread', (req, res) => {
+  const task = taskBoard.findTask(req.params.key);
+  if (!task) return res.status(404).json({ error: `No task ${req.params.key} on the active sprint board` });
+  const { agentId, text, kind, to } = req.body || {};
+  if (!agentId || !text || !String(text).trim()) {
+    return res.status(400).json({ error: 'agentId and text are required' });
+  }
+  const entry = taskBoard.appendThreadEntry(task, { agentId, text, kind, to });
+  broadcastBoard();
+  res.json({ success: true, entry, task: taskBoard.getTaskDetail(task) });
+});
+
+// POST /api/tasks/:key/status - { column, agentId, note?, result? } move the card and say why
+app.post('/api/tasks/:key/status', (req, res) => {
+  const task = taskBoard.findTask(req.params.key);
+  if (!task) return res.status(404).json({ error: `No task ${req.params.key} on the active sprint board` });
+  try {
+    taskBoard.setTaskStatus(task, req.body || {});
+  } catch (e) {
+    return res.status(400).json({ error: e.message });
+  }
+  taskBoard.recordCardDeliverable(task, req.body || {});
+  broadcastBoard();
+  res.json({ success: true, task: taskBoard.getTaskDetail(task) });
+});
+
+// -------------------------------------------------------------
+// Sprint Management APIs (Multi-Sprint Directory Architecture)
+// -------------------------------------------------------------
+
+// GET /api/sprints - Return active sprint and all available sprints
+app.get('/api/sprints', (req, res) => {
+  const root = getProjectRoot();
+  const { resolveSprintIndex } = require('./watchers');
+  const index = resolveSprintIndex(root);
+  const activeSprint = index.sprints?.find((s) => s.id === index.activeSprintId) || index.sprints?.[0] || {
+    id: index.activeSprintId || 'sprint-1',
+    number: 1,
+    name: 'Sprint 1',
+    path: `.agents/sprints/${index.activeSprintId || 'sprint-1'}`,
+    status: 'active',
+  };
+
+  res.json({
+    success: true,
+    activeSprintId: index.activeSprintId,
+    activeSprintPath: activeSprint.path,
+    sprints: index.sprints || [],
+  });
+});
+
+// POST /api/sprints/start (alias /api/sprints/create) - Provision next sprint folder & isolate state
+const handleStartSprint = (req, res) => {
+  const root = getProjectRoot();
+  const { startNewSprint } = require('./watchers');
+  try {
+    const goalTitle = req.body?.goal || req.body?.title || 'Sprint Execution';
+    const newSprint = startNewSprint(root, goalTitle);
+    if (!newSprint) {
+      return res.status(500).json({ error: 'Failed to start sprint' });
+    }
+    const snap = eventBus.getStateSnapshot();
+    return res.json({
+      success: true,
+      message: `Started ${newSprint.name}`,
+      activeSprintId: newSprint.id,
+      activeSprintPath: newSprint.path,
+      sprints: snap.sprints,
+      state: snap,
+    });
+  } catch (e) {
+    console.error('[API] Failed to start new sprint:', e);
+    return res.status(500).json({ error: 'Failed to start sprint: ' + e.message });
+  }
+};
+
+app.post('/api/sprints/start', handleStartSprint);
+app.post('/api/sprints/create', handleStartSprint);
+
+// POST /api/sprints/switch - Switch active sprint, load its isolated tasks, and broadcast
+app.post('/api/sprints/switch', (req, res) => {
+  const root = getProjectRoot();
+  const { resolveSprintIndex, saveSprintIndex, syncTasksFromJson } = require('./watchers');
+  const index = resolveSprintIndex(root);
+  const targetId = req.body?.sprintId || req.body?.id;
+
+  if (!targetId) {
+    return res.status(400).json({ error: 'sprintId is required' });
+  }
+
+  const targetSprint = (index.sprints || []).find((s) => s.id === targetId);
+  if (!targetSprint) {
+    return res.status(404).json({ error: `Sprint ${targetId} not found in index` });
+  }
+
+  try {
+    // 1. Update index.json active pointer
+    index.activeSprintId = targetId;
+    saveSprintIndex(root, index);
+
+    // 2. Clear in-memory tasks
+    eventBus.tasks.clear();
+
+    // 3. Update eventBus sprint state
+    eventBus.setSprintState(targetId, targetSprint.path, index.sprints);
+
+    // 4. Load tasks from switched sprint's tasks.json
+    const sprintTasksPath = path.join(root, targetSprint.path, 'tasks.json');
+    if (fs.existsSync(sprintTasksPath)) {
+      syncTasksFromJson(sprintTasksPath, { force: true });
+    }
+
+    // 5. Broadcast state to all clients
+    const snap = eventBus.getStateSnapshot();
+    eventBus.broadcast({
+      type: 'SYNC_STATE',
+      data: snap,
+      state: snap,
+    });
+
+    return res.json({
+      success: true,
+      message: `Switched to ${targetSprint.name}`,
+      activeSprintId: targetId,
+      activeSprintPath: targetSprint.path,
+      sprints: index.sprints,
+      state: snap,
+    });
+  } catch (e) {
+    console.error('[API] Failed to switch sprint:', e);
+    return res.status(500).json({ error: 'Failed to switch sprint: ' + e.message });
+  }
 });
 
 // 5. API: Project Info (Root directory, Git branch, name, and port)
@@ -551,9 +836,6 @@ app.post('/api/project/set-path', (req, res) => {
   } catch (err) {
     return res.status(400).json({ success: false, error: `Cannot access directory: ${err.message}` });
   }
-
-  // Stop any active simulation demo
-  demoSimulator.stop();
 
   // Update runtime project root and instance registry
   const oldRoot = getProjectRoot();
@@ -735,9 +1017,6 @@ app.post('/api/project/pick-folder', async (req, res) => {
         branch,
       });
     }
-
-    // Stop any active simulation demo
-    demoSimulator.stop();
 
     // Automatically apply the picked path
     const oldRoot = getProjectRoot();
@@ -1346,12 +1625,7 @@ wss.on('connection', (ws, req) => {
       const data = JSON.parse(message);
       if (data.type === 'PING') {
         ws.send(JSON.stringify({ type: 'PONG', timestamp: Date.now() }));
-      } else if (data.type === 'TRIGGER_DEMO') {
-        demoSimulator.start();
-      } else if (data.type === 'STOP_DEMO') {
-        demoSimulator.stop();
       } else if (data.type === 'CLEAR_STATE') {
-        demoSimulator.stop();
         agentRunner.stop();
         resetWatchersOffsets();
         eventBus.clearState();

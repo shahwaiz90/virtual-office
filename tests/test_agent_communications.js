@@ -3,12 +3,13 @@ const { eventBus } = require('../server/eventBus');
 
 console.log('🧪 Starting Real Inter-Agent Communication & Dialogue Tests...\n');
 
-// 1. Initial communications
-console.log('Test 1: Verify communications exist in initial state snapshot...');
+// 1. No sample communications; a recorded one appears in the snapshot
+console.log('Test 1: Communications start empty and show what agents actually said...');
+eventBus.clearState();
+assert(Array.isArray(eventBus.getStateSnapshot().communications), 'State snapshot must have communications array');
+assert.strictEqual(eventBus.getStateSnapshot().communications.length, 0, 'No sample communications');
+eventBus.recordCommunication({ fromAgentId: 'tech-pm', toAgentId: 'web-tech-lead', taskKey: 'WEB-1', taskTitle: 'CSV export', message: 'Please define the CSV columns.' });
 const snapshot = eventBus.getStateSnapshot();
-assert(Array.isArray(snapshot.communications), 'State snapshot must have communications array');
-console.log(`   Initial communications count: ${snapshot.communications.length}`);
-assert(snapshot.communications.length > 0, 'Should have initial communications');
 const firstComm = snapshot.communications[0];
 console.log(`   Sample dialogue: [${firstComm.fromAgentName} -> ${firstComm.toAgentName}]: "${firstComm.message.slice(0, 60)}..."`);
 assert(firstComm.fromAgentId, 'From agent ID must be defined');
@@ -41,11 +42,5 @@ const clearedSnapshot = eventBus.getStateSnapshot();
 assert.strictEqual(clearedSnapshot.communications.length, 0);
 console.log('✅ PASS: clearState() cleanly clears communications!\n');
 
-// 4. Reload demo workflow restores communications
-console.log('Test 4: loadDemoWorkflow() reloads default communications...');
-eventBus.loadDemoWorkflow('DEMO: FEATURE-101 (User Authentication Service)');
-const demoSnapshot = eventBus.getStateSnapshot();
-assert(demoSnapshot.communications.length >= 6);
-console.log(`✅ PASS: Demo workflow restores communications! (Total: ${demoSnapshot.communications.length})\n`);
 
 console.log('🎉 ALL AGENT COMMUNICATIONS TESTS PASSED 100%!\n');

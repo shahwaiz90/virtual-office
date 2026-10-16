@@ -4,7 +4,7 @@ export interface AssistantResponse {
   spokenText: string;
   displayText: string;
   action?: {
-    type: 'START_DEMO' | 'STOP_DEMO' | 'CLEAR_BOARD' | 'FOCUS_AGENT';
+    type: 'STOP_SPEECH' | 'CLEAR_BOARD' | 'FOCUS_AGENT';
     targetAgentId?: string;
   };
   highlightBadge?: string;
@@ -14,20 +14,20 @@ export interface AssistantResponse {
  * Intelligent natural language parsing bound directly to the live Virtual Office state
  * and user-configured agents from .agents/agents.json.
  */
-export function queryVoiceAssistant(query: string, state: OfficeState | null, isDemo: boolean): AssistantResponse {
+export function queryVoiceAssistant(query: string, state: OfficeState | null): AssistantResponse {
   const q = query.toLowerCase().trim();
 
   const agents: Agent[] = state?.agents || [];
   const tasks = state?.tasks || [];
   const metrics = state?.metrics || {
-    totalAgents: agents.length || 4,
+    totalAgents: agents.length,
     activeAgents: 0,
-    waitingAgents: agents.length || 4,
+    waitingAgents: agents.length,
     completedTasks: 0,
     failedTasks: 0,
     totalTasks: tasks.length,
   };
-  const workflowTitle = state?.workflow?.title || 'Virtual Office Workspace';
+  const workflowTitle = state?.workflow?.title || 'Agent Command Center Workspace';
   const workflowPhase = state?.workflow?.phase || 'Standby';
 
   // Helper to resolve specific role-based agents from the active configured team
@@ -59,12 +59,11 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
   ) {
     const names = agents.map((a) => a.name).join(', ');
     return {
-      spokenText: `Here are the voice commands you can use: Say "status" for a sprint standup briefing; "team" to list configured agents; or ask about any agent like "check ${agents[0]?.name || 'Developer'}". You can also say "run sprint" to start the demo, "tests" for QA status, "files" for repository changes, or "reset" to clear the board. And you can click Stop Speaking at any time to silence audio.`,
+      spokenText: `Here are the voice commands you can use: Say "status" for a sprint standup briefing; "team" to list configured agents; or ask about any agent like "check ${agents[0]?.name || 'Developer'}". You can also say "tests" for QA status, "files" for repository changes, or "reset" to clear the board. And you can click Stop Speaking at any time to silence audio.`,
       displayText: `🎙️ **Available Voice Commands**\n\n` +
         `• **Status & Standup**: \`"status"\`, \`"standup"\`, \`"briefing"\`, \`"what is happening"\`\n` +
         `• **Team & Roster**: \`"team"\`, \`"agents"\`, \`"who is on the team"\`\n` +
         `• **Agent Inspection**: \`"check ${agents[0]?.name || 'Alex'}"\`, \`"what is lead doing"\`, \`"check developer"\`\n` +
-        `• **Sprint Controls**: \`"run sprint"\`, \`"start demo"\`, \`"stop demo"\`\n` +
         `• **QA & Test Suite**: \`"tests"\`, \`"qa status"\`, \`"acceptance tests"\`\n` +
         `• **Code & Repository**: \`"git status"\`, \`"files"\`, \`"recent changes"\`\n` +
         `• **Workspace Reset**: \`"reset"\`, \`"clear board"\`\n` +
@@ -125,42 +124,13 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
     };
   }
 
-  // 4. TRIGGER DEMO AGENTIC WORKFLOW / RUN SPRINT
-  if (
-    (q.includes('start') || q.includes('run') || q.includes('play') || q.includes('simulate') || q.includes('launch')) &&
-    (q.includes('sprint') || q.includes('demo') || q.includes('simulation') || q.includes('workflow'))
-  ) {
-    if (isDemo) {
-      return {
-        spokenText: `The Demo Agentic Workflow is already underway in the ${workflowPhase} phase. Would you like a progress update?`,
-        displayText: `The Demo Agentic Workflow is **already active**. Currently in phase: \`${workflowPhase}\`.`,
-        highlightBadge: 'DEMO ACTIVE',
-      };
-    }
-    const coordinator = pmAgent || agents[0];
-    const coordName = coordinator ? coordinator.name : 'Project Lead';
+  // 5. STOP SPEAKING
+  if (q === 'stop' || q.includes('stop speaking') || q.includes('be quiet')) {
     return {
-      spokenText: `Starting the Demo Agentic Workflow now. ${coordName} is convening the sprint backlog with your team.`,
-      displayText: `🚀 **Starting Demo Agentic Workflow**\n${coordName} is orchestrating sprint deliverables across your configured team.`,
-      action: { type: 'START_DEMO' },
-      highlightBadge: 'DEMO WORKFLOW',
-    };
-  }
-
-  // 5. TRIGGER ACTIONS: STOP DEMO
-  if (
-    q.includes('stop demo') ||
-    q.includes('stop sprint') ||
-    q.includes('stop simulation') ||
-    q.includes('pause demo') ||
-    q.includes('cancel demo') ||
-    q === 'stop'
-  ) {
-    return {
-      spokenText: 'Stopping Demo Agentic Workflow now and silencing all speech.',
-      displayText: '⏹️ **Stopping Demo Agentic Workflow**\nDemo simulation stopped and voice playback silenced.',
-      action: { type: 'STOP_DEMO' },
-      highlightBadge: 'STOP DEMO',
+      spokenText: 'Stopping speech.',
+      displayText: '⏹️ **Speech stopped**',
+      action: { type: 'STOP_SPEECH' },
+      highlightBadge: 'STOP',
     };
   }
 
@@ -204,7 +174,7 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
       const task = agent.currentTask || (agent.status === 'working' ? 'Executing deliverable' : 'Standing by at workstation');
       const tool = agent.lastTool || 'none';
       const badge = agent.theme?.badge || agent.badgeText || 'AGT';
-      const skills = (agent.skillIds || agent.skills || []).map((s) => (typeof s === 'string' ? s : s.name)).join(', ');
+      const skills = (agent.skillIds || (agent.skills as any[]) || []).map((s: any) => (typeof s === 'string' ? s : s?.name || s?.id || '')).join(', ');
 
       return {
         spokenText: `${agent.name} is currently ${agent.status}. Role: ${agent.role}. Current task: ${task}.`,
@@ -221,11 +191,11 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
   // 7. TEST SUITE & QUALITY ASSURANCE
   if (q.includes('test') || q.includes('tests') || q.includes('bug') || q.includes('acceptance') || q.includes('qa')) {
     const qaName = testerAgent ? testerAgent.name : 'QA Specialist';
-    const testTasks = tasks.filter((t) => t.column === 'testing');
-    const isPassing = testTasks.length === 0;
+    // The board holds no test results, so report what is waiting for verification, not a verdict
+    const verifying = tasks.filter((t) => t.column === 'testing' || t.column === 'review');
     return {
-      spokenText: `QA update for ${projectName}: All verification suites managed by ${qaName}. ${isPassing ? 'All acceptance tests verified and green.' : `${testTasks.length} verification suites active in pipeline.`}`,
-      displayText: `🧪 **Quality Assurance & Verification: ${projectName}**\n- Verified by: **${qaName}**\n- Pipeline Suites: **${isPassing ? 'All Green (0 Regressions)' : `${testTasks.length} In Progress`}**\n- Workspace: \`${projectName}\``,
+      spokenText: `QA update for ${projectName}: ${verifying.length} card${verifying.length === 1 ? '' : 's'} waiting for review or testing.${testerAgent ? ` Tester: ${qaName}.` : ' There is no tester on the team.'} No test results are recorded on the board.`,
+      displayText: `🧪 **Verification: ${projectName}**\n- Tester: **${testerAgent ? qaName : 'none on the team'}**\n- Waiting for review/testing: **${verifying.length}**${verifying.length ? `\n${verifying.map((t) => `- ${t.key || t.id}: ${t.title} (\`${t.column}\`)`).join('\n')}` : ''}\n- Test results: **not recorded**`,
       highlightBadge: 'QA VERIFICATION',
     };
   }
@@ -253,13 +223,13 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
     q.includes('overview') ||
     q === ''
   ) {
-    if (!isDemo && tasks.length === 0) {
+    if (tasks.length === 0) {
       const agentNames = agents.map((a) => a.name).join(', ');
       return {
-        spokenText: `Status briefing for ${projectName}: The office is on standby with ${agents.length} configured agents ready at their workstations: ${agentNames}. Say "run sprint" or click Demo Agentic Workflow to simulate.`,
+        spokenText: `Status briefing for ${projectName}: The office is on standby with ${agents.length} configured agents ready at their workstations: ${agentNames}.`,
         displayText: `🟢 **Workspace: ${projectName}**\n- Status: \`Standby & Ready\`\n- Configured Agents: **${agents.length}**\n${agents
           .map((a) => `- **${a.name}** (${a.role}) — \`${a.status}\``)
-          .join('\n')}\n\n*Say **"Run sprint"** or click Demo Agentic Workflow to simulate the Scrum workflow.*`,
+          .join('\n')}`,
         highlightBadge: 'STANDBY READY',
       };
     }
@@ -269,7 +239,7 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
 
     return {
       spokenText: `Status briefing for ${projectName}: Currently in the ${workflowPhase} phase. We have ${metrics.activeAgents} active agents, ${doneTasks} completed deliverables, and ${inProgressTasks} tasks in progress.`,
-      displayText: `📊 **Sprint Briefing: ${projectName}**\n- Workflow: **${workflowTitle}**\n- Phase: \`${workflowPhase}\`\n- Active Agents: **${metrics.activeAgents} / ${metrics.totalAgents}**\n- Deliverables: **${doneTasks} Done**, **${inProgressTasks} In Progress**\n- Health: **100% Operational**`,
+      displayText: `📊 **Sprint Briefing: ${projectName}**\n- Workflow: **${workflowTitle}**\n- Phase: \`${workflowPhase}\`\n- Active Agents: **${metrics.activeAgents} / ${metrics.totalAgents}**\n- Deliverables: **${doneTasks} Done**, **${inProgressTasks} In Progress**`,
       highlightBadge: 'SPRINT STATUS',
     };
   }
@@ -277,9 +247,9 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
   // 10. DEFAULT FALLBACK
   const activeCount = metrics.activeAgents || 0;
   return {
-    spokenText: `Regarding "${query}": Workspace ${projectName} is operating smoothly with ${activeCount} active agents out of ${agents.length} configured team members.`,
-    displayText: `Query received: *"${query}"*\n\nActive workspace: **${projectName}**\nTeam members: **${agents.length} configured agents**\nSystem status: **Nominal**`,
-    highlightBadge: 'STATUS OK',
+    spokenText: `Regarding "${query}": Workspace ${projectName} has ${activeCount} active agents out of ${agents.length} configured team members.`,
+    displayText: `Query received: *"${query}"*\n\nActive workspace: **${projectName}**\nTeam members: **${agents.length} configured agents**\nActive now: **${activeCount}**`,
+    highlightBadge: 'STATUS',
   };
 }
 
@@ -289,19 +259,18 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null, is
  */
 export async function queryVoiceAssistantAsync(
   query: string,
-  state: OfficeState | null,
-  isDemo: boolean
+  state: OfficeState | null
 ): Promise<AssistantResponse> {
   const q = query.trim();
   const lower = q.toLowerCase();
 
   // Fast path for immediate actions
-  if (lower === 'stop' || lower === 'stop demo' || lower === 'stop sprint' || lower === 'pause demo') {
+  if (lower === 'stop' || lower === 'stop speaking' || lower === 'be quiet') {
     return {
-      spokenText: 'Stopping Demo Agentic Workflow now and silencing all speech.',
-      displayText: '⏹️ **Stopping Demo Agentic Workflow**\nSimulation stopped and audio output silenced.',
-      action: { type: 'STOP_DEMO' },
-      highlightBadge: 'STOP DEMO',
+      spokenText: 'Stopping speech.',
+      displayText: '⏹️ **Speech stopped**',
+      action: { type: 'STOP_SPEECH' },
+      highlightBadge: 'STOP',
     };
   }
 
@@ -321,7 +290,7 @@ export async function queryVoiceAssistantAsync(
     const res = await fetch('/api/voice/query', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, state, isDemo }),
+      body: JSON.stringify({ query, state }),
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -342,7 +311,7 @@ export async function queryVoiceAssistantAsync(
   }
 
   // Graceful fallback to deterministic local logic
-  return queryVoiceAssistant(query, state, isDemo);
+  return queryVoiceAssistant(query, state);
 }
 
 // Backwards-compatible export

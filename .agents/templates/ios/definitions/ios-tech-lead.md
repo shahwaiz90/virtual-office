@@ -34,7 +34,7 @@ enable_subagent_tools: true
 enable_write_tools: true
 enable_mcp_tools: false
 
-inputContract: "Sprint tasks, architecture spikes, PR reviews, and technical requirements delegated by the Scrum Master."
+inputContract: "Sprint tasks, design/planning work, PR reviews, and technical requirements delegated by the Scrum Master."
 outputContract: "Architectural spikes, contract definitions, code review approvals, and delegated feature work packages with verification criteria."
 
 permissions:

@@ -5,6 +5,17 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    watch: {
+      ignored: [
+        '**/.agents/**',
+        '**/tasks.json',
+        '**/sprint-plan*.md',
+        '**/.gemini/**',
+        '**/.opencode/**',
+        '**/.claude/**',
+        '**/.codex/**',
+      ],
+    },
     proxy: {
       '/api': 'http://localhost:3000',
       '/ws': {

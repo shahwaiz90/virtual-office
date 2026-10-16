@@ -307,6 +307,7 @@ class VoiceService {
   private isCurrentlySpeaking: boolean = false;
   private settingsChangeListeners: Array<(s: OfficeVoiceSettings) => void> = [];
   private currentRequestId: number = 0;
+  private currentAbortController: AbortController | null = null;
   private safetyTimer: any = null;
 
   private clearSafetyTimer() {
@@ -723,16 +724,18 @@ class VoiceService {
   /**
    * Speaks when an agent assigns/delegates a task to another agent.
    * Announces with short badge labels: e.g. "PM is assigning Architecture Spike to LEAD."
+   * (Commented out for now per user request)
    */
   public speakHandoff(
-    fromName: string,
-    fromRole: string,
-    toName: string,
-    toRoleOrTask: string,
-    maybeTaskTitle?: string,
-    fromBadge?: string,
-    toBadge?: string
+    _fromName: string,
+    _fromRole: string,
+    _toName: string,
+    _toRoleOrTask: string,
+    _maybeTaskTitle?: string,
+    _fromBadge?: string,
+    _toBadge?: string
   ) {
+    /* Handover voice functionality commented out for now
     if (!this.settings.speakHandoffsEnabled || this.settings.isMuted) return;
 
     let toRole = toRoleOrTask;
@@ -764,6 +767,7 @@ class VoiceService {
 
     const message = `${fromShort} is assigning ${cleanTitle} to ${toShort}.`;
     this.speak(message, roleKey as any);
+    */
   }
 
   public onSpeakingChange(cb: (isSpeaking: boolean) => void): () => void {

@@ -8,8 +8,6 @@ interface SiriVoiceAssistantProps {
   isOpen: boolean;
   onClose: () => void;
   state: OfficeState | null;
-  isDemo: boolean;
-  onToggleDemo: () => void;
   onClearState: () => void;
   onSelectAgent?: (agent: Agent) => void;
   listenTrigger?: number;
@@ -19,8 +17,6 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
   isOpen,
   onClose,
   state,
-  isDemo,
-  onToggleDemo,
   onClearState,
   onSelectAgent,
   listenTrigger = 0,
@@ -206,14 +202,13 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
 
     // Fast-path immediate action check
     const lower = commandText.trim().toLowerCase();
-    if (lower === 'stop' || lower === 'stop demo' || lower === 'stop sprint' || lower === 'pause demo') {
+    if (lower === 'stop' || lower === 'stop speaking' || lower === 'be quiet') {
       voiceService.stop();
-      if (isDemo) onToggleDemo();
       setLastResponse({
-        spokenText: 'Stopping Demo Agentic Workflow now and silencing all speech.',
-        displayText: '⏹️ **Stopping Demo Agentic Workflow**\nSimulation stopped and audio output silenced.',
-        action: { type: 'STOP_DEMO' },
-        highlightBadge: 'STOP DEMO',
+        spokenText: 'Stopping speech.',
+        displayText: '⏹️ **Speech stopped**',
+        action: { type: 'STOP_SPEECH' },
+        highlightBadge: 'STOP',
       });
       return;
     }
@@ -232,16 +227,13 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
 
     setIsThinking(true);
     try {
-      const response = await queryVoiceAssistantAsync(commandText, state, isDemo);
+      const response = await queryVoiceAssistantAsync(commandText, state);
       setLastResponse(response);
 
       // Execute actions triggered by command
       if (response.action) {
-        if (response.action.type === 'START_DEMO') {
-          if (!isDemo) onToggleDemo();
-        } else if (response.action.type === 'STOP_DEMO') {
+        if (response.action.type === 'STOP_SPEECH') {
           voiceService.stop();
-          if (isDemo) onToggleDemo();
         } else if (response.action.type === 'CLEAR_BOARD') {
           voiceService.stop();
           onClearState();
@@ -272,7 +264,6 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
   };
 
   // Suggestion chips dynamically generated from real configured agents
-  // Suggestion chips dynamically generated from real configured agents
   const suggestionChips = useMemo(() => {
     const chips: { label: string; query: string }[] = [
       { label: 'Status', query: 'status' },
@@ -283,17 +274,16 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
       const label = ag.theme?.badge || ag.badgeText || ag.name.split(' ').slice(-1)[0] || 'Agent';
       chips.push({ label, query: `Check ${ag.name}` });
     });
-    chips.push({ label: isDemo ? 'Stop Demo' : 'Run Sprint', query: isDemo ? 'stop demo' : 'run sprint' });
     chips.push({ label: 'Reset', query: 'clear board' });
     return chips;
-  }, [state?.agents, isDemo]);
+  }, [state?.agents]);
 
   if (!isOpen) return null;
 
   return (
     /* Non-blocking floating Apple Siri pill in bottom-right */
     <div className="fixed bottom-6 inset-x-4 sm:inset-x-auto sm:right-6 sm:max-w-md z-50 animate-in slide-in-from-bottom-5 duration-300">
-      <div className="relative bg-white/95 border border-slate-200/90 shadow-2xl rounded-3xl p-3.5 backdrop-blur-2xl flex flex-col gap-2.5 text-slate-800">
+      <div className="relative bg-surface/95 border border-sand-200/90 shadow-2xl rounded-3xl p-3.5 backdrop-blur-2xl flex flex-col gap-2.5 text-sand-800">
         
         {/* Top Mini Header: Siri Orb + Live Transcript / State */}
         <div className="flex items-center justify-between gap-3">
@@ -324,12 +314,12 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
               <div
                 className={`absolute inset-0 rounded-full blur-md opacity-80 transition-all ${
                   isThinking
-                    ? 'bg-gradient-to-tr from-amber-400 via-indigo-500 to-emerald-400 animate-spin opacity-95 scale-110'
+                    ? 'bg-gradient-to-tr from-amber-400 via-brand-500 to-emerald-400 animate-spin opacity-95 scale-110'
                     : isListening
                     ? 'bg-gradient-to-tr from-pink-500 via-purple-500 to-cyan-400 animate-pulse scale-110'
                     : isSpeaking
-                    ? 'bg-gradient-to-tr from-cyan-400 via-indigo-500 to-fuchsia-500 animate-pulse'
-                    : 'bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500'
+                    ? 'bg-gradient-to-tr from-cyan-400 via-brand-500 to-fuchsia-500 animate-pulse'
+                    : 'bg-gradient-to-tr from-brand-500 via-purple-500 to-pink-500'
                 }`}
               />
 
@@ -349,10 +339,10 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
 
             {/* Status / Speech Transcript */}
             <div className="min-w-0 flex-1">
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              <div className="text-[11px] font-bold text-sand-400 uppercase tracking-wider">
                 {isThinking ? 'Consulting Model...' : isListening ? 'Listening...' : isSpeaking ? 'Voice Assistant' : 'Siri Voice'}
               </div>
-              <div className="text-xs font-semibold text-slate-800 truncate">
+              <div className="text-xs font-semibold text-sand-800 truncate">
                 {isThinking
                   ? `Consulting model: "${transcript}"`
                   : transcript
@@ -377,21 +367,21 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
                 type="button"
                 onClick={() => setShowVoicePicker((prev) => !prev)}
                 title="Choose assistant voice persona"
-                className="flex items-center gap-1 px-2 py-1 rounded-xl text-[11px] font-bold text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100 border border-indigo-200/80 transition-colors cursor-pointer shadow-2xs"
+                className="flex items-center gap-1 px-2 py-1 rounded-xl text-[11px] font-bold text-brand-700 bg-brand-50/80 hover:bg-brand-100 border border-brand-200/80 transition-colors cursor-pointer shadow-2xs"
               >
-                <Volume2 className="w-3 h-3 text-indigo-600 shrink-0" />
+                <Volume2 className="w-3 h-3 text-brand-600 shrink-0" />
                 <span className="max-w-[70px] truncate">
                   {PRESET_VOICE_OPTIONS.find((p) => p.id === selectedVoice)?.name || 'Voice'}
                 </span>
-                <ChevronDown className="w-2.5 h-2.5 text-indigo-500 shrink-0" />
+                <ChevronDown className="w-2.5 h-2.5 text-brand-500 shrink-0" />
               </button>
 
               {/* Voice Options Popup */}
               {showVoicePicker && (
-                <div className="absolute right-0 bottom-full mb-2 w-64 bg-white border border-slate-200 shadow-2xl rounded-2xl p-1.5 z-50 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-150">
-                  <div className="px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1 flex items-center justify-between">
+                <div className="absolute right-0 bottom-full mb-2 w-64 bg-surface border border-sand-200 shadow-2xl rounded-2xl p-1.5 z-50 flex flex-col gap-0.5 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-sand-400 border-b border-sand-100 mb-1 flex items-center justify-between">
                     <span>Select Voice Persona</span>
-                    <span className="text-[9px] text-indigo-600 font-bold">100% Free</span>
+                    <span className="text-[9px] text-brand-600 font-bold">100% Free</span>
                   </div>
                   <div className="max-h-56 overflow-y-auto space-y-0.5 pr-0.5">
                     {PRESET_VOICE_OPTIONS.map((opt) => {
@@ -406,15 +396,15 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
                           }}
                           className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
                             isSelected
-                              ? 'bg-indigo-600 text-white font-bold shadow-xs'
-                              : 'hover:bg-slate-100 text-slate-700'
+                              ? 'bg-brand-600 text-white font-bold shadow-xs'
+                              : 'hover:bg-sand-100 text-sand-700'
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="text-sm shrink-0">{opt.flag}</span>
                             <div className="truncate">
                               <div className="truncate font-semibold">{opt.label}</div>
-                              <div className={`text-[10px] truncate ${isSelected ? 'text-indigo-100' : 'text-slate-400'}`}>
+                              <div className={`text-[10px] truncate ${isSelected ? 'text-brand-100' : 'text-sand-400'}`}>
                                 {opt.description}
                               </div>
                             </div>
@@ -431,7 +421,7 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
             <button
               onClick={() => setShowInput((prev) => !prev)}
               title="Type a command"
-              className="px-2 py-1 rounded-xl text-[11px] font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="px-2 py-1 rounded-xl text-[11px] font-semibold text-sand-500 hover:text-sand-800 hover:bg-sand-100 transition-colors cursor-pointer"
             >
               {showInput ? 'Hide' : 'Type'}
             </button>
@@ -439,7 +429,7 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
             <button
               onClick={onClose}
               title="Close"
-              className="p-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="p-1 rounded-xl text-sand-400 hover:text-sand-700 hover:bg-sand-100 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -448,19 +438,19 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
 
         {/* Text Input Row (Collapsible) */}
         {showInput && (
-          <form onSubmit={handleFormSubmit} className="flex items-center gap-2 pt-1 border-t border-slate-100">
+          <form onSubmit={handleFormSubmit} className="flex items-center gap-2 pt-1 border-t border-sand-100">
             <input
               type="text"
               value={typedInput}
               onChange={(e) => setTypedInput(e.target.value)}
               placeholder="Ask for status, team agents, or run sprint..."
-              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-indigo-500 transition-colors"
+              className="flex-1 bg-sand-50 border border-sand-200 rounded-xl px-3 py-1.5 text-xs text-sand-800 placeholder-sand-400 focus:outline-hidden focus:border-brand-500 transition-colors"
               autoFocus
             />
             <button
               type="submit"
               disabled={!typedInput.trim()}
-              className="p-1.5 rounded-xl bg-indigo-600 text-white disabled:opacity-40 transition-colors cursor-pointer"
+              className="p-1.5 rounded-xl bg-brand-600 text-white disabled:opacity-40 transition-colors cursor-pointer"
             >
               <Send className="w-3.5 h-3.5" />
             </button>
@@ -469,18 +459,18 @@ export const SiriVoiceAssistant: React.FC<SiriVoiceAssistantProps> = ({
 
         {/* Assistant Response Card */}
         {lastResponse && (
-          <div className="bg-slate-50/90 border border-slate-200/80 rounded-2xl p-2.5 text-xs text-slate-700 leading-snug">
+          <div className="bg-sand-50/90 border border-sand-200/80 rounded-2xl p-2.5 text-xs text-sand-700 leading-snug">
             <div className="line-clamp-3 select-text font-medium whitespace-pre-line">
               {lastResponse.displayText.replace(/[*_#`]/g, '')}
             </div>
 
             {/* Dynamic Suggestion Chips Bound to Real Agents */}
-            <div className="flex flex-wrap gap-1.5 pt-2 mt-2 border-t border-slate-200/60">
+            <div className="flex flex-wrap gap-1.5 pt-2 mt-2 border-t border-sand-200/60">
               {suggestionChips.map((chip) => (
                 <button
                   key={chip.label}
                   onClick={() => handleProcessCommand(chip.query)}
-                  className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white text-indigo-700 border border-indigo-200/80 hover:bg-indigo-50 hover:border-indigo-300 transition-colors cursor-pointer"
+                  className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-surface text-brand-700 border border-brand-200/80 hover:bg-brand-50 hover:border-brand-300 transition-colors cursor-pointer"
                 >
                   {chip.label}
                 </button>

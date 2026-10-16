@@ -475,7 +475,7 @@ always_on: true
 
 When responding to software requests in this repository:
 1. Consult \`.agents/agents.json\` for agent profiles, assigned skills, and delegation targets.
-2. **Always invoke \`${orchestrator.id}\` (${orchestrator.name}) first** to decompose the user goal into a 4-stage sprint plan (Architecture Spike -> Feature Implementation -> Code Review -> QA Acceptance Verification).
+2. **Always invoke \`${orchestrator.id}\` (${orchestrator.name}) first** to break the user's requirement into the specific tasks it needs (no fixed template or task count), register them on the Kanban board, then delegate each one (see the \`task-decomposition\` skill).
 3. When registering subagents with \`define_subagent\`:
    - Set \`enable_subagent_tools: true\` for leads and orchestrators that delegate via \`invoke_subagent\`.
    - Set \`enable_write_tools: true\` for developers and QA engineers.

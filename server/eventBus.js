@@ -1,6 +1,6 @@
 const EventEmitter = require('events');
 const path = require('path');
-const { discoverAgents, getProjectRoot, generateGhostAgents } = require('./agentDiscovery');
+const { discoverAgents, getProjectRoot } = require('./agentDiscovery');
 const { OrchestrationRules } = require('./orchestrationRules');
 
 class EventBus extends EventEmitter {
@@ -18,32 +18,80 @@ class EventBus extends EventEmitter {
     this.latestMilestone = `Virtual Office ready on ${this.projectName}. Run commands in terminal or prompt agents to begin.`;
     this.latestMilestoneAgentId = 'project-manager';
 
-    // Ghost team simulation flag
-    this.isGhostTeam = false;
-
     // Initialize agents
     this.agents = new Map();
     this.initAgents();
 
-    // Clean initial Kanban state (awaits active agent tasks or demo trigger)
-    this.tasks = new Map();
-    this.isDemoRunning = false;
+    // Clean initial Kanban state: only real agent tasks are ever shown
     this.clearedAt = Date.now();
 
     // Active handoff in progress (for animation synchronization)
     this.activeHandoff = null;
     this.handoffTimeout = null;
 
-    // Clean Analytics Maps (populated dynamically as tools/skills are invoked)
-    this.toolUsageMap = new Map();
-    this.skillUsageMap = new Map();
-    this.roleInvocationMap = new Map();
+    // Active sprint tracking
+    this.activeSprintId = 'sprint-1';
+    this.activeSprintPath = '.agents/sprints/sprint-1';
+    this.sprints = [];
+    this.initSprintInfo();
+
+    this.agentBusyTimers = new Map();
+    this.jiraConfluenceItems = [];
+    this.deliverables = new Map();
+    this.initDefaultState();
+  }
+
+  initDefaultState() {
+    this.tasks = new Map();
+    this.deliverables = new Map();
     this.fileChanges = [];
     this.communications = [];
-    this.agentBusyTimers = new Map();
+    this.events = [];
+    this.toolUsageMap = new Map();
+    this.tokenUsageMap = new Map();
+    this.skillUsageMap = new Map();
+    this.jiraConfluenceItems = [];
+    this.activeHandoff = null;
     this.initStandbyRoleAnalytics();
-    this.initDefaultFileChanges();
-    this.initDefaultCommunications();
+  }
+
+  recordJiraConfluenceItem(item) {
+    if (!item) return;
+    const id = item.id || item.ticketKey || item.pageId || `jc_${Date.now()}`;
+    const normalized = {
+      id,
+      sourceType: item.sourceType || (item.pageId ? 'confluence' : 'jira'),
+      ticketKey: item.ticketKey || null,
+      pageId: item.pageId || null,
+      url: item.url || null,
+      title: item.title || (item.ticketKey ? `Jira Ticket ${item.ticketKey}` : `Confluence Page ${item.pageId}`),
+      summary: item.summary || item.details || '',
+      command: item.command || '',
+      timestamp: item.timestamp || new Date().toISOString(),
+      agentId: item.agentId || 'tech-pm',
+      details: item.details || '',
+    };
+
+    // Deduplicate by ticketKey, pageId, or id
+    const existingIdx = this.jiraConfluenceItems.findIndex(
+      (existing) =>
+        (normalized.ticketKey && existing.ticketKey === normalized.ticketKey) ||
+        (normalized.pageId && existing.pageId === normalized.pageId) ||
+        existing.id === normalized.id
+    );
+
+    if (existingIdx !== -1) {
+      this.jiraConfluenceItems[existingIdx] = {
+        ...this.jiraConfluenceItems[existingIdx],
+        ...normalized,
+      };
+    } else {
+      this.jiraConfluenceItems.unshift(normalized);
+      if (this.jiraConfluenceItems.length > 50) {
+        this.jiraConfluenceItems.pop();
+      }
+    }
+    return normalized;
   }
 
   setAgentBusyTimer(agentId, callback, delayMs = 4000) {
@@ -81,20 +129,58 @@ class EventBus extends EventEmitter {
   }
 
   initAgents() {
-    if (this.isGhostTeam) {
-      if (this.agents.size === 0) {
-        const ghostAgents = generateGhostAgents();
-        for (const a of ghostAgents) {
-          this.agents.set(a.id, a);
-        }
-      }
-      return;
-    }
     this.agents.clear();
     const discovered = discoverAgents();
     for (const a of discovered) {
       this.agents.set(a.id, a);
     }
+  }
+
+  initSprintInfo() {
+    try {
+      const fs = require('fs');
+      const root = getProjectRoot();
+      const indexPath = path.join(root, '.agents', 'sprints', 'index.json');
+      if (fs.existsSync(indexPath)) {
+        const raw = fs.readFileSync(indexPath, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (parsed.activeSprintId) {
+          this.activeSprintId = parsed.activeSprintId;
+        }
+        if (Array.isArray(parsed.sprints)) {
+          this.sprints = parsed.sprints;
+          const active = this.sprints.find((s) => s.id === this.activeSprintId);
+          if (active && active.path) {
+            this.activeSprintPath = active.path;
+          } else {
+            this.activeSprintPath = `.agents/sprints/${this.activeSprintId}`;
+          }
+        }
+      } else {
+        this.activeSprintId = 'sprint-1';
+        this.activeSprintPath = '.agents/sprints/sprint-1';
+        this.sprints = [
+          {
+            id: 'sprint-1',
+            number: 1,
+            name: 'Sprint 1',
+            path: '.agents/sprints/sprint-1',
+            status: 'active',
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      }
+    } catch (e) {
+      // Fallback
+      this.activeSprintId = 'sprint-1';
+      this.activeSprintPath = '.agents/sprints/sprint-1';
+    }
+  }
+
+  setSprintState(activeSprintId, activeSprintPath, sprints) {
+    if (activeSprintId) this.activeSprintId = activeSprintId;
+    if (activeSprintPath) this.activeSprintPath = activeSprintPath;
+    if (Array.isArray(sprints)) this.sprints = sprints;
   }
 
   initStandbyRoleAnalytics() {
@@ -107,69 +193,61 @@ class EventBus extends EventEmitter {
         invocations: 0,
         activeTimeSec: 0,
         completedTasks: 0,
-        slaAdherenceRate: 100,
         status: 'available',
       });
     }
   }
 
-  loadDemoTasks() {
-    if (this.agents.size === 0) return;
-    const initialTasks = OrchestrationRules.getInitialDemoTasks(this.agents);
-    for (const t of initialTasks) {
-      this.tasks.set(t.id, t);
-    }
-  }
-
   /**
-   * Deconstructs a high-level feature goal into 4 sequenced tasks across the team
-   * using OrchestrationRules and registers them live on the Authoritative Task Board.
+   * Places a user requirement on the board.
+   * - If `aiTasks` (the breakdown produced by the AI / orchestrating agent) is given, those tasks are
+   *   registered exactly as written — any number, any titles.
+   * - Otherwise the requirement is registered verbatim as ONE backlog card for the orchestrator to
+   *   break down. No template (Plan/Build/Review/Test) tasks are invented here.
    */
-  breakdownAndAssignTasks(goal, assignerId) {
+  breakdownAndAssignTasks(goal, assignerId, aiTasks) {
     if (!goal || typeof goal !== 'string') return [];
     const cleanGoal = goal.trim();
     if (this.agents.size === 0) return [];
 
-    const { pm, lead } = OrchestrationRules.resolveTeamRoles(this.agents);
-    const decomposed = OrchestrationRules.decomposeSprintGoal(cleanGoal, this.agents);
+    const { pm } = OrchestrationRules.resolveTeamRoles(this.agents);
+    const existingTasks = Array.from(this.tasks.values());
+    let decomposed = OrchestrationRules.normalizeAITasks(aiTasks, this.agents, { existingTasks });
+    const fromAI = decomposed.length > 0;
+    if (!fromAI) {
+      decomposed = OrchestrationRules.decomposeSprintGoal(cleanGoal, this.agents, { existingTasks });
+    }
 
-    // Store in tasks map
     for (const task of decomposed) {
       this.tasks.set(task.id, task);
     }
 
-    // Set lead & dev activity
-    lead.status = 'working';
-    lead.currentTask = decomposed[0].title;
-    lead.activityMessage = `Breaking down & architecting: ${cleanGoal}`;
-
-    // Record inter-agent communication
+    const first = decomposed[0];
+    const target = this.agents.get(first.assignedTo) || pm;
     this.recordCommunication({
       fromAgentId: pm.id,
       fromAgentName: pm.name,
       fromAgentRole: pm.role,
-      toAgentId: lead.id,
-      toAgentName: lead.name,
-      toAgentRole: lead.role,
-      taskKey: decomposed[0].key,
-      taskTitle: decomposed[0].title,
-      message: `Decomposed feature goal "${cleanGoal}" into 4 sprint deliverables on the Authoritative Task Board. Assigning Architecture Spike to Tech Lead.`,
+      toAgentId: target.id,
+      toAgentName: target.name,
+      toAgentRole: target.role,
+      taskKey: first.key,
+      taskTitle: first.title,
+      message: fromAI
+        ? `Broke "${cleanGoal}" into ${decomposed.length} task${decomposed.length === 1 ? '' : 's'}: ${decomposed.map((t) => `${t.key} ${t.title} → ${t.assignedTo}`).join('; ')}`
+        : `Registered requirement "${cleanGoal}" in the backlog for breakdown.`,
       channel: 'subagent_delegation',
       timestamp: new Date().toISOString(),
     });
 
-    this.recordRoleInvocation(pm.id, 8);
-    this.recordRoleInvocation(lead.id, 12);
-    this.recordSkillUsage('task-decomposition', pm.id, 15);
-    this.recordSkillUsage('task-decomposition', lead.id, 15);
+    this.recordRoleInvocation(pm.id);
+    this.recordSkillUsage('task-decomposition', pm.id);
 
-    // Update workflow title & phase
     this.workflowTitle = `${this.projectName} • ${cleanGoal.slice(0, 32)}`;
     this.currentPhase = 'Sprint Execution';
-    this.latestMilestone = `Task Decomposed & Assigned: ${cleanGoal}`;
+    this.latestMilestone = fromAI ? `Requirement broken into ${decomposed.length} tasks` : 'Requirement added to backlog';
     this.latestMilestoneAgentId = pm.id;
 
-    // Broadcast state update to all visualizers
     this.broadcast({
       type: 'SYNC_STATE',
       data: this.getStateSnapshot(),
@@ -178,34 +256,34 @@ class EventBus extends EventEmitter {
     return decomposed;
   }
 
-  initDefaultToolAnalytics() {
-    const defaultStats = [
-      { toolName: 'read_jira.py', agentId: 'project-manager', count: 2, totalDurationSec: 14, lastUsedAt: new Date(Date.now() - 240000).toISOString() },
-      { toolName: 'write_to_file', agentId: 'project-manager', count: 3, totalDurationSec: 22, lastUsedAt: new Date(Date.now() - 180000).toISOString() },
-      { toolName: 'impact-analysis', agentId: 'android-tech-lead', count: 4, totalDurationSec: 58, lastUsedAt: new Date(Date.now() - 140000).toISOString() },
-      { toolName: 'view_file', agentId: 'android-tech-lead', count: 8, totalDurationSec: 36, lastUsedAt: new Date(Date.now() - 120000).toISOString() },
-      { toolName: 'replace_file_content', agentId: 'android-dev', count: 6, totalDurationSec: 112, lastUsedAt: new Date(Date.now() - 75000).toISOString() },
-      { toolName: 'compileDebugKotlin', agentId: 'android-dev', count: 2, totalDurationSec: 42, lastUsedAt: new Date(Date.now() - 40000).toISOString() },
-      { toolName: 'git diff', agentId: 'android-tech-lead', count: 3, totalDurationSec: 18, lastUsedAt: new Date(Date.now() - 25000).toISOString() },
-      { toolName: 'testDebugUnitTest', agentId: 'android-tester', count: 3, totalDurationSec: 64, lastUsedAt: new Date(Date.now() - 10000).toISOString() },
-    ];
-
-    for (const s of defaultStats) {
-      const key = `${s.agentId}::${s.toolName}`;
-      const agent = this.agents.get(s.agentId);
-      this.toolUsageMap.set(key, {
-        toolName: s.toolName,
-        agentId: s.agentId,
-        agentName: agent ? agent.name : s.agentId,
-        agentRole: agent ? agent.role : 'Specialist',
-        count: s.count,
-        totalDurationSec: s.totalDurationSec,
-        lastUsedAt: s.lastUsedAt,
-      });
-    }
+  /**
+   * Model token usage per agent, from the `usage` block of each assistant message in a transcript.
+   * Callers pass each message once (Claude Code repeats a message's usage on every content block).
+   */
+  recordTokenUsage(agentId, usage) {
+    if (!agentId || !usage) return;
+    const agent = this.agents.get(agentId);
+    const existing = this.tokenUsageMap.get(agentId) || {
+      agentId,
+      agentName: agent ? agent.name : agentId,
+      agentRole: agent ? agent.role : 'Specialist',
+      messages: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    };
+    existing.messages += 1;
+    existing.inputTokens += usage.input_tokens || 0;
+    existing.outputTokens += usage.output_tokens || 0;
+    existing.cacheReadTokens += usage.cache_read_input_tokens || 0;
+    existing.cacheCreationTokens += usage.cache_creation_input_tokens || 0;
+    existing.lastUsedAt = new Date().toISOString();
+    this.tokenUsageMap.set(agentId, existing);
   }
 
-  recordToolUsage(agentId, toolName, durationSec = 3) {
+  /** Durations are only added when measured; callers that don't know one pass nothing. */
+  recordToolUsage(agentId, toolName, durationSec = null) {
     if (!toolName) return;
     const cleanTool = toolName.trim();
     const key = `${agentId}::${cleanTool}`;
@@ -217,43 +295,21 @@ class EventBus extends EventEmitter {
       agentName: agent ? agent.name : agentId,
       agentRole: agent ? agent.role : 'Specialist',
       count: 0,
+      measuredCount: 0,
       totalDurationSec: 0,
       lastUsedAt: new Date().toISOString(),
     };
 
     existing.count += 1;
-    existing.totalDurationSec += Math.max(1, durationSec);
+    if (Number.isFinite(durationSec) && durationSec > 0) {
+      existing.measuredCount += 1;
+      existing.totalDurationSec += durationSec;
+    }
     existing.lastUsedAt = new Date().toISOString();
     this.toolUsageMap.set(key, existing);
   }
 
-  initDefaultSkillAnalytics() {
-    const defaultSkills = [
-      { skillId: '00-requirement-analysis', skillName: 'PRD Scoping & Jira Ingestion', count: 2, totalDurationSec: 36, agentId: 'project-manager' },
-      { skillId: 'pm-reporting', skillName: 'Minute Estimation & Sign-Off Reporting', count: 3, totalDurationSec: 42, agentId: 'project-manager' },
-      { skillId: 'tech-lead-planning', skillName: '5-Tier Architecture Scoping', count: 4, totalDurationSec: 88, agentId: 'android-tech-lead' },
-      { skillId: 'impact-analysis', skillName: 'Pre-mapped Impact Analysis', count: 3, totalDurationSec: 62, agentId: 'android-tech-lead' },
-      { skillId: '04-repository', skillName: 'Data Layer & ApiExecuterV2', count: 3, totalDurationSec: 94, agentId: 'android-dev' },
-      { skillId: '03a-provider', skillName: 'Domain Provider & Rules Engine', count: 2, totalDurationSec: 76, agentId: 'android-dev' },
-      { skillId: '08-unit-tests', skillName: 'AAA JUnit & MockK Tests', count: 5, totalDurationSec: 130, agentId: 'android-dev' },
-      { skillId: '10-code-review', skillName: '10-Point Architectural Quality Gate', count: 2, totalDurationSec: 48, agentId: 'android-tech-lead' },
-      { skillId: 'test-execution', skillName: 'Gradle Test Execution & Regression', count: 3, totalDurationSec: 64, agentId: 'android-tester' },
-    ];
-
-    for (const sk of defaultSkills) {
-      const agent = this.agents.get(sk.agentId);
-      this.skillUsageMap.set(sk.skillId, {
-        skillId: sk.skillId,
-        skillName: sk.skillName,
-        count: sk.count,
-        totalDurationSec: sk.totalDurationSec,
-        lastUsedByAgentId: sk.agentId,
-        lastUsedByAgentName: agent ? agent.name : sk.agentId,
-      });
-    }
-  }
-
-  recordSkillUsage(skillId, agentId, durationSec = 10) {
+  recordSkillUsage(skillId, agentId, durationSec = null) {
     if (!skillId) return;
     const cleanId = skillId.trim();
     const agent = this.agents.get(agentId);
@@ -262,45 +318,23 @@ class EventBus extends EventEmitter {
       skillId: cleanId,
       skillName: cleanId,
       count: 0,
+      measuredCount: 0,
       totalDurationSec: 0,
       lastUsedByAgentId: agentId,
       lastUsedByAgentName: agent ? agent.name : agentId,
     };
 
     existing.count += 1;
-    existing.totalDurationSec += Math.max(1, durationSec);
+    if (Number.isFinite(durationSec) && durationSec > 0) {
+      existing.measuredCount += 1;
+      existing.totalDurationSec += durationSec;
+    }
     existing.lastUsedByAgentId = agentId;
     if (agent) existing.lastUsedByAgentName = agent.name;
     this.skillUsageMap.set(cleanId, existing);
   }
 
-  initDefaultRoleAnalytics() {
-    if (this.agents.size > 0) {
-      const agentIds = Array.from(this.agents.keys());
-      const seedMetrics = [
-        { invocations: 5, activeTimeSec: 78, completedTasks: 2, slaAdherenceRate: 100 },
-        { invocations: 8, activeTimeSec: 198, completedTasks: 3, slaAdherenceRate: 98 },
-        { invocations: 12, activeTimeSec: 342, completedTasks: 3, slaAdherenceRate: 95 },
-        { invocations: 4, activeTimeSec: 86, completedTasks: 2, slaAdherenceRate: 100 },
-      ];
-      agentIds.forEach((agentId, idx) => {
-        const agent = this.agents.get(agentId);
-        const seed = seedMetrics[idx % seedMetrics.length];
-        this.roleInvocationMap.set(agentId, {
-          agentId,
-          agentName: agent ? agent.name : agentId,
-          role: agent ? agent.role : 'Specialist',
-          invocations: seed.invocations,
-          activeTimeSec: seed.activeTimeSec,
-          completedTasks: seed.completedTasks,
-          slaAdherenceRate: seed.slaAdherenceRate,
-          status: agent ? agent.status : 'available',
-        });
-      });
-    }
-  }
-
-  recordRoleInvocation(agentId, durationSec = 5) {
+  recordRoleInvocation(agentId, durationSec = null) {
     if (!agentId) return;
     const agent = this.agents.get(agentId);
 
@@ -309,29 +343,23 @@ class EventBus extends EventEmitter {
       agentName: agent ? agent.name : agentId,
       role: agent ? agent.role : 'Specialist',
       invocations: 0,
+      measuredInvocations: 0,
       activeTimeSec: 0,
       completedTasks: 0,
-      slaAdherenceRate: 100,
       status: 'working',
     };
 
     existing.invocations += 1;
-    existing.activeTimeSec += Math.max(1, durationSec);
+    if (Number.isFinite(durationSec) && durationSec > 0) {
+      existing.measuredInvocations = (existing.measuredInvocations || 0) + 1;
+      existing.activeTimeSec += durationSec;
+    }
     if (agent) {
       existing.agentName = agent.name;
       existing.role = agent.role;
       existing.status = agent.status;
     }
     this.roleInvocationMap.set(agentId, existing);
-  }
-
-  initDefaultFileChanges() {
-    this.fileChanges = [];
-    if (this.agents.size === 0) return;
-    const records = OrchestrationRules.getDefaultFileChanges(this.agents);
-    for (const rec of records) {
-      this.recordFileChange(rec);
-    }
   }
 
   recordFileChange(change) {
@@ -344,15 +372,16 @@ class EventBus extends EventEmitter {
       filePath: change.filePath,
       fileName: fName,
       action: change.action || 'modified',
-      agentId: change.agentId || 'developer',
-      agentName: change.agentName || 'Developer',
-      agentRole: change.agentRole || 'Developer',
+      // Unattributed changes (e.g. a save in the user's editor) stay unattributed
+      agentId: change.agentId || '',
+      agentName: change.agentName || 'Unattributed',
+      agentRole: change.agentRole || '',
       timestamp: change.timestamp || new Date().toISOString(),
       summary: change.summary || change.details || `Updated ${fName}`,
       instruction: change.instruction || '',
       contentPreview: content,
       previousContent: change.previousContent || change.targetContent || '',
-      linesAdded: change.linesAdded || (content ? content.split('\n').length : 1),
+      linesAdded: change.linesAdded || (content ? content.split('\n').length : undefined),
     };
 
     // Avoid duplicate rapid recordings of the exact same content within the file
@@ -368,15 +397,6 @@ class EventBus extends EventEmitter {
       }
     }
     return record;
-  }
-
-  initDefaultCommunications() {
-    this.communications = [];
-    if (this.agents.size === 0) return;
-    const records = OrchestrationRules.getDefaultCommunications(this.agents);
-    for (const rec of records) {
-      this.recordCommunication(rec);
-    }
   }
 
   recordCommunication(comm) {
@@ -413,6 +433,65 @@ class EventBus extends EventEmitter {
       }
     }
     return record;
+  }
+
+  recordDeliverable(item) {
+    if (!item) return null;
+    const now = new Date().toISOString();
+    const id = item.id || `deliv-${item.type || 'artifact'}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    
+    // Normalize agent information if agentId is supplied
+    let agentName = item.agentName;
+    let role = item.role;
+    let roleSlug = item.roleSlug;
+    if (item.agentId && this.agents.has(item.agentId)) {
+      const ag = this.agents.get(item.agentId);
+      if (!agentName) agentName = ag.name;
+      if (!role) role = ag.role;
+    }
+
+    if (!roleSlug) {
+      const r = (role || '').toLowerCase();
+      if (r.includes('product') || r.includes('pm') || r.includes('scrum')) roleSlug = 'pm';
+      else if (r.includes('test') || r.includes('qa') || r.includes('quality')) roleSlug = 'qa';
+      else if (r.includes('lead') || r.includes('architect')) roleSlug = 'tech-lead';
+      else if (r.includes('dev') || r.includes('engineer')) roleSlug = 'dev';
+      else roleSlug = 'specialist';
+    }
+
+    const normalized = {
+      id,
+      title: item.title || 'Sprint Deliverable',
+      type: item.type || 'source_code',
+      role: role || 'Engineering Team',
+      roleSlug: roleSlug || 'specialist',
+      agentId: item.agentId || 'web-dev',
+      agentName: agentName || 'Developer',
+      status: item.status || 'delivered',
+      summary: item.summary || '',
+      content: item.content || '',
+      format: item.format || 'markdown',
+      filePath: item.filePath || '',
+      version: item.version || 'v1.0',
+      sprintId: item.sprintId || this.activeSprintId || 'sprint-1',
+      deliveredTo: item.deliveredTo || '',
+      deliveredToName: item.deliveredToName || '',
+      deliveredToRole: item.deliveredToRole || '',
+      metadata: item.metadata || {},
+      createdAt: item.createdAt || now,
+      updatedAt: now,
+    };
+
+    // Deduplicate by id or title
+    this.deliverables.set(normalized.id, normalized);
+
+    this.broadcast({
+      type: 'DELIVERABLE_UPDATE',
+      deliverable: normalized,
+      state: this.getStateSnapshot(),
+    });
+
+    return normalized;
   }
 
   registerWsClient(ws) {
@@ -469,7 +548,7 @@ class EventBus extends EventEmitter {
     if (rawEvent && this.isBeforeReset(rawEvent.timestamp)) return null;
     const eventId = rawEvent.eventId || `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const timestamp = rawEvent.timestamp || new Date().toISOString();
-    const agentId = rawEvent.agentId || 'project-manager';
+    const agentId = rawEvent.agentId || 'unattributed';
     const type = rawEvent.type || 'INFO';
     const payload = rawEvent.payload || {};
 
@@ -487,6 +566,47 @@ class EventBus extends EventEmitter {
       timestamp,
       payload,
     };
+
+    // Normalize Jira / Confluence items
+    if (
+      type === 'jira_confluence_lookup' ||
+      (payload && (payload.sourceType === 'jira' || payload.sourceType === 'confluence' || payload.ticketKey || payload.pageId))
+    ) {
+      const p = payload || {};
+      const item = {
+        id: `jc-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        sourceType: p.sourceType || (p.ticketKey ? 'jira' : 'confluence'),
+        ticketKey: p.ticketKey || null,
+        pageId: p.pageId || null,
+        url: p.url || null,
+        title: p.title || (p.ticketKey ? `Jira Ticket ${p.ticketKey}` : `Confluence Page ${p.pageId || ''}`),
+        summary: p.summary || p.details || '',
+        status: p.status || 'Active',
+        command: p.command || null,
+        timestamp: timestamp,
+        agentId: agentId || null,
+        details: p.details || '',
+      };
+      // Deduplicate by ticketKey or pageId or url
+      const existingIndex = this.jiraConfluenceItems.findIndex(
+        (x) =>
+          (item.ticketKey && x.ticketKey === item.ticketKey) ||
+          (item.pageId && x.pageId === item.pageId) ||
+          (item.url && x.url === item.url)
+      );
+      if (existingIndex >= 0) {
+        this.jiraConfluenceItems[existingIndex] = {
+          ...this.jiraConfluenceItems[existingIndex],
+          ...item,
+          timestamp: item.timestamp,
+        };
+      } else {
+        this.jiraConfluenceItems.unshift(item);
+        if (this.jiraConfluenceItems.length > 50) {
+          this.jiraConfluenceItems.pop();
+        }
+      }
+    }
 
     // Update in-memory event list
     this.events.unshift(normalized);
@@ -584,16 +704,14 @@ class EventBus extends EventEmitter {
               toAgent.activityMessage = `Accepted task: ${taskTitle}`;
               toAgent.currentTask = taskTitle;
 
-              if (!this.isDemoRunning) {
-                this.setAgentBusyTimer(toAgent.id, () => {
-                  if (!this.isDemoRunning && toAgent.status === 'working') {
-                    toAgent.status = 'available';
-                    toAgent.currentTask = null;
-                    toAgent.activityMessage = 'Ready at workstation';
-                    this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
-                  }
-                }, 4500);
-              }
+              this.setAgentBusyTimer(toAgent.id, () => {
+                if (toAgent.status === 'working') {
+                  toAgent.status = 'available';
+                  toAgent.currentTask = null;
+                  toAgent.activityMessage = 'Ready at workstation';
+                  this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+                }
+              }, 4500);
             }
             if (fromAgent) {
               fromAgent.status = 'available';
@@ -607,10 +725,10 @@ class EventBus extends EventEmitter {
         }, 3200);
 
         // Record role invocation and skill usage on handoff
-        this.recordRoleInvocation(fromId, 6);
-        this.recordRoleInvocation(toId, 10);
+        this.recordRoleInvocation(fromId);
+        this.recordRoleInvocation(toId);
         if (payload.allowedSkill) {
-          this.recordSkillUsage(payload.allowedSkill, toId, 15);
+          this.recordSkillUsage(payload.allowedSkill, toId);
         }
 
         // Record inter-agent communication dialogue
@@ -649,16 +767,42 @@ class EventBus extends EventEmitter {
       }
 
       switch (type) {
+        case 'jira_confluence_lookup':
+          agent.status = 'working';
+          agent.activityMessage = payload.ticketKey
+            ? `Viewing Jira Ticket: ${payload.ticketKey}`
+            : (payload.details || `Viewing ${payload.pageId || 'Confluence Doc'}`);
+          this.recordRoleInvocation(agentId);
+          this.recordToolUsage(agentId, payload.tool || 'read_jira.py');
+
+          // Auto-revert back to available standby state
+          this.setAgentBusyTimer(agentId, () => {
+            if (agent.status === 'working') {
+              agent.status = 'available';
+              agent.activityMessage = 'Ready at workstation';
+              this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+            }
+          }, 4000);
+          break;
+
         case 'tool_executing':
         case 'tool_started':
           agent.status = 'working';
           agent.lastTool = payload.tool || agent.lastTool;
           agent.activityMessage = `Running tool: ${payload.tool || 'Action'}`;
-          this.recordToolUsage(agentId, payload.tool || 'tool_execution', 5);
+          this.recordRoleInvocation(agentId);
+          this.recordToolUsage(agentId, payload.tool || 'tool_execution');
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
-            if (!this.isDemoRunning && (agent.status === 'working' || agent.status === 'coding')) {
+            if ((agent.status === 'working' || agent.status === 'coding')) {
+              if (agent.taskStartedAt) {
+                const elapsed = Math.max(1, Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000));
+                agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
+                agent.taskCompletedAt = new Date().toISOString();
+                agent.taskStartedAt = null;
+                this.recordRoleInvocation(agentId, elapsed);
+              }
               agent.status = 'available';
               agent.currentTask = null;
               agent.activityMessage = 'Ready at workstation';
@@ -670,14 +814,22 @@ class EventBus extends EventEmitter {
         case 'command_executing':
           agent.status = payload.command && payload.command.includes('test') ? 'testing' : 'coding';
           agent.activityMessage = `Executing: ${payload.command ? payload.command.substring(0, 45) : 'Terminal command'}`;
+          this.recordRoleInvocation(agentId);
           {
             const cmdName = payload.command ? payload.command.split(' ')[0] : 'terminal_command';
-            this.recordToolUsage(agentId, cmdName, 8);
+            this.recordToolUsage(agentId, cmdName);
           }
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
-            if (!this.isDemoRunning && (agent.status === 'working' || agent.status === 'coding' || agent.status === 'testing')) {
+            if ((agent.status === 'working' || agent.status === 'coding' || agent.status === 'testing')) {
+              if (agent.taskStartedAt) {
+                const elapsed = Math.max(1, Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000));
+                agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
+                agent.taskCompletedAt = new Date().toISOString();
+                agent.taskStartedAt = null;
+                this.recordRoleInvocation(agentId, elapsed);
+              }
               agent.status = 'available';
               agent.currentTask = null;
               agent.activityMessage = 'Ready at workstation';
@@ -690,11 +842,19 @@ class EventBus extends EventEmitter {
           agent.status = 'coding';
           agent.currentFile = payload.file;
           agent.activityMessage = `Editing: ${payload.file ? payload.file.split('/').pop() : 'Codebase'}`;
-          this.recordToolUsage(agentId, payload.tool || 'replace_file_content', 6);
+          this.recordRoleInvocation(agentId);
+          this.recordToolUsage(agentId, payload.tool || 'replace_file_content');
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
-            if (!this.isDemoRunning && (agent.status === 'coding' || agent.status === 'working')) {
+            if ((agent.status === 'coding' || agent.status === 'working')) {
+              if (agent.taskStartedAt) {
+                const elapsed = Math.max(1, Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000));
+                agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
+                agent.taskCompletedAt = new Date().toISOString();
+                agent.taskStartedAt = null;
+                this.recordRoleInvocation(agentId, elapsed);
+              }
               agent.status = 'available';
               agent.currentTask = null;
               agent.activityMessage = 'Ready at workstation';
@@ -706,22 +866,26 @@ class EventBus extends EventEmitter {
         case 'planning_started':
           agent.status = 'planning';
           agent.activityMessage = 'Designing 5-tier architecture & pre-mapping files';
-          this.recordToolUsage(agentId, payload.tool || 'impact-analysis', 12);
+          this.recordRoleInvocation(agentId);
+          this.recordToolUsage(agentId, payload.tool || 'impact-analysis');
           break;
 
         case 'task_completed':
           agent.status = 'celebrating';
           agent.activityMessage = `🎉 Done: ${payload.task || 'Task complete!'}`;
           agent.taskCompletedAt = new Date().toISOString();
+          let dur = null; // unknown unless the start was observed
           if (agent.taskStartedAt) {
-            const dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
+            dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
             agent.taskDurationSec = dur;
             agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
           }
+          this.recordRoleInvocation(agentId, dur);
           this.setAgentBusyTimer(agent.id, () => {
             if (agent.status === 'celebrating') {
               agent.status = 'available';
               agent.activityMessage = 'Ready at workstation';
+              agent.taskStartedAt = null;
               this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
             }
           }, 5000);
@@ -731,23 +895,44 @@ class EventBus extends EventEmitter {
           if (payload.testsFailed > 0) {
             agent.status = 'error';
             agent.activityMessage = `Tests Failed: ${payload.testsFailed} errors`;
+            this.recordRoleInvocation(agentId);
           } else {
             agent.status = 'celebrating';
             agent.activityMessage = `🎉 All ${payload.testsPassed || 'unit'} tests passed green!`;
             agent.taskCompletedAt = new Date().toISOString();
+            let testDur = null;
             if (agent.taskStartedAt) {
-              const dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
-              agent.taskDurationSec = dur;
-              agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
+              testDur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
+              agent.taskDurationSec = testDur;
+              agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + testDur;
             }
+            this.recordRoleInvocation(agentId, testDur);
             this.setAgentBusyTimer(agent.id, () => {
               if (agent.status === 'celebrating') {
                 agent.status = 'available';
                 agent.activityMessage = 'Ready at workstation';
+                agent.taskStartedAt = null;
                 this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
               }
             }, 5000);
           }
+          break;
+
+        case 'jira_confluence_lookup':
+        case 'spec_inspected':
+          agent.status = 'working';
+          agent.activityMessage = payload.sourceType === 'confluence'
+            ? `Reading spec: ${payload.pageId || payload.title || 'Confluence'}`
+            : `Inspecting ticket: ${payload.ticketKey || payload.title || 'Jira'}`;
+          this.recordRoleInvocation(agentId);
+          this.recordToolUsage(agentId, payload.tool || (payload.sourceType === 'confluence' ? 'read_confluence.py' : 'read_jira.py'));
+          this.setAgentBusyTimer(agentId, () => {
+            if (agent.status === 'working') {
+              agent.status = 'available';
+              agent.activityMessage = 'Ready at workstation';
+              this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+            }
+          }, 4000);
           break;
 
         case 'error':
@@ -758,6 +943,23 @@ class EventBus extends EventEmitter {
       agent.updatedAt = new Date().toISOString();
     }
 
+    // 4b. Record Jira / Confluence item
+    if ((type === 'jira_confluence_lookup' || type === 'spec_inspected') && payload) {
+      this.recordJiraConfluenceItem({
+        id: payload.id || payload.ticketKey || payload.pageId || `jc_${Date.now()}`,
+        sourceType: payload.sourceType || (payload.pageId ? 'confluence' : 'jira'),
+        ticketKey: payload.ticketKey,
+        pageId: payload.pageId,
+        url: payload.url,
+        title: payload.title || (payload.ticketKey ? `Jira Ticket ${payload.ticketKey}` : `Confluence Page ${payload.pageId}`),
+        summary: payload.summary || payload.details || '',
+        command: payload.command || '',
+        timestamp: event.timestamp || new Date().toISOString(),
+        agentId: agentId || 'tech-pm',
+        details: payload.details || '',
+      });
+    }
+
     // 5. Universal File Change Recording (captures both recognized agents and dynamic subagents)
     if (type === 'file_modified' && payload && payload.file) {
       const fName = payload.fileName || path.basename(payload.file);
@@ -766,8 +968,8 @@ class EventBus extends EventEmitter {
         fileName: fName,
         action: payload.action || (payload.tool === 'write_to_file' ? 'created' : 'modified'),
         agentId,
-        agentName: agent ? agent.name : (agentId || 'Developer'),
-        agentRole: agent ? agent.role : 'Developer',
+        agentName: agent ? agent.name : agentId || 'Unattributed',
+        agentRole: agent ? agent.role : '',
         timestamp: event.timestamp || new Date().toISOString(),
         summary: payload.details || payload.instruction || `Updated ${fName}`,
         instruction: payload.instruction || '',
@@ -777,120 +979,30 @@ class EventBus extends EventEmitter {
       });
     }
 
-    // 6. Update or auto-create Kanban tasks (aggregating micro-actions into high-level sprint deliverables)
-    let targetTaskId = payload.taskId;
-    if (targetTaskId && !this.tasks.has(targetTaskId)) {
-      if (
-        targetTaskId.startsWith('TASK-FILE-') ||
-        targetTaskId.startsWith('TASK-CMD-') ||
-        targetTaskId.startsWith('TASK-REQ-')
-      ) {
-        const isTest = (payload.file && payload.file.toLowerCase().includes('test')) || (payload.command && (payload.command.includes('test') || payload.command.includes('gradle')));
-        const isDoc = payload.file && (payload.file.endsWith('.md') || payload.file.endsWith('.yaml') || payload.file.endsWith('.json'));
-        if (isTest && this.tasks.has('DELIV-3')) {
-          targetTaskId = 'DELIV-3';
-        } else if (isDoc && this.tasks.has('DELIV-1')) {
-          targetTaskId = 'DELIV-1';
-        } else if (this.tasks.has('DELIV-2')) {
-          targetTaskId = 'DELIV-2';
-        } else if (this.tasks.has('DELIV-1')) {
-          targetTaskId = 'DELIV-1';
+    // 6. Activity events never create or move cards: cards change only through the board API
+    // (POST /api/tasks/:key/status) or the agent's own registered tasks. An event that reports
+    // its card is done only triggers the assignee's celebration.
+    const reportedTask = payload.taskId ? this.tasks.get(payload.taskId) : null;
+    if (reportedTask && reportedTask.column === 'done' && payload.column === 'done' && agent && agent.status !== 'error') {
+      agent.status = 'celebrating';
+      agent.activityMessage = `🎉 Done: ${reportedTask.title}`;
+      agent.taskCompletedAt = new Date().toISOString();
+      if (agent.taskStartedAt) {
+        const dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
+        agent.taskDurationSec = dur;
+        agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
+      }
+      this.setAgentBusyTimer(agent.id, () => {
+        if (agent.status === 'celebrating') {
+          agent.status = 'available';
+          agent.activityMessage = 'Ready at workstation';
+          this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
         }
-      }
-    }
-
-    if (targetTaskId) {
-      if (!this.tasks.has(targetTaskId)) {
-        this.tasks.set(targetTaskId, {
-          id: targetTaskId,
-          key: payload.key || 'TASK-1',
-          title: payload.task || 'Active Task',
-          description: payload.details || 'Task executing in workspace',
-          assignedTo: payload.assignedTo || agentId,
-          delegatedBy: payload.delegatedBy || 'orchestrator',
-          delegatedByRole: payload.delegatedByRole || 'AI Agent',
-          column: payload.column || 'in_progress',
-          skill: payload.allowedSkill || payload.skill || payload.tool || 'coding',
-          progress: payload.progress || 25,
-          updatedAt: new Date().toISOString(),
-        });
-      }
-      const task = this.tasks.get(targetTaskId);
-      if (task) {
-        if (payload.column) {
-          task.column = payload.column;
-          // Trigger celebration on assigned agent when a task transitions to 'done'
-          if (payload.column === 'done' && agent && agent.status !== 'error') {
-            agent.status = 'celebrating';
-            agent.activityMessage = `🎉 Done: ${task.title}`;
-            agent.taskCompletedAt = new Date().toISOString();
-            if (agent.taskStartedAt) {
-              const dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
-              agent.taskDurationSec = dur;
-              agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
-            }
-            this.setAgentBusyTimer(agent.id, () => {
-              if (agent.status === 'celebrating') {
-                agent.status = 'available';
-                agent.activityMessage = 'Ready at workstation';
-                this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
-              }
-            }, 5000);
-          }
-        }
-        if (payload.progress !== undefined) task.progress = payload.progress;
-        if (payload.assignedTo) task.assignedTo = payload.assignedTo;
-        if (payload.delegatedBy) task.delegatedBy = payload.delegatedBy;
-        if (payload.delegatedByRole) task.delegatedByRole = payload.delegatedByRole;
-        if (payload.task) task.title = payload.task;
-        if (payload.details) task.description = payload.details;
-        if (payload.allowedSkill || payload.skill) task.skill = payload.allowedSkill || payload.skill;
-        task.updatedAt = new Date().toISOString();
-      }
-    }
-
-    // 6. Feature Delivery & Completion Auto-Resolution:
-    // When the Project Manager or workflow transitions to 'Delivered', or announces delivery/signoff,
-    // or when type === 'task_completed', automatically complete ALL open tasks on the board!
-    const isFeatureDelivered =
-      this.currentPhase === 'Delivered' ||
-      type === 'task_completed' ||
-      (payload.phase && /deliver/i.test(payload.phase)) ||
-      (payload.milestone && /deliver|sign-?off|all tasks complete|feature delivered|shipped/i.test(payload.milestone));
-
-    if (isFeatureDelivered) {
-      for (const [id, task] of this.tasks.entries()) {
-        if (task.column !== 'done') {
-          task.column = 'done';
-          task.progress = 100;
-          task.updatedAt = new Date().toISOString();
-        }
-      }
-    }
-
-    // Auto-complete test and review tasks when test result is successful
-    if (type === 'test_result' && (!payload.testsFailed || payload.testsFailed === 0)) {
-      for (const [id, task] of this.tasks.entries()) {
-        if (task.column === 'testing' || task.column === 'review' || id === 'DELIV-3' || id === 'DELIV-4') {
-          task.column = 'done';
-          task.progress = 100;
-          task.updatedAt = new Date().toISOString();
-        }
-      }
-    }
-  }
-
-  consolidateTasks() {
-    const microPrefixes = ['TASK-FILE-', 'TASK-CMD-', 'TASK-REQ-'];
-    for (const id of Array.from(this.tasks.keys())) {
-      if (microPrefixes.some((p) => id.startsWith(p))) {
-        this.tasks.delete(id);
-      }
+      }, 5000);
     }
   }
 
   getStateSnapshot() {
-    this.consolidateTasks();
     const agentsList = Array.from(this.agents.values());
     const hasAgents = agentsList.length > 0;
     const tasksList = hasAgents ? Array.from(this.tasks.values()) : [];
@@ -912,7 +1024,6 @@ class EventBus extends EventEmitter {
         elapsedSeconds: Math.floor((Date.now() - this.workflowStartTime) / 1000),
         milestone: this.latestMilestone,
         milestoneAgentId: this.latestMilestoneAgentId || 'project-manager',
-        isDemoRunning: this.isDemoRunning || false,
         hasAgents,
       },
       hasCustomAgentsConfig: hasAgents,
@@ -926,67 +1037,28 @@ class EventBus extends EventEmitter {
       },
       agents: agentsList,
       tasks: tasksList,
-      toolUsageAnalytics: hasAgents ? Array.from(this.toolUsageMap.values()).sort((a, b) => b.totalDurationSec - a.totalDurationSec) : [],
+      deliverables: Array.from(this.deliverables.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+      activeSprintId: this.activeSprintId || 'sprint-1',
+      activeSprintPath: this.activeSprintPath || '.agents/sprints/sprint-1',
+      sprints: this.sprints || [],
+      toolUsageAnalytics: hasAgents ? Array.from(this.toolUsageMap.values()).sort((a, b) => b.totalDurationSec - a.totalDurationSec || b.count - a.count) : [],
       skillUsageAnalytics: hasAgents ? Array.from(this.skillUsageMap.values()).sort((a, b) => b.count - a.count) : [],
+      tokenUsageAnalytics: hasAgents
+        ? Array.from(this.tokenUsageMap.values()).sort((a, b) => b.inputTokens + b.cacheReadTokens + b.cacheCreationTokens - (a.inputTokens + a.cacheReadTokens + a.cacheCreationTokens))
+        : [],
       roleInvocationAnalytics: hasAgents ? Array.from(this.roleInvocationMap.values()).sort((a, b) => b.invocations - a.invocations) : [],
       fileChanges: hasAgents ? this.fileChanges : [],
       communications: hasAgents ? this.communications : [],
       activeHandoff: hasAgents ? this.activeHandoff : null,
+      jiraConfluenceItems: this.jiraConfluenceItems || [],
       connectedViewers: this.wsClients.size,
-      isDemoRunning: this.isDemoRunning || false,
       events: hasAgents ? this.events.slice(0, 60) : [],
     };
   }
 
-  loadDemoWorkflow(workflowTitle = 'DEMO: FEATURE-101 (User Authentication Service)') {
-    this.workflowStartTime = Date.now();
-    this.workflowTitle = workflowTitle;
-    this.currentPhase = 'Intake & Planning';
-    this.latestMilestone = '⚠️ SIMULATION DEMO STARTED: Ingesting FEATURE-101.';
-
-    // If empty workspace or already ghost team, preserve/initialize ghost agents without disk pollution
-    if (this.agents.size === 0 || this.isGhostTeam) {
-      this.isGhostTeam = true;
-      if (this.agents.size === 0) {
-        const ghostAgents = generateGhostAgents();
-        for (const a of ghostAgents) {
-          this.agents.set(a.id, a);
-        }
-      }
-    } else {
-      this.initAgents();
-    }
-
-    this.latestMilestoneAgentId = this.agents.size > 0 ? (this.agents.get('tech-pm')?.id || this.agents.keys().next().value) : 'project-manager';
-    this.tasks = new Map();
-    this.loadDemoTasks();
-    this.toolUsageMap = new Map();
-    this.initDefaultToolAnalytics();
-    this.skillUsageMap = new Map();
-    this.initDefaultSkillAnalytics();
-    this.roleInvocationMap = new Map();
-    this.initDefaultRoleAnalytics();
-    // Demo seed records are intentionally backdated; don't let the reset cutoff drop them.
-    const savedClearedAt = this.clearedAt;
-    this.clearedAt = 0;
-    this.initDefaultFileChanges();
-    this.initDefaultCommunications();
-    this.clearedAt = savedClearedAt;
-    this.activeHandoff = null;
-    this.broadcast({
-      type: 'SYNC_STATE',
-      data: this.getStateSnapshot(),
-    });
-  }
-
-  resetWorkflow(workflowTitle) {
-    return this.loadDemoWorkflow(workflowTitle);
-  }
-
   resetForProject(projectDir, newAgents) {
     this.clearedAt = Date.now();
-    this.isDemoRunning = false;
-    this.isGhostTeam = false;
+    this.jiraConfluenceItems = [];
     this.clearAllAgentBusyTimers();
     if (this.handoffTimeout) {
       clearTimeout(this.handoffTimeout);
@@ -997,10 +1069,13 @@ class EventBus extends EventEmitter {
     this.tasks = new Map();
     this.events = [];
     this.toolUsageMap = new Map();
+    this.tokenUsageMap = new Map();
     this.skillUsageMap = new Map();
     this.fileChanges = [];
     this.communications = [];
     this.activeHandoff = null;
+    this.jiraConfluenceItems = [];
+    this.deliverables = new Map();
 
     // Update workspace identity
     this.projectName = path.basename(projectDir) || 'Active Project';
@@ -1048,12 +1123,14 @@ class EventBus extends EventEmitter {
     this.clearedAt = Date.now();
     this.events = [];
     this.tasks = new Map();
-    this.isDemoRunning = false;
     this.roleInvocationMap = new Map();
     this.toolUsageMap = new Map();
+    this.tokenUsageMap = new Map();
     this.skillUsageMap = new Map();
     this.fileChanges = [];
     this.communications = [];
+    this.jiraConfluenceItems = [];
+    this.deliverables = new Map();
     if (this.handoffTimeout) {
       clearTimeout(this.handoffTimeout);
       this.handoffTimeout = null;
@@ -1063,14 +1140,12 @@ class EventBus extends EventEmitter {
     this.workflowTitle = 'Standby (No active tasks)';
     this.currentPhase = 'Awaiting Sprint Tasks';
 
-    if (this.isGhostTeam) {
-      this.agents.clear();
-      this.isGhostTeam = false;
+    if (this.agents.size === 0) {
       this.latestMilestoneAgentId = null;
       this.latestMilestone = `⚠️ No agents found in ${this.projectName || 'workspace'}. Click "Setup Team" to create your roles & agents.`;
     } else {
-      this.latestMilestone = `👉 Standby on ${this.projectName || 'workspace'}: Ready for agent tasks or click "Demo Agentic Workflow".`;
-      this.latestMilestoneAgentId = this.agents.size > 0 ? this.agents.keys().next().value : 'project-manager';
+      this.latestMilestone = `👉 Standby on ${this.projectName || 'workspace'}: Ready for agent tasks.`;
+      this.latestMilestoneAgentId = this.agents.keys().next().value;
       for (const [id, agent] of this.agents.entries()) {
         agent.status = 'available';
         agent.currentTask = null;
@@ -1080,8 +1155,8 @@ class EventBus extends EventEmitter {
         agent.taskCompletedAt = null;
         agent.taskDurationSec = null;
       }
-      this.initStandbyRoleAnalytics();
     }
+    this.initStandbyRoleAnalytics();
 
     this.clearAllAgentBusyTimers();
     this.broadcast({

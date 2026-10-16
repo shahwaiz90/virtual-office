@@ -222,7 +222,8 @@ function loadRegistry(projectRoot) {
   });
 
   // 2. Discover any additional .agents/definitions/*.md not mentioned in manifest
-  if (fs.existsSync(defsDir)) {
+  // Only fallback to scanning definitions/*.md if no explicit agents list was specified in manifest
+  if (manifestAgentEntries.length === 0 && fs.existsSync(defsDir)) {
     try {
       const defFiles = fs.readdirSync(defsDir).filter((f) => f.endsWith('.md'));
       for (const f of defFiles) {
@@ -410,7 +411,29 @@ function saveRegistry(registry, projectRoot) {
     });
   });
 
-  // 2. Save .agents/registry.yaml
+  // 2. Purge stale definition .md files whose ID is no longer present in registry.agents
+  const activeAgentIds = new Set(manifestAgents.map((a) => a.id));
+  if (fs.existsSync(defsDir)) {
+    try {
+      const defFiles = fs.readdirSync(defsDir);
+      for (const file of defFiles) {
+        if (file.endsWith('.md')) {
+          const fileId = file.replace(/\.md$/, '');
+          if (!activeAgentIds.has(fileId)) {
+            try {
+              fs.unlinkSync(path.join(defsDir, file));
+            } catch (unlinkErr) {
+              console.warn(`[canonicalRegistry] Failed to unlink stale definition ${file}:`, unlinkErr.message);
+            }
+          }
+        }
+      }
+    } catch (readErr) {
+      console.warn(`[canonicalRegistry] Error scanning defsDir for stale cleanup:`, readErr.message);
+    }
+  }
+
+  // 3. Save .agents/registry.yaml
   const registryYamlPath = path.join(projectRoot, REGISTRY_YAML_REL);
   const manifestData = {
     version: registry.version || '2.0.0',
@@ -676,10 +699,34 @@ function ensureCanonicalDefinitions(projectRoot) {
   return { ensured: false, count: 0 };
 }
 
+/**
+ * Synchronizes all framework adapters from canonical registry
+ *
+ * @param {string|object} registryOrRoot - projectRoot string or registry object
+ * @param {string} [maybeRoot] - projectRoot if first param was registry object
+ * @param {object} [options] - Options passed to adapters syncAll
+ */
+async function syncAll(registryOrRoot, maybeRoot, options = {}) {
+  const { syncAll: adapterSyncAll } = require('../adapters');
+  let reg = registryOrRoot;
+  let root = maybeRoot;
+  if (typeof registryOrRoot === 'string') {
+    root = registryOrRoot;
+    reg = loadRegistry(root);
+  } else if (!root) {
+    root = reg && reg.projectRoot ? reg.projectRoot : process.cwd();
+  }
+  if (reg) {
+    return await adapterSyncAll(reg, root, options);
+  }
+  return null;
+}
+
 module.exports = {
   hasCanonicalRegistry,
   loadRegistry,
   saveRegistry,
+  syncAll,
   ensureCanonicalDefinitions,
   loadSkillsMap,
   validateRegistry,
