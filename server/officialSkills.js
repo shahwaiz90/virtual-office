@@ -607,14 +607,15 @@ Provide instructions for this skill here.
  */
 const TEAM_TEMPLATES = [
   {
-    id: "android",
-    title: "Android Scrum",
-    subtitle: "Kotlin / Compose · 4 Role Templates · Shared Skills",
-    icon: "android",
-    badge: "ANDROID",
-    accentColor: "#10b981",
-    description: "Complete native Android Scrum team prefilled with official Android CLI tools, Jetpack Compose, Clean Architecture, and automated test suites.",
-    skills: [
+    "id": "android",
+    "title": "Android Scrum",
+    "subtitle": "Kotlin / Compose · 4 Role Templates · Shared Skills",
+    "icon": "android",
+    "badge": "ANDROID",
+    "accentColor": "#10b981",
+    "description": "Complete native Android Scrum team prefilled with official Android CLI tools, Jetpack Compose, Clean Architecture, and automated test suites.",
+    "skills": [
+      "kanban-handoff",
       "task-decomposition",
       "android-cli",
       "android-architecture",
@@ -650,15 +651,16 @@ const TEAM_TEMPLATES = [
       "wear-compose-m3",
       "wear-widgets"
     ],
-    agents: [
+    "agents": [
       {
-        id: "tech-pm",
-        name: "Scrum Master",
-        role: "Tech Scrum Master",
-        badge: "SM",
-        avatar_url: "/assets/projectmanager.png",
-        description: "Breaks down user stories and high-level feature requests into discrete sprint tasks with acceptance criteria. Publishes each broken-down task to the Authoritative Task Board, assigning each task to the Tech Lead and domain specialists.",
-        skills: [
+        "id": "tech-pm",
+        "name": "Scrum Master",
+        "role": "Tech Scrum Master",
+        "badge": "SM",
+        "avatar_url": "/assets/projectmanager.png",
+        "description": "Orchestrator. Turns each user request into a requirement card and role-specific task cards on the Kanban board, then hands them to the Tech Lead. Never writes application code.",
+        "skills": [
+          "kanban-handoff",
           "task-decomposition",
           "read-jira",
           "read-confluence",
@@ -668,18 +670,28 @@ const TEAM_TEMPLATES = [
           "play-billing-library-version-upgrade",
           "engage-sdk-integration"
         ],
-        allowed_tools: ["view_file", "run_command", "invoke_subagent", "send_message"],
-        prohibited_actions: ["No direct application code modifications"],
-        delegation_targets: ["android-tech-lead"]
+        "allowed_tools": [
+          "view_file",
+          "run_command",
+          "invoke_subagent",
+          "send_message"
+        ],
+        "prohibited_actions": [
+          "No direct application code modifications"
+        ],
+        "delegation_targets": [
+          "android-tech-lead"
+        ]
       },
       {
-        id: "android-tech-lead",
-        name: "Android Lead",
-        role: "Tech Lead",
-        badge: "LEAD",
-        avatar_url: "/assets/techlead.png",
-        description: "Deconstructs technical architecture into implementation contracts, spike tasks, and code reviews. Assigns development work items to the Core Developer and verification suites to QA, tracking progress on the Authoritative Task Board.",
-        skills: [
+        "id": "android-tech-lead",
+        "name": "Android Lead",
+        "role": "Tech Lead",
+        "badge": "LEAD",
+        "avatar_url": "/assets/techlead.png",
+        "description": "Tech Lead. Turns a requirement card into technical contracts for the Android Dev (modules, APIs, data, edge cases, how to verify), hands verification to QA, and reviews their cards.",
+        "skills": [
+          "kanban-handoff",
           "task-decomposition",
           "android-architecture",
           "android-cli",
@@ -689,19 +701,31 @@ const TEAM_TEMPLATES = [
           "android-intent-security",
           "glance-canonical-layouts"
         ],
-        allowed_tools: ["view_file", "run_command", "git_diff", "invoke_subagent", "send_message"],
-        prohibited_actions: ["No direct implementation commits without review"],
-        delegation_targets: ["android-dev", "android-tester"]
+        "allowed_tools": [
+          "view_file",
+          "run_command",
+          "git_diff",
+          "invoke_subagent",
+          "send_message"
+        ],
+        "prohibited_actions": [
+          "No direct implementation commits without review"
+        ],
+        "delegation_targets": [
+          "android-dev",
+          "android-tester"
+        ],
+        "reportsTo": "tech-pm"
       },
       {
-        id: "android-dev",
-        name: "Android Dev",
-        role: "Developer",
-        badge: "DEV",
-        avatar_url: "/assets/developer.png",
-        description: "Executes implementation tasks assigned by Tech Lead/PM on the Authoritative Task Board. Breaks down complex features into sub-components and transitions tasks from In Progress to Review upon code completion.",
-        skills: [
-          "task-decomposition",
+        "id": "android-dev",
+        "name": "Android Dev",
+        "role": "Developer",
+        "badge": "DEV",
+        "avatar_url": "/assets/developer.png",
+        "description": "Developer. Implements one card at a time from the Tech Lead's contract in Kotlin and Jetpack Compose, verifies each acceptance criterion, records the result on the card and moves it to review.",
+        "skills": [
+          "kanban-handoff",
           "android-cli",
           "android-architecture",
           "gradle-build",
@@ -725,40 +749,56 @@ const TEAM_TEMPLATES = [
           "wear-widgets",
           "display-glasses-with-jetpack-compose-glimmer"
         ],
-        allowed_tools: ["view_file", "write_to_file", "replace_file_content", "run_command"],
-        prohibited_actions: ["No altering architectural boundaries without lead approval"],
-        delegation_targets: ["android-tech-lead"]
+        "allowed_tools": [
+          "view_file",
+          "write_to_file",
+          "replace_file_content",
+          "run_command"
+        ],
+        "prohibited_actions": [
+          "No altering architectural boundaries without lead approval"
+        ],
+        "delegation_targets": [],
+        "reportsTo": "android-tech-lead"
       },
       {
-        id: "android-tester",
-        name: "Mobile QA",
-        role: "QA Engineer",
-        badge: "QA",
-        avatar_url: "/assets/qa.png",
-        description: "Picks up completed implementation tasks from the Authoritative Task Board, executes automated test suites, verifies acceptance criteria, and transitions tasks to Done.",
-        skills: [
-          "task-decomposition",
+        "id": "android-tester",
+        "name": "Mobile QA",
+        "role": "QA Engineer",
+        "badge": "QA",
+        "avatar_url": "/assets/qa.png",
+        "description": "QA. Tests the cards the Tech Lead hands over with unit, instrumentation and Gradle test suites, records pass/fail per acceptance criterion, and moves each card to done or back to in_progress with the defects.",
+        "skills": [
+          "kanban-handoff",
           "android-testing",
           "testing-setup",
           "android-profiler",
           "android-cli",
           "gradle-build"
         ],
-        allowed_tools: ["run_command", "view_file", "git_diff"],
-        prohibited_actions: ["No modifying production code"],
-        delegation_targets: ["android-dev", "tech-pm"]
+        "allowed_tools": [
+          "run_command",
+          "view_file",
+          "git_diff"
+        ],
+        "prohibited_actions": [
+          "No modifying production code"
+        ],
+        "delegation_targets": [],
+        "reportsTo": "android-tech-lead"
       }
     ]
   },
   {
-    id: "ios",
-    title: "iOS Scrum",
-    subtitle: "Swift / SwiftUI · 4 Role Templates · Shared Skills",
-    icon: "apple",
-    badge: "IOS",
-    accentColor: "#0ea5e9",
-    description: "Complete native iOS Scrum team prefilled with official Apple Xcode 27 skills, Swift Testing (@Test), SwiftUI Specialist patterns, UIKit modernization, and xcodebuild workflows.",
-    skills: [
+    "id": "ios",
+    "title": "iOS Scrum",
+    "subtitle": "Swift / SwiftUI · 4 Role Templates · Shared Skills",
+    "icon": "apple",
+    "badge": "IOS",
+    "accentColor": "#0ea5e9",
+    "description": "Complete native iOS Scrum team prefilled with official Apple Xcode 27 skills, Swift Testing (@Test), SwiftUI Specialist patterns, UIKit modernization, and xcodebuild workflows.",
+    "skills": [
+      "kanban-handoff",
       "task-decomposition",
       "swiftui-specialist",
       "swiftui-whats-new-27",
@@ -772,15 +812,16 @@ const TEAM_TEMPLATES = [
       "ios-testing",
       "xcodebuild"
     ],
-    agents: [
+    "agents": [
       {
-        id: "tech-pm",
-        name: "Scrum Master",
-        role: "Tech Scrum Master",
-        badge: "SM",
-        avatar_url: "/assets/projectmanager.png",
-        description: "Deconstructs product features and user stories into sequenced engineering tasks with acceptance criteria. Publishes and assigns tasks across the iOS team on the Authoritative Task Board.",
-        skills: [
+        "id": "tech-pm",
+        "name": "Scrum Master",
+        "role": "Tech Scrum Master",
+        "badge": "SM",
+        "avatar_url": "/assets/projectmanager.png",
+        "description": "Orchestrator. Turns each user request into a requirement card and role-specific task cards on the Kanban board, then hands them to the Tech Lead. Never writes application code.",
+        "skills": [
+          "kanban-handoff",
           "task-decomposition",
           "read-jira",
           "read-confluence",
@@ -789,18 +830,28 @@ const TEAM_TEMPLATES = [
           "sprint-planning",
           "pm-reporting"
         ],
-        allowed_tools: ["view_file", "run_command", "invoke_subagent", "send_message"],
-        prohibited_actions: ["No direct code modifications"],
-        delegation_targets: ["ios-tech-lead"]
+        "allowed_tools": [
+          "view_file",
+          "run_command",
+          "invoke_subagent",
+          "send_message"
+        ],
+        "prohibited_actions": [
+          "No direct code modifications"
+        ],
+        "delegation_targets": [
+          "ios-tech-lead"
+        ]
       },
       {
-        id: "ios-tech-lead",
-        name: "iOS Lead",
-        role: "Tech Lead",
-        badge: "LEAD",
-        avatar_url: "/assets/techlead.png",
-        description: "Deconstructs technical architecture into implementation contracts and review tasks. Assigns development work items to the Swift Developer and verification suites to QA, tracking progress on the Authoritative Task Board.",
-        skills: [
+        "id": "ios-tech-lead",
+        "name": "iOS Lead",
+        "role": "Tech Lead",
+        "badge": "LEAD",
+        "avatar_url": "/assets/techlead.png",
+        "description": "Tech Lead. Turns a requirement card into technical contracts for the iOS Dev (targets, APIs, data, edge cases, how to verify), hands verification to QA, and reviews their cards.",
+        "skills": [
+          "kanban-handoff",
           "task-decomposition",
           "swiftui-specialist",
           "swiftui-whats-new-27",
@@ -810,19 +861,31 @@ const TEAM_TEMPLATES = [
           "xcode-project-setup",
           "swiftui-architecture"
         ],
-        allowed_tools: ["view_file", "run_command", "git_diff", "invoke_subagent", "send_message"],
-        prohibited_actions: ["No bypassing Xcode folder synchronization rules"],
-        delegation_targets: ["ios-dev", "ios-tester"]
+        "allowed_tools": [
+          "view_file",
+          "run_command",
+          "git_diff",
+          "invoke_subagent",
+          "send_message"
+        ],
+        "prohibited_actions": [
+          "No bypassing Xcode folder synchronization rules"
+        ],
+        "delegation_targets": [
+          "ios-dev",
+          "ios-tester"
+        ],
+        "reportsTo": "tech-pm"
       },
       {
-        id: "ios-dev",
-        name: "iOS Dev",
-        role: "Developer",
-        badge: "DEV",
-        avatar_url: "/assets/developer.png",
-        description: "Executes implementation tasks assigned by Tech Lead/PM on the Authoritative Task Board. Builds declarative SwiftUI screens, Observable ViewModels, async/await clients, and transitions tasks to Review upon completion.",
-        skills: [
-          "task-decomposition",
+        "id": "ios-dev",
+        "name": "iOS Dev",
+        "role": "Developer",
+        "badge": "DEV",
+        "avatar_url": "/assets/developer.png",
+        "description": "Developer. Implements one card at a time from the Tech Lead's contract in SwiftUI and Swift concurrency, verifies each acceptance criterion, records the result on the card and moves it to review.",
+        "skills": [
+          "kanban-handoff",
           "swiftui-specialist",
           "swiftui-whats-new-27",
           "uikit-app-modernization",
@@ -831,40 +894,56 @@ const TEAM_TEMPLATES = [
           "swiftui-architecture",
           "xcodebuild"
         ],
-        allowed_tools: ["view_file", "write_to_file", "replace_file_content", "run_command"],
-        prohibited_actions: ["Never manually modify .pbxproj files (use Swift scripts or disk sync)"],
-        delegation_targets: ["ios-tech-lead"]
+        "allowed_tools": [
+          "view_file",
+          "write_to_file",
+          "replace_file_content",
+          "run_command"
+        ],
+        "prohibited_actions": [
+          "Never manually modify .pbxproj files (use Swift scripts or disk sync)"
+        ],
+        "delegation_targets": [],
+        "reportsTo": "ios-tech-lead"
       },
       {
-        id: "ios-tester",
-        name: "iOS QA",
-        role: "QA Engineer",
-        badge: "QA",
-        avatar_url: "/assets/qa.png",
-        description: "Picks up completed implementation tasks from the Authoritative Task Board, executes automated Swift Testing and xcodebuild suites, verifies acceptance criteria, and transitions tasks to Done.",
-        skills: [
-          "task-decomposition",
+        "id": "ios-tester",
+        "name": "iOS QA",
+        "role": "QA Engineer",
+        "badge": "QA",
+        "avatar_url": "/assets/qa.png",
+        "description": "QA. Tests the cards the Tech Lead hands over with Swift Testing and xcodebuild suites, records pass/fail per acceptance criterion, and moves each card to done or back to in_progress with the defects.",
+        "skills": [
+          "kanban-handoff",
           "test-modernizer",
           "device-interaction",
           "ios-testing",
           "xcodebuild",
           "xcode-project-setup"
         ],
-        allowed_tools: ["run_command", "view_file", "git_diff"],
-        prohibited_actions: ["No modifying production Swift source files"],
-        delegation_targets: ["ios-dev", "tech-pm"]
+        "allowed_tools": [
+          "run_command",
+          "view_file",
+          "git_diff"
+        ],
+        "prohibited_actions": [
+          "No modifying production Swift source files"
+        ],
+        "delegation_targets": [],
+        "reportsTo": "ios-tech-lead"
       }
     ]
   },
   {
-    id: "web",
-    title: "Web Scrum",
-    subtitle: "TypeScript / React · 4 Role Templates · Shared Skills",
-    icon: "globe",
-    badge: "WEB",
-    accentColor: "#6366f1",
-    description: "Official Vercel & React engineering team prefilled with React 19 composition patterns, view transitions, performance best practices, and automated testing.",
-    skills: [
+    "id": "web",
+    "title": "Web Scrum",
+    "subtitle": "TypeScript / React · 4 Role Templates · Shared Skills",
+    "icon": "globe",
+    "badge": "WEB",
+    "accentColor": "#6366f1",
+    "description": "Official Vercel & React engineering team prefilled with React 19 composition patterns, view transitions, performance best practices, and automated testing.",
+    "skills": [
+      "kanban-handoff",
       "task-decomposition",
       "react-best-practices",
       "composition-patterns",
@@ -876,29 +955,45 @@ const TEAM_TEMPLATES = [
       "vercel-optimize",
       "deploy-to-vercel"
     ],
-    agents: [
+    "agents": [
       {
-        id: "tech-pm",
-        name: "Scrum Master",
-        role: "Tech Scrum Master",
-        badge: "SM",
-        avatar_url: "/assets/projectmanager.png",
-        description: "Deconstructs high-level user requests and product goals into discrete sprint tasks with acceptance criteria. Publishes each broken-down task to the Authoritative Task Board, assigning each task to the Tech Lead and developers.",
-        skills: ["task-decomposition",
+        "id": "tech-pm",
+        "name": "Scrum Master",
+        "role": "Tech Scrum Master",
+        "badge": "SM",
+        "avatar_url": "/assets/projectmanager.png",
+        "description": "Orchestrator. Turns each user request into a requirement card and role-specific task cards on the Kanban board, then hands them to the Tech Lead. Never writes application code.",
+        "skills": [
+          "kanban-handoff",
+          "task-decomposition",
           "read-jira",
-          "read-confluence", "requirement-analysis", "sprint-planning", "writing-guidelines"],
-        allowed_tools: ["view_file", "run_command", "invoke_subagent", "send_message"],
-        prohibited_actions: ["No direct application code modifications"],
-        delegation_targets: ["web-tech-lead"]
+          "read-confluence",
+          "requirement-analysis",
+          "sprint-planning",
+          "writing-guidelines"
+        ],
+        "allowed_tools": [
+          "view_file",
+          "run_command",
+          "invoke_subagent",
+          "send_message"
+        ],
+        "prohibited_actions": [
+          "No direct application code modifications"
+        ],
+        "delegation_targets": [
+          "web-tech-lead"
+        ]
       },
       {
-        id: "web-tech-lead",
-        name: "Web Lead",
-        role: "Tech Lead",
-        badge: "LEAD",
-        avatar_url: "/assets/techlead.png",
-        description: "Deconstructs technical architecture into implementation contracts and review tasks. Assigns frontend & API work items to the Developer and verification suites to QA, tracking progress on the Authoritative Task Board.",
-        skills: [
+        "id": "web-tech-lead",
+        "name": "Web Lead",
+        "role": "Tech Lead",
+        "badge": "LEAD",
+        "avatar_url": "/assets/techlead.png",
+        "description": "Tech Lead. Turns a requirement card into technical contracts for the Web Dev (files, APIs, data, edge cases, how to verify), hands verification to QA, and reviews their cards.",
+        "skills": [
+          "kanban-handoff",
           "task-decomposition",
           "react-best-practices",
           "composition-patterns",
@@ -906,19 +1001,31 @@ const TEAM_TEMPLATES = [
           "vercel-optimize",
           "modern-web-guidance"
         ],
-        allowed_tools: ["view_file", "run_command", "git_diff", "invoke_subagent", "send_message"],
-        prohibited_actions: ["No direct unreviewed code pushes to main"],
-        delegation_targets: ["web-dev", "web-tester"]
+        "allowed_tools": [
+          "view_file",
+          "run_command",
+          "git_diff",
+          "invoke_subagent",
+          "send_message"
+        ],
+        "prohibited_actions": [
+          "No direct unreviewed code pushes to main"
+        ],
+        "delegation_targets": [
+          "web-dev",
+          "web-tester"
+        ],
+        "reportsTo": "tech-pm"
       },
       {
-        id: "web-dev",
-        name: "Web Dev",
-        role: "Developer",
-        badge: "DEV",
-        avatar_url: "/assets/developer.png",
-        description: "Executes implementation tasks assigned by Tech Lead/PM on the Authoritative Task Board. Builds declarative React 19 components with ViewTransitions, eliminates waterfalls, and transitions tasks to Review upon completion.",
-        skills: [
-          "task-decomposition",
+        "id": "web-dev",
+        "name": "Web Dev",
+        "role": "Developer",
+        "badge": "DEV",
+        "avatar_url": "/assets/developer.png",
+        "description": "Developer. Implements one card at a time from the Tech Lead's contract in React and TypeScript, verifies each acceptance criterion, records the result on the card and moves it to review.",
+        "skills": [
+          "kanban-handoff",
           "react-best-practices",
           "composition-patterns",
           "react-view-transitions",
@@ -926,26 +1033,41 @@ const TEAM_TEMPLATES = [
           "modern-web-guidance",
           "deploy-to-vercel"
         ],
-        allowed_tools: ["view_file", "write_to_file", "replace_file_content", "run_command"],
-        prohibited_actions: ["No breaking architectural contracts"],
-        delegation_targets: ["web-tech-lead"]
+        "allowed_tools": [
+          "view_file",
+          "write_to_file",
+          "replace_file_content",
+          "run_command"
+        ],
+        "prohibited_actions": [
+          "No breaking architectural contracts"
+        ],
+        "delegation_targets": [],
+        "reportsTo": "web-tech-lead"
       },
       {
-        id: "web-tester",
-        name: "Web QA",
-        role: "QA Engineer",
-        badge: "QA",
-        avatar_url: "/assets/qa.png",
-        description: "Picks up completed implementation tasks from the Authoritative Task Board, executes automated Vitest & Playwright test suites, verifies acceptance criteria, audits accessibility & UX against Web Interface Guidelines, and transitions tasks to Done.",
-        skills: [
-          "task-decomposition",
+        "id": "web-tester",
+        "name": "Web QA",
+        "role": "QA Engineer",
+        "badge": "QA",
+        "avatar_url": "/assets/qa.png",
+        "description": "QA. Tests the cards the Tech Lead hands over with Vitest and Playwright suites and an accessibility/UX check, records pass/fail per acceptance criterion, and moves each card to done or back to in_progress with the defects.",
+        "skills": [
+          "kanban-handoff",
           "automated-testing",
           "web-design-guidelines",
           "modern-web-guidance"
         ],
-        allowed_tools: ["run_command", "view_file", "git_diff"],
-        prohibited_actions: ["No modifying production code"],
-        delegation_targets: ["web-dev", "tech-pm"]
+        "allowed_tools": [
+          "run_command",
+          "view_file",
+          "git_diff"
+        ],
+        "prohibited_actions": [
+          "No modifying production code"
+        ],
+        "delegation_targets": [],
+        "reportsTo": "web-tech-lead"
       }
     ]
   }

@@ -11,14 +11,14 @@
       "goal": "",
       "badge": "SM",
       "avatar_url": "/assets/projectmanager.png",
-      "description": "Deconstructs high-level user requests and product goals into discrete sprint tasks with acceptance criteria. Mandatory Backlog-First Policy: Whenever the user requests any feature, task, or enhancement, ALWAYS register it immediately in the Backlog on the Authoritative Task Board. Never interrupt or preempt currently running tasks; pull and execute queued backlog items sequentially only after active tasks are completed.",
+      "description": "Orchestrator. Turns each user request into a requirement card and role-specific task cards on the Kanban board, then hands them to the Tech Lead. Never writes application code.",
       "skills": [
         "kanban-handoff",
         "task-decomposition",
-        "read-jira",
-        "read-confluence",
         "requirement-analysis",
         "sprint-planning",
+        "read-jira",
+        "read-confluence",
         "writing-guidelines"
       ],
       "tools": [
@@ -36,8 +36,8 @@
       "enable_subagent_tools": true,
       "enable_write_tools": true,
       "enable_mcp_tools": false,
-      "inputContract": "Reads the user's requirement. Registers it as a requirement card on the Kanban board before anything else.",
-      "outputContract": "Breaks the requirement into role-specific task cards (parentKey = requirement), each with a brief rephrased for its assignee, acceptance criteria and context. Delegates each by card key only, follows progress on the cards' threads, and closes the requirement card with a summary when all tasks are done.",
+      "inputContract": "The user's request, as the requirement card the portal registered (or register it first).",
+      "outputContract": "Task cards under the requirement (parentKey), each with a brief written for its assignee, acceptance criteria and context, delegated by key. The requirement closes by itself when its tasks are done; post a summary on its thread.",
       "permissions": [],
       "prohibited_actions": [
         "No direct application code modifications"
@@ -58,7 +58,7 @@
       "goal": "",
       "badge": "LEAD",
       "avatar_url": "/assets/techlead.png",
-      "description": "Deconstructs technical architecture into implementation contracts and review tasks. Assigns frontend & API work items to the Developer and verification suites to QA, tracking progress on the Authoritative Task Board.",
+      "description": "Tech Lead. Turns a requirement card into technical contracts for the Developer (files, APIs, data, edge cases, how to verify), then reviews the Developer's cards.",
       "skills": [
         "kanban-handoff",
         "task-decomposition",
@@ -85,8 +85,8 @@
       "enable_subagent_tools": true,
       "enable_write_tools": true,
       "enable_mcp_tools": false,
-      "inputContract": "Reads its assigned card from the Kanban board (GET /api/tasks/<key>?format=md): brief, acceptance criteria, context, parent requirement and thread. Never relies on the delegation prompt for instructions.",
-      "outputContract": "Turns its card into technical implementation cards for the Developer (parentKey = its own card): files, API/data contracts, edge cases and verification steps in each brief. Delegates by card key only, answers questions and reviews results on the cards' threads, then records its own result and moves its card.",
+      "inputContract": "Its card: the product brief, acceptance criteria, context and thread.",
+      "outputContract": "Developer cards under its card, each a technical contract; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review.",
       "permissions": [],
       "prohibited_actions": [
         "No direct unreviewed code pushes to main"
@@ -107,14 +107,13 @@
       "goal": "",
       "badge": "DEV",
       "avatar_url": "/assets/developer.png",
-      "description": "Executes implementation tasks assigned by Tech Lead/PM on the Authoritative Task Board. Builds declarative React 19 components with ViewTransitions, eliminates waterfalls, and transitions tasks to Review upon completion.",
+      "description": "Developer. Implements one card at a time from the Tech Lead's contract, verifies each acceptance criterion, records the result on the card and moves it to review.",
       "skills": [
         "kanban-handoff",
-        "task-decomposition",
+        "feature-implementation",
         "react-best-practices",
         "composition-patterns",
         "react-view-transitions",
-        "feature-implementation",
         "modern-web-guidance",
         "deploy-to-vercel"
       ],
@@ -133,19 +132,15 @@
       "enable_subagent_tools": false,
       "enable_write_tools": true,
       "enable_mcp_tools": false,
-      "inputContract": "Reads its assigned card from the Kanban board (GET /api/tasks/<key>?format=md): the technical brief, acceptance criteria, context files and thread. Asks on the card's thread when anything is unclear.",
-      "outputContract": "Implements the card, posts progress and decisions to the card's thread, then records a result (what changed, files touched, how each acceptance criterion is met) and moves the card to review.",
+      "inputContract": "Its card: the technical contract, acceptance criteria, context files and thread. Asks on the thread when anything is unclear.",
+      "outputContract": "The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met.",
       "permissions": [],
       "prohibited_actions": [
         "No breaking architectural contracts"
       ],
-      "reportsTo": "tech-pm",
-      "handoffTo": [
-        "web-tech-lead"
-      ],
-      "delegation_targets": [
-        "web-tech-lead"
-      ]
+      "reportsTo": "web-tech-lead",
+      "handoffTo": [],
+      "delegation_targets": []
     }
   ]
 }

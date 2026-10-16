@@ -482,13 +482,13 @@ End of instructions.
   const agentsMd = fs.readFileSync(agentsMdPath, 'utf8');
   assertTest(agentsMd.includes('ALWAYS INVOKE `tech-pm` FIRST'), 'AGENTS.md enforces primary orchestrator invariant');
   assertTest(agentsMd.includes('flowchart TD'), 'AGENTS.md renders Mermaid flowchart');
-  assertTest(agentsMd.includes('tech-pm["👑 Scrum Master'), 'AGENTS.md Mermaid diagram includes primary orchestrator');
-  assertTest(agentsMd.includes('| Agent ID | Hierarchy | Name | Role | Allowed Tools | Delegation Targets | Subagent Tools |'), 'AGENTS.md contains Active Team Roster table');
-  assertTest(agentsMd.includes('**`tech-pm`**'), 'AGENTS.md roster includes tech-pm');
-  expectedTeamIds.slice(1).forEach((id) => {
-    assertTest(agentsMd.includes(`**\`${id}\`**`), `AGENTS.md roster includes ${id}`);
+  assertTest(agentsMd.includes('tech-pm["Scrum Master<br/><i>Tech Scrum Master (orchestrator)</i>"]'), 'AGENTS.md Mermaid diagram marks the orchestrator');
+  assertTest(agentsMd.includes('| Agent | Role | Hands work to | Reports to | Never |'), 'AGENTS.md contains the team table');
+  expectedTeamIds.forEach((id) => {
+    assertTest(agentsMd.includes(`| \`${id}\` |`), `AGENTS.md roster includes ${id}`);
   });
-  assertTest(agentsMd.includes('## Antigravity Subagent Registration Guide'), 'AGENTS.md includes Antigravity registration guide');
+  assertTest(!agentsMd.includes('file://'), 'AGENTS.md links are relative, not machine paths');
+  assertTest(agentsMd.includes('## Registering subagents'), 'AGENTS.md includes the subagent registration note');
 
   // 4.2 OpenCode: .agents/rules/team-orchestration.md
   const rulePath = path.join(PROJECT_ROOT, '.agents', 'rules', 'team-orchestration.md');
@@ -530,12 +530,13 @@ End of instructions.
   const claudeMdPath = path.join(PROJECT_ROOT, 'CLAUDE.md');
   assertTest(fs.existsSync(claudeMdPath), 'CLAUDE.md must exist');
   const claudeMd = fs.readFileSync(claudeMdPath, 'utf8');
-  assertTest(claudeMd.includes('PRIMARY ORCHESTRATOR ROUTING: `tech-pm`'), 'CLAUDE.md defines primary routing');
-  assertTest(claudeMd.includes('## 👥 Active Multi-Agent Team Roster'), 'CLAUDE.md defines team roster table');
-  assertTest(claudeMd.includes('## 🛠️ Essential Project Commands'), 'CLAUDE.md defines project commands');
+  assertTest(claudeMd.includes('Route every software request to `tech-pm`'), 'CLAUDE.md defines primary routing');
+  assertTest(claudeMd.includes('## Team') && claudeMd.includes('| `web-tech-lead` | Tech Lead | `web-dev` |'), 'CLAUDE.md team table shows delegation');
+  assertTest(claudeMd.includes('## Commands'), 'CLAUDE.md defines project commands');
   assertTest(claudeMd.includes('node bin/agents.js validate'), 'CLAUDE.md documents validate CLI command');
-  assertTest(claudeMd.includes('node bin/agents.js sync'), 'CLAUDE.md documents sync CLI command');
-  assertTest(claudeMd.includes('## 🔒 Guardrails & Prohibited Actions'), 'CLAUDE.md outlines guardrails');
+  assertTest(claudeMd.includes('sync'), 'CLAUDE.md documents sync CLI command');
+  assertTest(claudeMd.includes('No direct application code modifications'), 'CLAUDE.md lists prohibited actions');
+  assertTest(!claudeMd.includes('file://'), 'CLAUDE.md links are relative, not machine paths');
 
   const claudeConfigPath = path.join(PROJECT_ROOT, '.claude', 'config.json');
   assertTest(fs.existsSync(claudeConfigPath), '.claude/config.json must exist');
@@ -552,26 +553,25 @@ End of instructions.
   const codexInstrPath = path.join(PROJECT_ROOT, '.codex', 'instructions.md');
   assertTest(fs.existsSync(codexInstrPath), '.codex/instructions.md must exist');
   const codexInstr = fs.readFileSync(codexInstrPath, 'utf8');
-  assertTest(codexInstr.includes('Primary Orchestrator: `tech-pm`'), 'Codex instructions identifies primary orchestrator');
-  assertTest(codexInstr.includes('## Agent Roster & Guardrails'), 'Codex instructions agent roster');
-  assertTest(codexInstr.includes('🚫 No direct application code modifications'), 'Codex instructions preserves prohibited actions');
+  assertTest(codexInstr.includes('as `tech-pm` (Scrum Master), the orchestrator'), 'Codex instructions identifies primary orchestrator');
+  assertTest(codexInstr.includes('## Team'), 'Codex instructions team table');
+  assertTest(codexInstr.includes('No direct application code modifications'), 'Codex instructions preserves prohibited actions');
 
   const codexPromptsPath = path.join(PROJECT_ROOT, '.codex', 'system-prompts.md');
   assertTest(fs.existsSync(codexPromptsPath), '.codex/system-prompts.md must exist');
   const codexPrompts = fs.readFileSync(codexPromptsPath, 'utf8');
-  assertTest(codexPrompts.includes('# OpenAI Codex System Prompts & Tool Specifications'), 'Codex system prompts header');
+  assertTest(codexPrompts.includes(': role prompts'), 'Codex system prompts header');
   assertTest(codexPrompts.includes(`## Agent Prompt: \`${expectedTeamIds[expectedTeamIds.length - 1]}\``), `Codex system prompt for ${expectedTeamIds[expectedTeamIds.length - 1]}`);
 
   // 4.7 Gemini CLI: GEMINI.md
   const geminiMdPath = path.join(PROJECT_ROOT, 'GEMINI.md');
   assertTest(fs.existsSync(geminiMdPath), 'GEMINI.md must exist');
   const geminiMd = fs.readFileSync(geminiMdPath, 'utf8');
-  assertTest(geminiMd.includes('PRIMARY AGENT ROUTING: `tech-pm`'), 'GEMINI.md primary orchestrator routing');
-  assertTest(geminiMd.includes('## 👥 Agent Hierarchy & Roles'), 'GEMINI.md hierarchy table');
-  assertTest(geminiMd.includes('## 🔄 Subagent Delegation Protocol & Schemas'), 'GEMINI.md invocation schemas');
-  assertTest(geminiMd.includes('"TypeName": "<target-subagent-id>"'), 'GEMINI.md delegation JSON schema format');
-  assertTest(geminiMd.includes('## 🚫 Strict Prohibited Actions & Boundaries'), 'GEMINI.md guardrail boundaries');
-  assertTest(geminiMd.includes('## 📚 Domain Skills Directory Mapping'), 'GEMINI.md skills directory mapping');
+  assertTest(geminiMd.includes('Route every software request to `tech-pm`'), 'GEMINI.md primary orchestrator routing');
+  assertTest(geminiMd.includes('## Team'), 'GEMINI.md team table');
+  assertTest(geminiMd.includes('## Delegation') && geminiMd.includes('Your task: <KEY>'), 'GEMINI.md delegation prompt carries only the card key');
+  assertTest(!geminiMd.includes('"Prompt":'), 'GEMINI.md no longer asks for instructions in the delegation prompt');
+  assertTest(geminiMd.includes('## Skills') && !geminiMd.includes('file://'), 'GEMINI.md skills use relative links');
 
   console.log('  ✅ Content and structure verification of all multi-provider artifacts passed.\n');
 

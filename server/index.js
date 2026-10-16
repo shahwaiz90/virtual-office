@@ -211,7 +211,8 @@ app.post('/api/agents/save', async (req, res) => {
           enable_mcp_tools: a.enable_mcp_tools !== undefined ? a.enable_mcp_tools : false,
           is_primary: isPrimary,
           is_subagent: !isPrimary,
-          parent_agent: isPrimary ? null : (agents[0].id || 'primary-orchestrator'),
+          parent_agent: isPrimary ? null : (a.reportsTo || agents[0].id || 'primary-orchestrator'),
+          reportsTo: a.reportsTo || (isPrimary ? 'user' : agents[0].id),
           prohibited_actions: a.prohibited_actions || a.prohibitedActions || [],
           delegation_targets: a.delegation_targets || a.delegationTargets || (isPrimary && agents[1] ? [agents[1].id] : []),
         };
