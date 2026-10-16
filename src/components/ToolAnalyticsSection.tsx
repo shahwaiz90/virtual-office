@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ToolUsageStat, SkillUsageStat, RoleInvocationStat, FileChangeRecord, AgentCommunication, Agent } from '../types/office';
+import { ToolUsageStat, SkillUsageStat, RoleInvocationStat, TokenUsageStat, FileChangeRecord, AgentCommunication, Agent } from '../types/office';
 import {
   Wrench,
   Clock,
@@ -29,6 +29,7 @@ interface ToolAnalyticsSectionProps {
   toolStats: ToolUsageStat[];
   skillStats: SkillUsageStat[];
   roleStats: RoleInvocationStat[];
+  tokenStats?: TokenUsageStat[];
   fileChanges?: FileChangeRecord[];
   communications?: AgentCommunication[];
   agents: Agent[];
@@ -38,6 +39,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
   toolStats,
   skillStats,
   roleStats,
+  tokenStats = [],
   fileChanges = [],
   communications = [],
   agents,
@@ -126,6 +128,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
   // Compute aggregated KPI totals
   const totalExecutions = filteredToolStats.reduce((sum, s) => sum + s.count, 0);
   const totalExecutionSec = filteredToolStats.reduce((sum, s) => sum + s.totalDurationSec, 0);
+  const anyToolMeasured = filteredToolStats.some((s) => (s.measuredCount || 0) > 0);
   const maxToolDuration = Math.max(1, ...filteredToolStats.map((s) => s.totalDurationSec));
 
   const totalSkillCalls = filteredSkillStats.reduce((sum, s) => sum + s.count, 0);
@@ -133,6 +136,10 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
   const totalRoleInvocations = roleStats.reduce((sum, r) => sum + r.invocations, 0);
   const maxRoleInvocations = Math.max(1, ...roleStats.map((r) => r.invocations));
+
+  // Durations are only shown when measured; otherwise they are unknown, not zero
+  const formatMeasured = (seconds: number, measured: number | undefined) => (measured ? formatSec(seconds) : '—');
+  const formatTokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
   const formatSec = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -307,7 +314,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
           </div>
           <div className="min-w-0">
             <div className="text-[10px] font-bold uppercase tracking-wider text-sand-500 truncate">Cumulative Time</div>
-            <div className="text-lg font-black text-teal-700 font-mono">{formatSec(totalExecutionSec)}</div>
+            <div className="text-lg font-black text-teal-700 font-mono">{anyToolMeasured ? formatSec(totalExecutionSec) : '—'}</div>
           </div>
         </div>
       </div>
@@ -426,7 +433,9 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
               filteredToolStats.map((stat, idx) => {
                 const themeColor = getAgentTheme(stat.agentId);
                 const avatar = getAgentAvatar(stat.agentId);
-                const percentage = Math.round((stat.totalDurationSec / maxToolDuration) * 100);
+                const percentage = anyToolMeasured
+                  ? Math.round((stat.totalDurationSec / maxToolDuration) * 100)
+                  : Math.round((stat.count / Math.max(1, ...filteredToolStats.map((s) => s.count))) * 100);
 
                 return (
                   <div
@@ -483,7 +492,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
                       <div className="w-36 text-right space-y-1">
                         <div className="text-sand-900 font-mono font-bold text-xs">
-                          {formatSec(stat.totalDurationSec)}
+                          {formatMeasured(stat.totalDurationSec, stat.measuredCount)}
                         </div>
                         <div className="w-full bg-sand-100 rounded-full h-1.5 overflow-hidden">
                           <div
@@ -555,7 +564,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
                       <div className="w-36 text-right space-y-1">
                         <div className="text-sand-900 font-mono font-bold text-xs">
-                          {formatSec(skill.totalDurationSec)}
+                          {formatMeasured(skill.totalDurationSec, skill.measuredCount)}
                         </div>
                         <div className="w-full bg-sand-100 rounded-full h-1.5 overflow-hidden">
                           <div
@@ -580,6 +589,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
             const themeColor = getAgentTheme(role.agentId);
             const avatar = getAgentAvatar(role.agentId);
             const invocationPct = Math.round((role.invocations / maxRoleInvocations) * 100);
+            const tokens = tokenStats.find((t) => t.agentId === role.agentId);
 
             return (
               <div
@@ -618,7 +628,23 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
                     </div>
                     <div className="bg-surface p-2 rounded-lg border border-sand-200/80 shadow-xs">
                       <div className="text-[9px] font-bold uppercase tracking-wider text-sand-400">Total Active</div>
-                      <div className="text-sm font-mono font-bold text-brand-700">{formatSec(role.activeTimeSec)}</div>
+                      <div className="text-sm font-mono font-bold text-brand-700">{formatMeasured(role.activeTimeSec, role.measuredInvocations)}</div>
+                    </div>
+                  </div>
+
+                  {/* Model tokens from this role's transcripts: fresh input vs cache read/write */}
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs" title={tokens ? `${tokens.messages} model calls, ${formatTokens(tokens.outputTokens)} output tokens` : 'No token usage recorded'}>
+                    <div className="bg-surface p-2 rounded-lg border border-sand-200/80 shadow-xs">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-sand-400">Input</div>
+                      <div className="text-xs font-mono font-bold text-sand-800">{tokens ? formatTokens(tokens.inputTokens) : '—'}</div>
+                    </div>
+                    <div className="bg-surface p-2 rounded-lg border border-sand-200/80 shadow-xs">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-sand-400">Cache read</div>
+                      <div className="text-xs font-mono font-bold text-sand-800">{tokens ? formatTokens(tokens.cacheReadTokens) : '—'}</div>
+                    </div>
+                    <div className="bg-surface p-2 rounded-lg border border-sand-200/80 shadow-xs">
+                      <div className="text-[9px] font-bold uppercase tracking-wider text-sand-400">Cache write</div>
+                      <div className="text-xs font-mono font-bold text-sand-800">{tokens ? formatTokens(tokens.cacheCreationTokens) : '—'}</div>
                     </div>
                   </div>
                 </div>

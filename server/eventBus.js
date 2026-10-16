@@ -52,6 +52,7 @@ class EventBus extends EventEmitter {
     this.communications = [];
     this.events = [];
     this.toolUsageMap = new Map();
+    this.tokenUsageMap = new Map();
     this.skillUsageMap = new Map();
     this.jiraConfluenceItems = [];
     this.activeHandoff = null;
@@ -261,8 +262,8 @@ class EventBus extends EventEmitter {
       timestamp: new Date().toISOString(),
     });
 
-    this.recordRoleInvocation(pm.id, 8);
-    this.recordSkillUsage('task-decomposition', pm.id, 15);
+    this.recordRoleInvocation(pm.id);
+    this.recordSkillUsage('task-decomposition', pm.id);
 
     this.workflowTitle = `${this.projectName} • ${cleanGoal.slice(0, 32)}`;
     this.currentPhase = 'Sprint Execution';
@@ -277,34 +278,34 @@ class EventBus extends EventEmitter {
     return decomposed;
   }
 
-  initDefaultToolAnalytics() {
-    const defaultStats = [
-      { toolName: 'read_jira.py', agentId: 'project-manager', count: 2, totalDurationSec: 14, lastUsedAt: new Date(Date.now() - 240000).toISOString() },
-      { toolName: 'write_to_file', agentId: 'project-manager', count: 3, totalDurationSec: 22, lastUsedAt: new Date(Date.now() - 180000).toISOString() },
-      { toolName: 'impact-analysis', agentId: 'android-tech-lead', count: 4, totalDurationSec: 58, lastUsedAt: new Date(Date.now() - 140000).toISOString() },
-      { toolName: 'view_file', agentId: 'android-tech-lead', count: 8, totalDurationSec: 36, lastUsedAt: new Date(Date.now() - 120000).toISOString() },
-      { toolName: 'replace_file_content', agentId: 'android-dev', count: 6, totalDurationSec: 112, lastUsedAt: new Date(Date.now() - 75000).toISOString() },
-      { toolName: 'compileDebugKotlin', agentId: 'android-dev', count: 2, totalDurationSec: 42, lastUsedAt: new Date(Date.now() - 40000).toISOString() },
-      { toolName: 'git diff', agentId: 'android-tech-lead', count: 3, totalDurationSec: 18, lastUsedAt: new Date(Date.now() - 25000).toISOString() },
-      { toolName: 'testDebugUnitTest', agentId: 'android-tester', count: 3, totalDurationSec: 64, lastUsedAt: new Date(Date.now() - 10000).toISOString() },
-    ];
-
-    for (const s of defaultStats) {
-      const key = `${s.agentId}::${s.toolName}`;
-      const agent = this.agents.get(s.agentId);
-      this.toolUsageMap.set(key, {
-        toolName: s.toolName,
-        agentId: s.agentId,
-        agentName: agent ? agent.name : s.agentId,
-        agentRole: agent ? agent.role : 'Specialist',
-        count: s.count,
-        totalDurationSec: s.totalDurationSec,
-        lastUsedAt: s.lastUsedAt,
-      });
-    }
+  /**
+   * Model token usage per agent, from the `usage` block of each assistant message in a transcript.
+   * Callers pass each message once (Claude Code repeats a message's usage on every content block).
+   */
+  recordTokenUsage(agentId, usage) {
+    if (!agentId || !usage) return;
+    const agent = this.agents.get(agentId);
+    const existing = this.tokenUsageMap.get(agentId) || {
+      agentId,
+      agentName: agent ? agent.name : agentId,
+      agentRole: agent ? agent.role : 'Specialist',
+      messages: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    };
+    existing.messages += 1;
+    existing.inputTokens += usage.input_tokens || 0;
+    existing.outputTokens += usage.output_tokens || 0;
+    existing.cacheReadTokens += usage.cache_read_input_tokens || 0;
+    existing.cacheCreationTokens += usage.cache_creation_input_tokens || 0;
+    existing.lastUsedAt = new Date().toISOString();
+    this.tokenUsageMap.set(agentId, existing);
   }
 
-  recordToolUsage(agentId, toolName, durationSec = 3) {
+  /** Durations are only added when measured; callers that don't know one pass nothing. */
+  recordToolUsage(agentId, toolName, durationSec = null) {
     if (!toolName) return;
     const cleanTool = toolName.trim();
     const key = `${agentId}::${cleanTool}`;
@@ -316,43 +317,21 @@ class EventBus extends EventEmitter {
       agentName: agent ? agent.name : agentId,
       agentRole: agent ? agent.role : 'Specialist',
       count: 0,
+      measuredCount: 0,
       totalDurationSec: 0,
       lastUsedAt: new Date().toISOString(),
     };
 
     existing.count += 1;
-    existing.totalDurationSec += Math.max(1, durationSec);
+    if (Number.isFinite(durationSec) && durationSec > 0) {
+      existing.measuredCount += 1;
+      existing.totalDurationSec += durationSec;
+    }
     existing.lastUsedAt = new Date().toISOString();
     this.toolUsageMap.set(key, existing);
   }
 
-  initDefaultSkillAnalytics() {
-    const defaultSkills = [
-      { skillId: '00-requirement-analysis', skillName: 'PRD Scoping & Jira Ingestion', count: 2, totalDurationSec: 36, agentId: 'project-manager' },
-      { skillId: 'pm-reporting', skillName: 'Minute Estimation & Sign-Off Reporting', count: 3, totalDurationSec: 42, agentId: 'project-manager' },
-      { skillId: 'tech-lead-planning', skillName: '5-Tier Architecture Scoping', count: 4, totalDurationSec: 88, agentId: 'android-tech-lead' },
-      { skillId: 'impact-analysis', skillName: 'Pre-mapped Impact Analysis', count: 3, totalDurationSec: 62, agentId: 'android-tech-lead' },
-      { skillId: '04-repository', skillName: 'Data Layer & ApiExecuterV2', count: 3, totalDurationSec: 94, agentId: 'android-dev' },
-      { skillId: '03a-provider', skillName: 'Domain Provider & Rules Engine', count: 2, totalDurationSec: 76, agentId: 'android-dev' },
-      { skillId: '08-unit-tests', skillName: 'AAA JUnit & MockK Tests', count: 5, totalDurationSec: 130, agentId: 'android-dev' },
-      { skillId: '10-code-review', skillName: '10-Point Architectural Quality Gate', count: 2, totalDurationSec: 48, agentId: 'android-tech-lead' },
-      { skillId: 'test-execution', skillName: 'Gradle Test Execution & Regression', count: 3, totalDurationSec: 64, agentId: 'android-tester' },
-    ];
-
-    for (const sk of defaultSkills) {
-      const agent = this.agents.get(sk.agentId);
-      this.skillUsageMap.set(sk.skillId, {
-        skillId: sk.skillId,
-        skillName: sk.skillName,
-        count: sk.count,
-        totalDurationSec: sk.totalDurationSec,
-        lastUsedByAgentId: sk.agentId,
-        lastUsedByAgentName: agent ? agent.name : sk.agentId,
-      });
-    }
-  }
-
-  recordSkillUsage(skillId, agentId, durationSec = 10) {
+  recordSkillUsage(skillId, agentId, durationSec = null) {
     if (!skillId) return;
     const cleanId = skillId.trim();
     const agent = this.agents.get(agentId);
@@ -361,45 +340,23 @@ class EventBus extends EventEmitter {
       skillId: cleanId,
       skillName: cleanId,
       count: 0,
+      measuredCount: 0,
       totalDurationSec: 0,
       lastUsedByAgentId: agentId,
       lastUsedByAgentName: agent ? agent.name : agentId,
     };
 
     existing.count += 1;
-    existing.totalDurationSec += Math.max(1, durationSec);
+    if (Number.isFinite(durationSec) && durationSec > 0) {
+      existing.measuredCount += 1;
+      existing.totalDurationSec += durationSec;
+    }
     existing.lastUsedByAgentId = agentId;
     if (agent) existing.lastUsedByAgentName = agent.name;
     this.skillUsageMap.set(cleanId, existing);
   }
 
-  initDefaultRoleAnalytics() {
-    if (this.agents.size > 0) {
-      const agentIds = Array.from(this.agents.keys());
-      const seedMetrics = [
-        { invocations: 5, activeTimeSec: 78, completedTasks: 2, slaAdherenceRate: 100 },
-        { invocations: 8, activeTimeSec: 198, completedTasks: 3, slaAdherenceRate: 98 },
-        { invocations: 12, activeTimeSec: 342, completedTasks: 3, slaAdherenceRate: 95 },
-        { invocations: 4, activeTimeSec: 86, completedTasks: 2, slaAdherenceRate: 100 },
-      ];
-      agentIds.forEach((agentId, idx) => {
-        const agent = this.agents.get(agentId);
-        const seed = seedMetrics[idx % seedMetrics.length];
-        this.roleInvocationMap.set(agentId, {
-          agentId,
-          agentName: agent ? agent.name : agentId,
-          role: agent ? agent.role : 'Specialist',
-          invocations: seed.invocations,
-          activeTimeSec: seed.activeTimeSec,
-          completedTasks: seed.completedTasks,
-          slaAdherenceRate: seed.slaAdherenceRate,
-          status: agent ? agent.status : 'available',
-        });
-      });
-    }
-  }
-
-  recordRoleInvocation(agentId, durationSec = 5) {
+  recordRoleInvocation(agentId, durationSec = null) {
     if (!agentId) return;
     const agent = this.agents.get(agentId);
 
@@ -408,6 +365,7 @@ class EventBus extends EventEmitter {
       agentName: agent ? agent.name : agentId,
       role: agent ? agent.role : 'Specialist',
       invocations: 0,
+      measuredInvocations: 0,
       activeTimeSec: 0,
       completedTasks: 0,
       slaAdherenceRate: 100,
@@ -415,7 +373,10 @@ class EventBus extends EventEmitter {
     };
 
     existing.invocations += 1;
-    existing.activeTimeSec += Math.max(1, durationSec);
+    if (Number.isFinite(durationSec) && durationSec > 0) {
+      existing.measuredInvocations = (existing.measuredInvocations || 0) + 1;
+      existing.activeTimeSec += durationSec;
+    }
     if (agent) {
       existing.agentName = agent.name;
       existing.role = agent.role;
@@ -1028,10 +989,10 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
         }, 3200);
 
         // Record role invocation and skill usage on handoff
-        this.recordRoleInvocation(fromId, 6);
-        this.recordRoleInvocation(toId, 10);
+        this.recordRoleInvocation(fromId);
+        this.recordRoleInvocation(toId);
         if (payload.allowedSkill) {
-          this.recordSkillUsage(payload.allowedSkill, toId, 15);
+          this.recordSkillUsage(payload.allowedSkill, toId);
         }
 
         // Record inter-agent communication dialogue
@@ -1075,9 +1036,8 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
           agent.activityMessage = payload.ticketKey
             ? `Viewing Jira Ticket: ${payload.ticketKey}`
             : (payload.details || `Viewing ${payload.pageId || 'Confluence Doc'}`);
-          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 5;
-          this.recordRoleInvocation(agentId, 5);
-          this.recordToolUsage(agentId, payload.tool || 'read_jira.py', 5);
+          this.recordRoleInvocation(agentId);
+          this.recordToolUsage(agentId, payload.tool || 'read_jira.py');
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
@@ -1094,9 +1054,8 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
           agent.status = 'working';
           agent.lastTool = payload.tool || agent.lastTool;
           agent.activityMessage = `Running tool: ${payload.tool || 'Action'}`;
-          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 5;
-          this.recordRoleInvocation(agentId, 5);
-          this.recordToolUsage(agentId, payload.tool || 'tool_execution', 5);
+          this.recordRoleInvocation(agentId);
+          this.recordToolUsage(agentId, payload.tool || 'tool_execution');
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
@@ -1119,11 +1078,10 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
         case 'command_executing':
           agent.status = payload.command && payload.command.includes('test') ? 'testing' : 'coding';
           agent.activityMessage = `Executing: ${payload.command ? payload.command.substring(0, 45) : 'Terminal command'}`;
-          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 8;
-          this.recordRoleInvocation(agentId, 8);
+          this.recordRoleInvocation(agentId);
           {
             const cmdName = payload.command ? payload.command.split(' ')[0] : 'terminal_command';
-            this.recordToolUsage(agentId, cmdName, 8);
+            this.recordToolUsage(agentId, cmdName);
           }
 
           // Auto-revert back to available standby state
@@ -1148,9 +1106,8 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
           agent.status = 'coding';
           agent.currentFile = payload.file;
           agent.activityMessage = `Editing: ${payload.file ? payload.file.split('/').pop() : 'Codebase'}`;
-          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 6;
-          this.recordRoleInvocation(agentId, 6);
-          this.recordToolUsage(agentId, payload.tool || 'replace_file_content', 6);
+          this.recordRoleInvocation(agentId);
+          this.recordToolUsage(agentId, payload.tool || 'replace_file_content');
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {
@@ -1173,21 +1130,20 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
         case 'planning_started':
           agent.status = 'planning';
           agent.activityMessage = 'Designing 5-tier architecture & pre-mapping files';
-          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 12;
-          this.recordRoleInvocation(agentId, 12);
-          this.recordToolUsage(agentId, payload.tool || 'impact-analysis', 12);
+          this.recordRoleInvocation(agentId);
+          this.recordToolUsage(agentId, payload.tool || 'impact-analysis');
           break;
 
         case 'task_completed':
           agent.status = 'celebrating';
           agent.activityMessage = `🎉 Done: ${payload.task || 'Task complete!'}`;
           agent.taskCompletedAt = new Date().toISOString();
-          let dur = 10;
+          let dur = null; // unknown unless the start was observed
           if (agent.taskStartedAt) {
             dur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
             agent.taskDurationSec = dur;
+            agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
           }
-          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + dur;
           this.recordRoleInvocation(agentId, dur);
           this.setAgentBusyTimer(agent.id, () => {
             if (agent.status === 'celebrating') {
@@ -1203,18 +1159,17 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
           if (payload.testsFailed > 0) {
             agent.status = 'error';
             agent.activityMessage = `Tests Failed: ${payload.testsFailed} errors`;
-            agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 6;
-            this.recordRoleInvocation(agentId, 6);
+            this.recordRoleInvocation(agentId);
           } else {
             agent.status = 'celebrating';
             agent.activityMessage = `🎉 All ${payload.testsPassed || 'unit'} tests passed green!`;
             agent.taskCompletedAt = new Date().toISOString();
-            let testDur = 8;
+            let testDur = null;
             if (agent.taskStartedAt) {
-              testDur = Math.max(8, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
+              testDur = Math.max(1, Math.round((new Date(agent.taskCompletedAt).getTime() - new Date(agent.taskStartedAt).getTime()) / 1000));
               agent.taskDurationSec = testDur;
+              agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + testDur;
             }
-            agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + testDur;
             this.recordRoleInvocation(agentId, testDur);
             this.setAgentBusyTimer(agent.id, () => {
               if (agent.status === 'celebrating') {
@@ -1233,9 +1188,8 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
           agent.activityMessage = payload.sourceType === 'confluence'
             ? `Reading spec: ${payload.pageId || payload.title || 'Confluence'}`
             : `Inspecting ticket: ${payload.ticketKey || payload.title || 'Jira'}`;
-          agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + 6;
-          this.recordRoleInvocation(agentId, 6);
-          this.recordToolUsage(agentId, payload.tool || (payload.sourceType === 'confluence' ? 'read_confluence.py' : 'read_jira.py'), 6);
+          this.recordRoleInvocation(agentId);
+          this.recordToolUsage(agentId, payload.tool || (payload.sourceType === 'confluence' ? 'read_confluence.py' : 'read_jira.py'));
           this.setAgentBusyTimer(agentId, () => {
             if (!this.isDemoRunning && agent.status === 'working') {
               agent.status = 'available';
@@ -1445,8 +1399,11 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
       activeSprintId: this.activeSprintId || 'sprint-1',
       activeSprintPath: this.activeSprintPath || '.agents/sprints/sprint-1',
       sprints: this.sprints || [],
-      toolUsageAnalytics: hasAgents ? Array.from(this.toolUsageMap.values()).sort((a, b) => b.totalDurationSec - a.totalDurationSec) : [],
+      toolUsageAnalytics: hasAgents ? Array.from(this.toolUsageMap.values()).sort((a, b) => b.totalDurationSec - a.totalDurationSec || b.count - a.count) : [],
       skillUsageAnalytics: hasAgents ? Array.from(this.skillUsageMap.values()).sort((a, b) => b.count - a.count) : [],
+      tokenUsageAnalytics: hasAgents
+        ? Array.from(this.tokenUsageMap.values()).sort((a, b) => b.inputTokens + b.cacheReadTokens + b.cacheCreationTokens - (a.inputTokens + a.cacheReadTokens + a.cacheCreationTokens))
+        : [],
       roleInvocationAnalytics: hasAgents ? Array.from(this.roleInvocationMap.values()).sort((a, b) => b.invocations - a.invocations) : [],
       fileChanges: hasAgents ? this.fileChanges : [],
       communications: hasAgents ? this.communications : [],
@@ -1482,11 +1439,9 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
     this.loadDemoTasks();
     this.initDefaultDeliverables();
     this.toolUsageMap = new Map();
-    this.initDefaultToolAnalytics();
+    this.tokenUsageMap = new Map();
     this.skillUsageMap = new Map();
-    this.initDefaultSkillAnalytics();
     this.roleInvocationMap = new Map();
-    this.initDefaultRoleAnalytics();
     // Demo seed records are intentionally backdated; don't let the reset cutoff drop them.
     const savedClearedAt = this.clearedAt;
     this.clearedAt = 0;
@@ -1520,6 +1475,7 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
     this.tasks = new Map();
     this.events = [];
     this.toolUsageMap = new Map();
+    this.tokenUsageMap = new Map();
     this.skillUsageMap = new Map();
     this.fileChanges = [];
     this.communications = [];
@@ -1576,6 +1532,7 @@ All acceptance criteria defined in PRD-101 have been verified with automated reg
     this.isDemoRunning = false;
     this.roleInvocationMap = new Map();
     this.toolUsageMap = new Map();
+    this.tokenUsageMap = new Map();
     this.skillUsageMap = new Map();
     this.fileChanges = [];
     this.communications = [];

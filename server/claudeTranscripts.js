@@ -165,6 +165,25 @@ function mapToolUse(block, cwd, isInProject) {
 }
 
 /**
+ * Token usage of an assistant message: { messageId, usage } or null. Claude Code writes one
+ * entry per content block and repeats the message's usage on each, so callers dedupe by messageId.
+ */
+function usageFromEntry(entry) {
+  const msg = entry && entry.type === 'assistant' ? entry.message : null;
+  if (!msg || !msg.usage || typeof msg.usage !== 'object') return null;
+  const u = msg.usage;
+  return {
+    messageId: msg.id || entry.uuid || null,
+    usage: {
+      input_tokens: u.input_tokens || 0,
+      output_tokens: u.output_tokens || 0,
+      cache_read_input_tokens: u.cache_read_input_tokens || 0,
+      cache_creation_input_tokens: u.cache_creation_input_tokens || 0,
+    },
+  };
+}
+
+/**
  * Converts one Claude Code JSONL entry into zero or more transcript steps
  * ({ type, content, tool_calls, created_at }) plus metadata the watcher uses
  * to manage the prompt's Kanban card.
@@ -200,7 +219,7 @@ function toTranscriptSteps(entry, isInProject) {
         content: text,
         tool_calls: toolCalls,
         created_at,
-        claude: { turnEnded, isSidechain: Boolean(entry.isSidechain) },
+        claude: { turnEnded, isSidechain: Boolean(entry.isSidechain), ...(usageFromEntry(entry) || {}) },
       },
     ];
   }
@@ -213,5 +232,6 @@ module.exports = {
   resolveClaudeProjectDir,
   listClaudeTranscripts,
   toTranscriptSteps,
+  usageFromEntry,
   isHumanPrompt,
 };

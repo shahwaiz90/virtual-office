@@ -169,6 +169,45 @@ try {
   }
   console.log('  ✅ Test 4 Passed: Fresh state has no sample deliverables, comms, or metrics.\n');
 
+  // Test 5: analytics carry no invented numbers; durations are unknown unless measured
+  console.log('▶ Test 5: Verifying analytics record only measured durations...');
+  for (const seed of ['initDefaultToolAnalytics', 'initDefaultSkillAnalytics', 'initDefaultRoleAnalytics']) {
+    assert.strictEqual(typeof fresh[seed], 'undefined', `${seed} must not exist`);
+  }
+  fresh.recordToolUsage('web-dev', 'run_command');
+  fresh.recordToolUsage('web-dev', 'run_command', 4);
+  const toolStat = fresh.toolUsageMap.get('web-dev::run_command');
+  assert.deepStrictEqual([toolStat.count, toolStat.measuredCount, toolStat.totalDurationSec], [2, 1, 4]);
+  fresh.recordSkillUsage('kanban-handoff', 'web-dev');
+  assert.deepStrictEqual([fresh.skillUsageMap.get('kanban-handoff').measuredCount, fresh.skillUsageMap.get('kanban-handoff').totalDurationSec], [0, 0]);
+  fresh.recordRoleInvocation('web-dev');
+  assert.deepStrictEqual([fresh.roleInvocationMap.get('web-dev').invocations, fresh.roleInvocationMap.get('web-dev').activeTimeSec], [1, 0]);
+  console.log('  ✅ Test 5 Passed: No seeded analytics; unmeasured calls add no time.\n');
+
+  // Test 6: token usage per agent, counted once per message although each content block repeats it
+  console.log('▶ Test 6: Verifying token usage is captured per agent...');
+  eventBus.agents.set('web-dev', { id: 'web-dev', name: 'Web Dev', role: 'Developer', skills: [] });
+  const usage = { input_tokens: 2, output_tokens: 16, cache_read_input_tokens: 9383, cache_creation_input_tokens: 4379 };
+  const blockEntry = (type) => ({
+    type: 'assistant',
+    cwd: testRoot,
+    timestamp: new Date().toISOString(),
+    message: { id: 'msg_1', stop_reason: null, usage, content: [type === 'thinking' ? { type: 'thinking', thinking: '' } : { type: 'tool_use', name: 'Read', input: { file_path: path.join(testRoot, 'a.js') } }] },
+  });
+  const subState = { convId: 'claude-session-d', promptTaskId: null, agentType: 'web-dev' };
+  handleClaudeEntry(blockEntry('thinking'), subState);
+  handleClaudeEntry(blockEntry('tool_use'), subState);
+  const devTokens = eventBus.tokenUsageMap.get('web-dev');
+  assert.ok(devTokens, 'Token usage recorded for the subagent role');
+  assert.deepStrictEqual(
+    [devTokens.messages, devTokens.inputTokens, devTokens.outputTokens, devTokens.cacheReadTokens, devTokens.cacheCreationTokens],
+    [1, 2, 16, 9383, 4379],
+    'A message is counted once across its content blocks'
+  );
+  assert.strictEqual(toTranscriptSteps(blockEntry('tool_use'), isPathInProject)[0].claude.usage.cache_read_input_tokens, 9383, 'Steps keep message usage');
+  assert.ok(eventBus.getStateSnapshot().tokenUsageAnalytics.some((t) => t.agentId === 'web-dev'));
+  console.log('  ✅ Test 6 Passed: Input and cache tokens surfaced per agent.\n');
+
   console.log('🎉 Claude Code transcript ingestion tests passed!');
 } finally {
   fs.rmSync(testRoot, { recursive: true, force: true });

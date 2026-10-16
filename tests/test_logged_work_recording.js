@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { EventBus } = require('../server/eventBus');
 
-test('DEV-317: EventBus accumulates totalWorkTimeSec and calls recordRoleInvocation on telemetry events', (t) => {
+test('DEV-317: telemetry events record invocations but add no invented work time', (t) => {
   const bus = new EventBus();
   
   // Create test agent
@@ -17,7 +17,7 @@ test('DEV-317: EventBus accumulates totalWorkTimeSec and calls recordRoleInvocat
     theme: { deskPosition: { x: 100, y: 100 }, themeColor: '#3b82f6' }
   });
 
-  // 1. Tool execution event (+5s)
+  // 1. Tool execution event: counted, duration unknown
   bus.emitEvent({
     agentId: 'web-dev',
     type: 'tool_executing',
@@ -25,12 +25,12 @@ test('DEV-317: EventBus accumulates totalWorkTimeSec and calls recordRoleInvocat
   });
 
   const agentAfterTool = bus.agents.get('web-dev');
-  assert.equal(agentAfterTool.totalWorkTimeSec, 5, 'Tool execution should accumulate 5s work time');
+  assert.equal(agentAfterTool.totalWorkTimeSec, 0, 'An unmeasured tool call adds no work time');
   const roleMetricsTool = bus.roleInvocationMap.get('web-dev');
   assert.ok(roleMetricsTool, 'Role invocation must be recorded');
-  assert.ok(roleMetricsTool.activeTimeSec >= 5, 'Role active time should include tool duration');
+  assert.equal(roleMetricsTool.activeTimeSec, 0, 'Role active time only includes measured durations');
 
-  // 2. Command executing event (+8s)
+  // 2. Command executing event
   bus.emitEvent({
     agentId: 'web-dev',
     type: 'command_executing',
@@ -38,10 +38,10 @@ test('DEV-317: EventBus accumulates totalWorkTimeSec and calls recordRoleInvocat
   });
 
   const agentAfterCmd = bus.agents.get('web-dev');
-  assert.equal(agentAfterCmd.totalWorkTimeSec, 13, 'Command execution should add 8s (5 + 8 = 13)');
+  assert.equal(agentAfterCmd.totalWorkTimeSec, 0, 'An unmeasured command adds no work time');
   assert.equal(roleMetricsTool.invocations, 2, 'Invocations count should increment to 2');
 
-  // 3. File modified event (+6s)
+  // 3. File modified event
   bus.emitEvent({
     agentId: 'web-dev',
     type: 'file_modified',
@@ -49,10 +49,10 @@ test('DEV-317: EventBus accumulates totalWorkTimeSec and calls recordRoleInvocat
   });
 
   const agentAfterFile = bus.agents.get('web-dev');
-  assert.equal(agentAfterFile.totalWorkTimeSec, 19, 'File modification should add 6s (13 + 6 = 19)');
+  assert.equal(agentAfterFile.totalWorkTimeSec, 0, 'An unmeasured edit adds no work time');
   assert.equal(roleMetricsTool.invocations, 3, 'Invocations count should increment to 3');
 
-  // 4. Test result event (+8s)
+  // 4. Test result event: elapsed time is measured from taskStartedAt when known
   bus.emitEvent({
     agentId: 'web-dev',
     type: 'test_result',
@@ -60,7 +60,8 @@ test('DEV-317: EventBus accumulates totalWorkTimeSec and calls recordRoleInvocat
   });
 
   const agentAfterTest = bus.agents.get('web-dev');
-  assert.ok(agentAfterTest.totalWorkTimeSec >= 27, 'Test result should add duration to totalWorkTimeSec');
+  const startedAt = agentAfterTest.taskStartedAt;
+  assert.ok(startedAt ? agentAfterTest.totalWorkTimeSec >= 1 : agentAfterTest.totalWorkTimeSec === 0, 'Only measured test time is added');
 
   bus.clearAllAgentBusyTimers();
 });
@@ -95,10 +96,11 @@ test('DEV-317: EventBus auto-revert timer records elapsed time into totalWorkTim
 
   assert.equal(agent.status, 'available', 'Agent should revert to available');
   assert.ok(agent.taskCompletedAt, 'taskCompletedAt should be set');
-  assert.ok(agent.totalWorkTimeSec >= 27, 'Elapsed time (~12s) should be added to totalWorkTimeSec (10 + 5 + 12 = 27)');
-  
+  assert.ok(agent.totalWorkTimeSec >= 22, 'Measured elapsed time (~12s) is added to totalWorkTimeSec (10 + 12 = 22)');
+
   const metrics = bus.roleInvocationMap.get('web-tester');
-  assert.ok(metrics.activeTimeSec >= 17, 'Role metrics must reflect active work time');
+  assert.ok(metrics.activeTimeSec >= 12, 'Role metrics reflect the measured work time');
+  assert.equal(metrics.measuredInvocations, 1, 'Only the timed invocation counts as measured');
 
   bus.clearAllAgentBusyTimers();
 });

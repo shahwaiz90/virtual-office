@@ -356,6 +356,7 @@ export const App: React.FC = () => {
   const toolStats = hasAgents ? (state?.toolUsageAnalytics || []) : [];
   const skillStats = hasAgents ? (state?.skillUsageAnalytics || []) : [];
   const roleStats = hasAgents ? (state?.roleInvocationAnalytics || []) : [];
+  const tokenStats = hasAgents ? (state?.tokenUsageAnalytics || []) : [];
   const fileChanges = hasAgents ? (state?.fileChanges || []) : [];
   const communications = hasAgents ? (state?.communications || []) : [];
 
@@ -418,6 +419,7 @@ export const App: React.FC = () => {
           toolStats={toolStats}
           skillStats={skillStats}
           roleStats={roleStats}
+          tokenStats={tokenStats}
           fileChanges={fileChanges}
           communications={communications}
           agents={agents}

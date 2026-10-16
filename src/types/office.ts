@@ -181,6 +181,8 @@ export interface ToolUsageStat {
   agentName: string;
   agentRole: string;
   count: number;
+  /** Calls whose duration was actually measured; totalDurationSec covers only these. */
+  measuredCount?: number;
   totalDurationSec: number;
   lastUsedAt: string;
 }
@@ -189,6 +191,7 @@ export interface SkillUsageStat {
   skillId: string;
   skillName: string;
   count: number;
+  measuredCount?: number;
   totalDurationSec: number;
   lastUsedByAgentId: string;
   lastUsedByAgentName: string;
@@ -199,10 +202,24 @@ export interface RoleInvocationStat {
   agentName: string;
   role: string;
   invocations: number;
+  measuredInvocations?: number;
   activeTimeSec: number;
   completedTasks: number;
   slaAdherenceRate: number; // percentage
   status: string;
+}
+
+/** Model tokens per agent, summed from transcript message usage. */
+export interface TokenUsageStat {
+  agentId: string;
+  agentName: string;
+  agentRole: string;
+  messages: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  lastUsedAt?: string;
 }
 
 export interface FileChangeRecord {
@@ -338,6 +355,7 @@ export interface OfficeState {
   toolUsageAnalytics?: ToolUsageStat[];
   skillUsageAnalytics?: SkillUsageStat[];
   roleInvocationAnalytics?: RoleInvocationStat[];
+  tokenUsageAnalytics?: TokenUsageStat[];
   fileChanges?: FileChangeRecord[];
   communications?: AgentCommunication[];
   jiraConfluenceItems?: JiraConfluenceItem[];

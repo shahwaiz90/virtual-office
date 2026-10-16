@@ -6,7 +6,7 @@ const chokidar = require('chokidar');
 const { eventBus } = require('./eventBus');
 const { getProjectRoot, discoverAgents } = require('./agentDiscovery');
 const { autoDiscoverAndRegisterAgents } = require('./agentRuntimeRegistry');
-const { listClaudeTranscripts, toTranscriptSteps } = require('./claudeTranscripts');
+const { listClaudeTranscripts, toTranscriptSteps, usageFromEntry } = require('./claudeTranscripts');
 const { appendThreadEntry, effectiveColumn, rosterHasTester } = require('./taskBoard');
 
 /**
@@ -2231,6 +2231,7 @@ function readTranscriptChunk(state) {
  * a Kanban card for each prompt: created when the prompt arrives, done when the turn ends.
  */
 function handleClaudeEntry(entry, state) {
+  recordClaudeTokenUsage(entry, state);
   const steps = toTranscriptSteps(entry, isPathInProject);
   for (const step of steps) {
     if (step.created_at && eventBus.isBeforeReset(step.created_at)) continue;
@@ -2290,6 +2291,20 @@ function handleClaudeEntry(entry, state) {
       state.promptTaskId = null;
     }
   }
+}
+
+/** Credits each assistant message's token usage once, to the subagent's role or else the orchestrator. */
+function recordClaudeTokenUsage(entry, state) {
+  const found = usageFromEntry(entry);
+  if (!found) return;
+  if (entry.timestamp && eventBus.isBeforeReset(entry.timestamp)) return;
+  state.seenUsageIds = state.seenUsageIds || new Set();
+  if (found.messageId) {
+    if (state.seenUsageIds.has(found.messageId)) return;
+    state.seenUsageIds.add(found.messageId);
+  }
+  const agentId = state.agentType && eventBus.agents.has(state.agentType) ? state.agentType : getResolvedAgent('pm', 0).id;
+  eventBus.recordTokenUsage(agentId, found.usage);
 }
 
 function completeClaudePromptCard(taskId, step) {
