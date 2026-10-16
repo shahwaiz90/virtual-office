@@ -1,15 +1,14 @@
 ---
 name: requirement-analysis
-description: Systematic methodology for ingesting, validating, and decomposing business requirements, user stories, and acceptance criteria into actionable technical engineering tasks.
+description: Turns a user request, ticket or spec into a bounded requirement with testable acceptance criteria before it is broken into tasks.
 ---
-# Product Requirement Analysis
+# Requirement Analysis
 
-## Purpose
-Ensures all incoming feature requests, user stories, bug tickets, and architectural initiatives are thoroughly understood, bounded, and validated before technical breakdown.
+Do this before `task-decomposition`. Record the outcome on the requirement card (`kanban-handoff`): scope in the description, criteria in `acceptanceCriteria`, open questions on the thread.
 
-## Core Workflow
-0. **Backlog Registration**: Immediately log every incoming user feature request into the Authoritative Task Board `backlog` queue before starting scope ingestion, and schedule execution strictly after the current in-progress task finishes.
-1. **Scope Ingestion**: Parse user story or ticket requirements, identify core business objectives, stakeholders, and success metrics.
-2. **Constraint Verification**: Audit technical constraints (platform target, minimum OS version, performance SLAs, backward compatibility).
-3. **Edge Case Mapping**: Explicitly enumerate boundary conditions, network failure handling, error states, and empty states.
-4. **Acceptance Criteria Validation**: Ensure all acceptance criteria are testable, unambiguous, and mapped to verification tests.
+1. **Need**: who wants what, and why. One sentence; the success measure if there is one.
+2. **Sources**: read the linked ticket or spec (`read-jira`, `read-confluence`) and the code that it touches.
+3. **Scope**: what is in, what is explicitly out.
+4. **Constraints**: platforms, compatibility, performance or security limits, existing contracts.
+5. **Edge cases**: empty, error, offline/failure, permission and large-data states.
+6. **Acceptance criteria**: each one observable and testable, written in user terms. Ask the user rather than guess when a criterion can't be pinned down.
