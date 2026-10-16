@@ -2,7 +2,8 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { OFFICIAL_SKILLS, getProjectSkills } = require('../server/officialSkills');
+const os = require('os');
+const { OFFICIAL_SKILLS, getProjectSkills, ensureSkillScripts } = require('../server/officialSkills');
 
 const root = path.join(__dirname, '..');
 console.log('🧪 Starting Skills Catalog Test Suite...\n');
@@ -23,5 +24,19 @@ console.log('▶ Test 3: The bundled catalog matches .agents/skills...');
 execFileSync(process.execPath, [path.join(root, 'scripts', 'sync-official-skills.js'), '--check'], { stdio: 'pipe' });
 assert.ok(OFFICIAL_SKILLS['kanban-handoff'], 'kanban-handoff is bundled so new workspaces get it');
 console.log('  ✅ Test 3 Passed.\n');
+
+console.log('▶ Test 4: Skills that run helper scripts get them in the project...');
+const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'test-skill-scripts-'));
+try {
+  assert.deepStrictEqual(ensureSkillScripts(proj, ['kanban-handoff']), [], 'Skills without scripts add nothing');
+  const added = ensureSkillScripts(proj, ['read-jira', 'read-confluence']).sort();
+  assert.deepStrictEqual(added, ['.env.example', 'scripts/read_confluence.py', 'scripts/read_jira.py']);
+  fs.writeFileSync(path.join(proj, 'scripts', 'read_jira.py'), '# customised');
+  assert.deepStrictEqual(ensureSkillScripts(proj, ['read-jira']), [], 'Existing files are never overwritten');
+  assert.strictEqual(fs.readFileSync(path.join(proj, 'scripts', 'read_jira.py'), 'utf8'), '# customised');
+} finally {
+  fs.rmSync(proj, { recursive: true, force: true });
+}
+console.log('  ✅ Test 4 Passed.\n');
 
 console.log('🎉 ALL SKILLS CATALOG TESTS PASSED!');

@@ -16,8 +16,22 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 console.log('🧪 Automated Multi-Project & Workspace Isolation Suite');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-const virtualOfficeRoot = path.resolve('/Users/ahmadshahwaiz/Desktop/Virtual Office');
-const quranSikhoRoot = path.resolve('/Users/ahmadshahwaiz/Documents/EasyQuran/QuranSikho');
+// Self-contained: synthetic Antigravity conversation databases in a temporary HOME (never the real ~/.gemini)
+const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'vo-workspace-home-'));
+process.env.HOME = tempHome;
+process.env.USERPROFILE = tempHome;
+const convsDir = path.join(tempHome, '.gemini/antigravity/conversations');
+fs.mkdirSync(convsDir, { recursive: true });
+function writeConversationDb(convId, uri) {
+  const buf = Buffer.alloc(4096);
+  Buffer.from('SQLite format 3\x00').copy(buf, 0);
+  Buffer.from(uri, 'utf8').copy(buf, 256);
+  fs.writeFileSync(path.join(convsDir, `${convId}.db`), buf);
+}
+process.on('exit', () => fs.rmSync(tempHome, { recursive: true, force: true }));
+
+const virtualOfficeRoot = path.resolve('/Users/dev/Desktop/Virtual Office');
+const quranSikhoRoot = path.resolve('/Users/dev/Documents/EasyQuran/QuranSikho');
 
 // Ensure starting in Virtual Office
 setProjectRoot(virtualOfficeRoot);
@@ -63,19 +77,19 @@ console.log('  ✅ Suite 1 Passed: Bi-directional path isolation verified 100%.'
 console.log('\n▶ Suite 2: Protobuf Artifact & URI Cleanup Edge Cases');
 
 // Test 2a: Trailing binary protobuf tag 'B\ufffd%'
-const rawWithB = 'Users/ahmadshahwaiz/Desktop/Virtual%20OfficeB\ufffd%';
+const rawWithB = 'Users/dev/Desktop/Virtual%20OfficeB\ufffd%';
 const cleanedB = cleanExtractedUri(rawWithB);
 console.log(`  2a. Raw: "${rawWithB}" -> Cleaned: "${cleanedB}"`);
 assert.strictEqual(cleanedB, virtualOfficeRoot, 'Protobuf B tag and URL encoding must be cleanly stripped to project root');
 
 // Test 2b: Trailing protobuf tag 'z\ufffd'
-const rawWithZ = 'Users/ahmadshahwaiz/Desktop/Virtual%20Officez\ufffd';
+const rawWithZ = 'Users/dev/Desktop/Virtual%20Officez\ufffd';
 const cleanedZ = cleanExtractedUri(rawWithZ);
 console.log(`  2b. Raw: "${rawWithZ}" -> Cleaned: "${cleanedZ}"`);
 assert.strictEqual(cleanedZ, virtualOfficeRoot, 'Protobuf z tag must be stripped to project root');
 
 // Test 2c: Trailing markdown brackets '))'
-const rawWithMarkdown = 'Users/ahmadshahwaiz/Desktop/Virtual Office/.agents/skills/task-decomposition/SKILL.md))';
+const rawWithMarkdown = 'Users/dev/Desktop/Virtual Office/.agents/skills/task-decomposition/SKILL.md))';
 const cleanedMd = cleanExtractedUri(rawWithMarkdown);
 console.log(`  2c. Raw markdown artifacts -> Cleaned: "${cleanedMd}"`);
 assert.strictEqual(
@@ -87,7 +101,7 @@ assert.strictEqual(
 console.log('  ✅ Suite 2 Passed: Protobuf and markdown URI cleanup verified.');
 
 // =========================================================================
-// Suite 3: Real Antigravity Conversation SQLite DB Verification
+// Suite 3: Antigravity Conversation DB Verification (synthetic DBs)
 // =========================================================================
 console.log('\n▶ Suite 3: Real Antigravity Conversation SQLite DB Resolution');
 
@@ -95,6 +109,8 @@ const quranSikhoConvId = '03361ead-d806-44ae-8635-b449aac29e61';
 const virtualOfficeConvId = '116e4808-3b7b-4060-9884-ec4c70826ee7';
 const nonExistentConvId = 'ffffffff-0000-0000-0000-000000000000';
 
+writeConversationDb(quranSikhoConvId, `file://${quranSikhoRoot}/app/src/main/MainActivity.kt`);
+writeConversationDb(virtualOfficeConvId, `file://${virtualOfficeRoot}/server/watchers.js`);
 conversationProjectMatch.clear();
 
 // 3a: Verify QuranSikho DB resolves to FALSE under Virtual Office root

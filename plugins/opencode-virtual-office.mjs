@@ -6,7 +6,13 @@
  */
 
 export default async function virtualOfficePlugin(input) {
-  const serverUrl = process.env.VIRTUAL_OFFICE_URL || 'http://127.0.0.1:3000';
+  // The portal for this project writes its address to .agents/portal-url (another project may use another port)
+  const { readFileSync } = await import('node:fs');
+  let portalFile = '';
+  try {
+    portalFile = readFileSync('.agents/portal-url', 'utf8').trim();
+  } catch {}
+  const serverUrl = process.env.VIRTUAL_OFFICE_URL || portalFile || 'http://127.0.0.1:3000';
 
   async function postEvent(payload) {
     try {

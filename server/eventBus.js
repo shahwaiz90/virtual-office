@@ -1054,6 +1054,7 @@ class EventBus extends EventEmitter {
         id: this.workflowId,
         projectName: this.projectName,
         projectPath: getProjectRoot(),
+        portalUrl: require('./network').portalUrl(),
         platform: process.platform,
         title: this.workflowTitle,
         phase: this.currentPhase,

@@ -301,6 +301,15 @@ function autoDiscoverAndRegisterAgents(projectRoot) {
   // Discovery files (AGENTS.md, team rule, runtime manifest) come from the provider adapters
   generateDiscoveryAnchor(projectRoot);
 
+  // Agents call the board at the address this server answers on (.agents/portal-url)
+  require('./network').writePortalUrl(projectRoot);
+
+  // Skills that run helper scripts (read-jira, read-confluence) need them in the project
+  try {
+    const { ensureSkillScripts } = require('./officialSkills');
+    ensureSkillScripts(projectRoot, [...new Set(registry.agents.flatMap((a) => a.skillIds || []))]);
+  } catch (e) {}
+
   console.info(`[AgentRuntimeRegistry] Auto-registered ${registry.totalAgents} agents for ${path.basename(projectRoot)}. Orchestrator: ${registry.orchestratorAgentId}`);
 
   return {

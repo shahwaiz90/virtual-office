@@ -5,6 +5,7 @@ interface IntegrationStatus {
   name: string;
   configured: boolean;
   tokenSet: boolean;
+  tokenHint: string | null;
   source: string | null;
   envVar: string;
   baseVar: string;
@@ -32,6 +33,10 @@ export const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({ isOpen, on
   const [testing, setTesting] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, TestResult>>({});
   const [copied, setCopied] = useState<string | null>(null);
+  // What the user is typing per integration; the token field always starts empty
+  const [drafts, setDrafts] = useState<Record<string, { baseUrl: string; token: string }>>({});
+  const [saving, setSaving] = useState<string | null>(null);
+  const [saveMsg, setSaveMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -56,6 +61,31 @@ export const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({ isOpen, on
       setCopied(key);
       setTimeout(() => setCopied(null), 1500);
     });
+  };
+
+  const draftOf = (id: string, it: IntegrationStatus) => drafts[id] || { baseUrl: it.server || '', token: '' };
+
+  const save = async (id: string, body: Record<string, unknown>) => {
+    setSaving(id);
+    try {
+      const json = await fetch(`/api/integrations/${id}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }).then((r) => r.json());
+      if (json.success) {
+        setIntegrations((prev) => (prev ? { ...prev, [id]: json.integration } : prev));
+        setDrafts((prev) => ({ ...prev, [id]: { baseUrl: json.integration.server || '', token: '' } }));
+        setResults((prev) => ({ ...prev, [id]: undefined as unknown as TestResult }));
+        setSaveMsg((prev) => ({ ...prev, [id]: { ok: true, text: body.clear ? 'Removed from .env.local.' : 'Saved to .env.local.' } }));
+      } else {
+        setSaveMsg((prev) => ({ ...prev, [id]: { ok: false, text: json.error || 'Could not save.' } }));
+      }
+    } catch (e) {
+      setSaveMsg((prev) => ({ ...prev, [id]: { ok: false, text: 'The portal server did not answer.' } }));
+    } finally {
+      setSaving(null);
+    }
   };
 
   const test = async (id: string) => {
@@ -148,13 +178,77 @@ export const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({ isOpen, on
                       }`}
                     >
                       {it.configured
-                        ? `Ready (token from ${it.source})`
+                        ? `Ready (token ${it.tokenHint || ''} from ${it.source})`
                         : `Missing: ${[!it.server && it.baseVar, !it.tokenSet && it.envVar].filter(Boolean).join(', ')}`}
                     </span>
                   </div>
 
+                  {/* Enter the settings here; they are saved to the project's .env.local */}
+                  <form
+                    className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-2 items-end"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const d = draftOf(id, it);
+                      save(id, { baseUrl: d.baseUrl.trim(), token: d.token.trim() });
+                    }}
+                  >
+                    <label className="text-[11px] font-semibold text-sand-600 space-y-1">
+                      <span>Server URL</span>
+                      <input
+                        type="url"
+                        value={draftOf(id, it).baseUrl}
+                        onChange={(e) => setDrafts((prev) => ({ ...prev, [id]: { ...draftOf(id, it), baseUrl: e.target.value } }))}
+                        placeholder={it.steps.baseLine.split('=')[1].replace(/"/g, '')}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-sand-200 bg-surface text-xs font-mono text-sand-800 focus:outline-hidden focus:border-brand-500"
+                      />
+                    </label>
+                    <label className="text-[11px] font-semibold text-sand-600 space-y-1">
+                      <span>Access token</span>
+                      <input
+                        type="password"
+                        autoComplete="off"
+                        value={draftOf(id, it).token}
+                        onChange={(e) => setDrafts((prev) => ({ ...prev, [id]: { ...draftOf(id, it), token: e.target.value } }))}
+                        placeholder={it.tokenSet ? `Saved (${it.tokenHint}); paste to replace` : 'Paste your personal access token'}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-sand-200 bg-surface text-xs font-mono text-sand-800 focus:outline-hidden focus:border-brand-500"
+                      />
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="submit"
+                        disabled={saving === id}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white disabled:opacity-50 cursor-pointer"
+                      >
+                        {saving === id ? 'Saving…' : 'Save'}
+                      </button>
+                      {(it.server || it.tokenSet) && (
+                        <button
+                          type="button"
+                          onClick={() => save(id, { clear: true })}
+                          disabled={saving === id}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-sand-300 text-sand-600 hover:bg-sand-50 disabled:opacity-50 cursor-pointer"
+                          title="Remove the server URL and token from .env.local"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                  {saveMsg[id] && (
+                    <p className={`text-[11px] ${saveMsg[id].ok ? 'text-emerald-700' : 'text-rose-700'}`} role="status">
+                      {saveMsg[id].text}
+                    </p>
+                  )}
+                  {it.source && !String(it.source).startsWith('.env') && (
+                    <p className="text-[11px] text-sand-500">
+                      The token currently comes from {it.source}; a token saved here goes to <code className="font-mono">.env.local</code> and the scripts use whichever they find first (environment, then <code className="font-mono">.env.local</code>).
+                    </p>
+                  )}
+
                   {!it.configured && (
-                    <ol className="space-y-2.5 text-xs text-sand-700 list-decimal pl-4">
+                    <details className="text-xs text-sand-700">
+                      <summary className="cursor-pointer font-semibold text-sand-600">Where to get a token, or set it manually</summary>
+                    <ol className="space-y-2.5 text-xs text-sand-700 list-decimal pl-4 mt-2">
                       <li className="space-y-1.5">
                         <span>Create a personal access token in {it.name}{it.tokenPage ? '.' : ' (avatar > profile/settings > Personal Access Tokens).'}</span>
                         {it.tokenPage && (
@@ -184,6 +278,7 @@ export const IntegrationsPanel: React.FC<IntegrationsPanelProps> = ({ isOpen, on
                         Click <strong>Check again</strong> above, then <strong>Test connection</strong>.
                       </li>
                     </ol>
+                    </details>
                   )}
 
                   <div className="flex items-center gap-3 flex-wrap">

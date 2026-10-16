@@ -1,19 +1,21 @@
 ---
 name: kanban-handoff
-description: The single guide to the Kanban board API (http://localhost:3000), the only channel between agents. Read your card, register cards for work you hand on, talk on the card thread, publish your deliverable, and move cards with the status call.
+description: The single guide to the Kanban board API (the portal's address is in .agents/portal-url), the only channel between agents. Read your card, register cards for work you hand on, talk on the card thread, publish your deliverable, and move cards with the status call.
 ---
 # Kanban Handoff
 
 Anyone reading only the board must see what was asked, who asked whom, what they said and what was delivered. Nothing important lives only in a delegation prompt or a reply. All calls are `curl -s` with `-H 'Content-Type: application/json'` on POSTs.
 
+The board's address for this project is in `.agents/portal-url` (written by the running portal; another project may run on another port). Start every command with `VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000);` and call `$VO/api/...`, as below.
+
 ## 1. Receive: read the card
 Your prompt only names a card ("Your task: WEB-311"). Read it:
 ```bash
-curl -s "http://localhost:3000/api/tasks/WEB-311?format=md"
+VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s "$VO/api/tasks/WEB-311?format=md"
 ```
 It holds your brief, acceptance criteria, context, parent, dependencies and thread. If a dependency is not `done`, say so on the thread and wait. If the brief is unclear, ask on the thread (`kind: "question"`). Then start:
 ```bash
-curl -s -X POST localhost:3000/api/tasks/WEB-311/status -d '{"agentId":"web-dev","column":"in_progress","note":"Starting"}'
+VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s -X POST $VO/api/tasks/WEB-311/status -d '{"agentId":"web-dev","column":"in_progress","note":"Starting"}'
 ```
 Started with a raw request instead of a card? Find or register its requirement card first (section 2), then work from the card.
 
@@ -25,7 +27,7 @@ Rewrite the work for the receiver's role; never forward the text you were given.
 
 Register first (`parentKey` = the card you work from), then delegate:
 ```bash
-curl -s -X POST localhost:3000/api/tasks/register -d '{"tasks":[{
+VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s -X POST $VO/api/tasks/register -d '{"tasks":[{
   "key":"WEB-312","parentKey":"WEB-310","title":"Add GET /api/tasks/export.csv endpoint",
   "brief":"Add an Express route in server/index.js that streams the active sprint as CSV ...",
   "description":"Why this is needed.","acceptanceCriteria":["Returns text/csv with a header row"],
@@ -38,11 +40,11 @@ curl -s -X POST localhost:3000/api/tasks/register -d '{"tasks":[{
 - `brief` is recorded on the thread as your handoff message. `skill` must be one of the assignee's skills.
 
 Delegate with only the card reference:
-> Your task: **WEB-312**. Read it with `curl -s "http://localhost:3000/api/tasks/WEB-312?format=md"` and follow the kanban-handoff skill.
+> Your task: **WEB-312**. Read it with `curl -s "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/WEB-312?format=md"` and follow the kanban-handoff skill.
 
 ## 3. Work: talk on the thread
 ```bash
-curl -s -X POST localhost:3000/api/tasks/WEB-312/thread -d '{"agentId":"web-dev","kind":"decision","text":"Streaming with res.write per row"}'
+VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s -X POST $VO/api/tasks/WEB-312/thread -d '{"agentId":"web-dev","kind":"decision","text":"Streaming with res.write per row"}'
 ```
 `kind`: `question`, `answer`, `update`, `decision` or `result`. Add `"to":"<agentId>"` to address someone. Answer questions on the same card.
 
@@ -57,7 +59,7 @@ Whenever you hand on or finish, post what you produced before the status call. P
 | QA | `test_report` | What was tested, results, defects |
 
 ```bash
-curl -s -X POST localhost:3000/api/deliverables -d '{"taskKey":"WEB-312","agentId":"web-dev","type":"source_code",
+VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s -X POST $VO/api/deliverables -d '{"taskKey":"WEB-312","agentId":"web-dev","type":"source_code",
   "title":"CSV export endpoint","summary":"GET /api/tasks/export.csv streams the sprint",
   "content":"## Changes\n- server/index.js: new route\n## Acceptance criteria\n- Header row: yes",
   "metadata":{"files":["server/index.js"]}}'
@@ -66,7 +68,7 @@ curl -s -X POST localhost:3000/api/deliverables -d '{"taskKey":"WEB-312","agentI
 
 ## 5. Finish: record the result and move the card
 ```bash
-curl -s -X POST localhost:3000/api/tasks/WEB-312/status -d '{"agentId":"web-dev","column":"review","result":"Added /api/tasks/export.csv; 5 columns; tested with 40 tasks."}'
+VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s -X POST $VO/api/tasks/WEB-312/status -d '{"agentId":"web-dev","column":"review","result":"Added /api/tasks/export.csv; 5 columns; tested with 40 tasks."}'
 ```
 - Columns: `backlog`, `assigned`, `in_progress`, `review`, `testing`, `done`. Cards move only through this call; edits, commands and words in your reply never move them.
 - `review` when someone must check it, `done` when nothing is left. With no tester on the roster, `testing` becomes `review`.

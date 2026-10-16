@@ -74,7 +74,7 @@ Non-technical managers and engineers can see the whole picture at a glance:
 - **Authoritative Kanban Board**: Watch tasks move from *Backlog* to *In Progress* to *Review* and *Done*, with exact timestamps and assignee avatars.
 - **Agent Chat & Handoff Stream**: Real-time log of agent dialogues, tool executions, and file edits.
 - **Code Change Inspector**: Dark-theme file diff viewer showing exactly what code was added or modified by each agent.
-- **Voice Intelligence (Siri / Jarvis Mode)**: Ask questions aloud (e.g. *"What is the mobile developer currently working on?"*) and receive real-time voice updates.
+- **Spoken handoffs (optional)**: The browser can announce handoffs between agents aloud.
 
 ---
 
@@ -91,9 +91,14 @@ npx agent-virtual-office
 ```
 
 That's it! The visualizer will:
-1. **Auto-detect your codebase**: Discovers existing agents from `.agents/`, `agents.json`, or loads a recommended 4-role team template.
+1. **Auto-detect your codebase**: Discovers existing agents from `.agents/` or `agents.json`. In a project with no team yet, the portal opens **Agent Command Center Setup**, where you pick a platform team (Android, iOS, Web, …) or build your own in Team Studio.
 2. **Scaffold agent definitions**: Automatically initializes `.agents/definitions/` so every agent has documented skills, tools, and rules.
-3. **Launch the Dashboard**: Starts the local server (default: `http://localhost:3000`) and opens it directly in your browser (Safari on macOS).
+3. **Launch the Dashboard**: Starts the local server (default: `http://localhost:3000`, or the next free port) and opens it in your browser (Safari on macOS).
+
+> [!NOTE]
+> **Local only.** The server listens on `127.0.0.1` and refuses requests from other websites (Origin and Host checks), so a page you visit cannot read your board or use your tokens. To reach it from another machine on purpose, set `VIRTUAL_OFFICE_HOST=0.0.0.0`.
+>
+> Agents find the running portal through `.agents/portal-url` (written at startup and gitignored), so several projects can run on different ports at once.
 
 > [!TIP]
 > **Zero Global Installation Required:** You do **not** need to install anything globally, run `npm init`, or pollute your codebase with extra configuration files.
@@ -113,11 +118,12 @@ The `read-jira` and `read-confluence` skills fetch tickets and pages with `scrip
 
 Set them in **one** of these ways:
 
-1. **Project file (recommended):** `cp .env.example .env.local` in the project root and replace the placeholders. `.env.local` is gitignored.
-2. **Shell:** `export JIRA_BASE_URL="https://jira.your-company.com"` and `export JIRA_PATH="<token>"` (add them to `~/.zshrc` to keep them).
-3. **One run only:** `python3 scripts/read_jira.py https://jira.your-company.com/browse/PROJ-123 --token <token>` (`--pat` for Confluence).
+1. **In the portal (easiest):** open **Integrations** (key icon in the header), paste the server URL and token, and press **Save**. They are written to `.env.local` in your project (mode 600, gitignored).
+2. **Project file:** `cp .env.example .env.local` in the project root and replace the placeholders. `.env.local` is gitignored.
+3. **Shell:** `export JIRA_BASE_URL="https://jira.your-company.com"` and `export JIRA_PATH="<token>"` (add them to `~/.zshrc` to keep them).
+4. **One run only:** `python3 scripts/read_jira.py https://jira.your-company.com/browse/PROJ-123 --token <token>` (`--pat` for Confluence).
 
-Open **Integrations** (key icon in the portal header) to see what is set, get the exact lines to add, and **Test connection**. Without a setting the scripts stop with these instructions, and the header shows what is missing while a role on your team uses the skill. Tokens are only sent to the server you configure, and the portal never displays them.
+**Integrations** also shows what is set and where it came from, and has **Test connection**. Roles that use these skills get the two scripts copied into the project's `scripts/` folder (existing files are never overwritten). Without a setting the scripts stop with these instructions, and the header shows what is missing while a role on your team uses the skill. Tokens are only sent to the server you configure, and the portal never displays them.
 
 ---
 

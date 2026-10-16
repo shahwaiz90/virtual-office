@@ -1013,7 +1013,7 @@ test('DEV-315: Real-data sanitization, machine path cleanup, and natural bash co
   }
 
   assert.equal(
-    sanitizeFilePath('/Users/ahmadshahwaiz/Desktop/Virtual Office/src/components/VirtualOffice.tsx'),
+    sanitizeFilePath('/Users/dev/Desktop/Virtual Office/src/components/VirtualOffice.tsx'),
     'src/components/VirtualOffice.tsx'
   );
   assert.equal(

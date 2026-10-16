@@ -327,6 +327,8 @@ export interface OfficeState {
     id: string;
     projectName?: string;
     projectPath?: string;
+    /** The address agents call this portal on (also written to .agents/portal-url) */
+    portalUrl?: string;
     platform?: string;
     title: string;
     phase: string;

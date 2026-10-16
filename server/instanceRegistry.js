@@ -205,7 +205,8 @@ function isPortAvailable(port) {
     server.once('listening', () => {
       server.close(() => resolve(true));
     });
-    server.listen(port, '0.0.0.0');
+    // Probe the address the server binds to (loopback by default), or a busy port could look free
+    server.listen(port, require('./network').LISTEN_HOST);
   });
 }
 

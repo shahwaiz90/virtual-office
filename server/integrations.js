@@ -92,6 +92,8 @@ function integrationStatus(projectRoot, agents = [], homeDir) {
       configured: Boolean(token && base),
       tokenSet: Boolean(token),
       source: token ? token.source : null,
+      // Enough to recognise which token is stored, never enough to use it
+      tokenHint: token && token.value.length >= 8 ? `…${token.value.slice(-4)}` : token ? 'set' : null,
       envVar,
       baseVar: cfg.baseVar,
       usedBy,
@@ -148,6 +150,77 @@ async function testConnection(id, projectRoot, { homeDir, request = getJson, tim
   return { ok: false, reason: 'error', message: `${cfg.name} answered HTTP ${res.status}.` };
 }
 
+/** Sets, replaces or removes `KEY="value"` lines in an env file, keeping everything else as is. */
+function writeEnvValues(file, values) {
+  let lines = [];
+  try {
+    lines = fs.readFileSync(file, 'utf8').split('\n');
+  } catch (e) {}
+  for (const [key, value] of Object.entries(values)) {
+    const at = lines.findIndex((l) => new RegExp(`^\\s*(export\\s+)?${key}\\s*=`).test(l));
+    const line = `${key}="${value}"`;
+    if (value === null) {
+      if (at >= 0) lines.splice(at, 1);
+    } else if (at >= 0) {
+      lines[at] = line;
+    } else {
+      if (lines.length && lines[lines.length - 1] === '') lines.pop();
+      lines.push(line, '');
+    }
+  }
+  fs.writeFileSync(file, lines.join('\n'), { encoding: 'utf8', mode: 0o600 });
+  // The mode only applies when the file is created; tokens live here, so keep it private either way
+  try {
+    fs.chmodSync(file, 0o600);
+  } catch (e) {}
+}
+
+/** Makes sure the project's .gitignore keeps .env.local out of git. */
+function ensureGitignored(projectRoot, entry = '.env.local') {
+  const file = path.join(projectRoot, '.gitignore');
+  let text = '';
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (e) {}
+  const covered = text.split('\n').some((l) => ['.env.local', '.env*.local', '.env*', '*.local'].includes(l.trim()));
+  if (!covered) fs.writeFileSync(file, `${text}${text && !text.endsWith('\n') ? '\n' : ''}${entry}\n`, 'utf8');
+}
+
+/**
+ * Saves an integration's server URL and/or token into the project's .env.local (where the
+ * scripts read them). `clear: true` removes both. Returns an error message or null.
+ */
+function saveSettings(id, projectRoot, { baseUrl, token, clear } = {}) {
+  const cfg = INTEGRATIONS[id];
+  if (!cfg) return `Unknown integration "${id}".`;
+  const values = {};
+  if (clear) {
+    values[cfg.baseVar] = null;
+    values[cfg.envVars[0]] = null;
+  } else {
+    if (baseUrl !== undefined && baseUrl !== '') {
+      let url;
+      try {
+        url = new URL(String(baseUrl).trim());
+      } catch (e) {
+        return 'Enter the full server URL, e.g. https://jira.your-company.com';
+      }
+      if (!/^https?:$/.test(url.protocol)) return 'The server URL must start with https:// (or http://).';
+      if (PLACEHOLDER.test(url.hostname)) return 'Replace the example address with your own server.';
+      values[cfg.baseVar] = url.toString().replace(/\/$/, '');
+    }
+    if (token !== undefined && token !== '') {
+      const t = String(token).trim();
+      if (!t || /[\s"'\\]/.test(t)) return 'The token cannot contain spaces, quotes or backslashes.';
+      values[cfg.envVars[0]] = t;
+    }
+    if (!Object.keys(values).length) return 'Enter a server URL, a token, or both.';
+  }
+  ensureGitignored(projectRoot);
+  writeEnvValues(path.join(projectRoot, '.env.local'), values);
+  return null;
+}
+
 /** The configured server URL for an integration, or null (used to link tickets and pages). */
 function serverUrl(id, projectRoot, homeDir) {
   const cfg = INTEGRATIONS[id];
@@ -155,4 +228,4 @@ function serverUrl(id, projectRoot, homeDir) {
   return found ? found.value.replace(/\/$/, '') : null;
 }
 
-module.exports = { integrationStatus, testConnection, serverUrl };
+module.exports = { integrationStatus, testConnection, serverUrl, saveSettings };

@@ -2,6 +2,22 @@ const assert = require('assert');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+
+// Self-contained: a temporary HOME holds synthetic Antigravity conversation databases, so the test
+// never reads (or writes) the real ~/.gemini and runs the same on any machine and in CI.
+const realHome = os.homedir();
+const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'vo-isolation-home-'));
+process.env.HOME = tempHome;
+process.env.USERPROFILE = tempHome;
+const convsDir = path.join(tempHome, '.gemini/antigravity/conversations');
+fs.mkdirSync(convsDir, { recursive: true });
+function writeConversationDb(convId, uri) {
+  const buf = Buffer.alloc(4096);
+  Buffer.from('SQLite format 3\x00').copy(buf, 0);
+  Buffer.from(uri, 'utf8').copy(buf, 256);
+  fs.writeFileSync(path.join(convsDir, `${convId}.db`), buf);
+}
+process.on('exit', () => fs.rmSync(tempHome, { recursive: true, force: true }));
 const {
   resolveConversationProject,
   conversationProjectMatch,
@@ -21,16 +37,21 @@ eventBus.clearState();
 
 const currentRoot = getProjectRoot();
 console.log(`Active Project Root: ${currentRoot}`);
+assert.notStrictEqual(os.homedir(), realHome, 'The test must run against a temporary HOME');
 
 // -------------------------------------------------------------
 // Test 1: Workspace Resolution from Real SQLite DBs
 // -------------------------------------------------------------
 console.log('\n▶ Test 1: Testing SQLite Upfront Workspace Resolution...');
 
+// A conversation in another project, one in this project, and a subagent of the latter
 const quranSikhoConvId = '03361ead-d806-44ae-8635-b449aac29e61';
 const virtualOfficeParentId = 'cd4ce1e1-47cd-4d08-aa3f-377c28f6a870';
 const virtualOfficeSubagentId = '51240cfd-6e9a-4782-a578-1aeea2de6d7e';
 const nonExistentId = '00000000-0000-0000-0000-000000000000';
+writeConversationDb(quranSikhoConvId, 'file:///Users/someone/QuranSikho/app/src/main.kt');
+writeConversationDb(virtualOfficeParentId, `file://${currentRoot}/server/index.js`);
+writeConversationDb(virtualOfficeSubagentId, `file://${tempHome}/.gemini/antigravity/brain/${virtualOfficeParentId}/task.md`);
 
 const quranMatch = resolveConversationProject(quranSikhoConvId);
 console.log(`  - QuranSikho (${quranSikhoConvId}): ${quranMatch}`);
@@ -143,7 +164,6 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vo-test-db-'));
 const syntheticForeignId = '99999999-aaaa-bbbb-cccc-999999999999';
 const syntheticLocalId = '88888888-aaaa-bbbb-cccc-888888888888';
 
-const convsDir = path.join(os.homedir(), '.gemini/antigravity/conversations');
 const foreignDbPath = path.join(convsDir, `${syntheticForeignId}.db`);
 const localDbPath = path.join(convsDir, `${syntheticLocalId}.db`);
 
