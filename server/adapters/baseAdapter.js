@@ -93,6 +93,13 @@ class BaseAdapter {
     if (options.dryRun) {
       return { path: fullPath, size: Buffer.byteLength(content, 'utf8'), dryRun: true };
     }
+    // Unchanged files are left alone: no mtime churn, and no change event for file watchers
+    // (rewriting .agents/agents.json would otherwise trigger an agent reload and another sync)
+    try {
+      if (fs.readFileSync(fullPath, 'utf8') === content) {
+        return { path: fullPath, size: Buffer.byteLength(content, 'utf8'), dryRun: false, unchanged: true };
+      }
+    } catch (e) {}
     const dir = path.dirname(fullPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });

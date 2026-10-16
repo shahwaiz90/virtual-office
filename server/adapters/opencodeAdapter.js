@@ -189,9 +189,12 @@ always_on: true
       }),
     };
 
-    filesWritten.push(
-      this.writeFileSafely(path.join(projectRoot, '.agents', 'agents.json'), JSON.stringify(legacyAgentsJson, null, 2), options)
-    );
+    // The server's startup registration passes keepAgentsJson: agents.json is user/Team Studio input there
+    if (!options.keepAgentsJson) {
+      filesWritten.push(
+        this.writeFileSafely(path.join(projectRoot, '.agents', 'agents.json'), JSON.stringify(legacyAgentsJson, null, 2), options)
+      );
+    }
 
     return {
       success: true,
