@@ -136,6 +136,27 @@ try {
   assert.strictEqual(card3Obj.column, 'done', 'Finished card must not be reopened by a test edit');
   console.log('  ✅ Test 3b Passed: No premature completion, interrupted turns closed, done cards never reopened.\n');
 
+  // Test 3c: events the host app injects as user turns are not prompts and never become cards
+  console.log('▶ Test 3c: Verifying app-injected events create no cards...');
+  const injectedBodies = [
+    '<system-reminder>\nThe user started your proposal task_1 as session local_x.\n</system-reminder>\n<side-sessions-event>None of the sessions you started is working now; their notes are above.</side-sessions-event>',
+    '<cross-session-message from="local_abc" name="Fix bugs">\nBlocked: which option?\n</cross-session-message>',
+    '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>',
+    '<ci-monitor-event>CI failed on PR 12</ci-monitor-event>',
+  ];
+  const sizeBeforeInjected = eventBus.tasks.size;
+  injectedBodies.forEach((content, i) => {
+    // Real transcripts mark these turnOrigin "sdk" with no origin field
+    const injected = { type: 'user', uuid: `inj-${i}`, promptSource: 'sdk', turnOrigin: 'sdk', timestamp: new Date().toISOString(), message: { role: 'user', content } };
+    assert.deepStrictEqual(toTranscriptSteps(injected, isPathInProject), [], `Injected event ${i} must not be a prompt`);
+    handleClaudeEntry(injected, { convId: 'claude-session-c', promptTaskId: null });
+  });
+  assert.strictEqual(eventBus.tasks.size, sizeBeforeInjected, 'Injected events must not create cards');
+  // A typed prompt with no origin field is still a prompt
+  const plainPrompt = { type: 'user', uuid: 'plain-1', timestamp: new Date().toISOString(), message: { role: 'user', content: 'Make the CLI output readable' } };
+  assert.strictEqual(toTranscriptSteps(plainPrompt, isPathInProject).length, 1);
+  console.log('  ✅ Test 3c Passed: side-sessions, cross-session, task and CI events are ignored.\n');
+
   // Test 4: no sample data outside demo mode
   console.log('▶ Test 4: Verifying no sample data is seeded outside demo mode...');
   const { EventBus } = require('../server/eventBus');

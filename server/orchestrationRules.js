@@ -169,7 +169,10 @@ class OrchestrationRules {
       : Array.from(existingTasks ? existingTasks.values() : []);
     let max = 100;
     for (const t of list) {
-      const m = String((t && t.key) || '').match(/-(\d+)$/);
+      const key = String((t && t.key) || '');
+      // Prompt cards (CC-<hash>) carry a hash, not a sequence number
+      if (/^CC-/i.test(key)) continue;
+      const m = key.match(/-(\d+)$/);
       if (m) max = Math.max(max, parseInt(m[1], 10));
     }
     return max;

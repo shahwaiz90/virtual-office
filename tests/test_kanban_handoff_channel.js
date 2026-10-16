@@ -244,6 +244,48 @@ function request(port, method, urlPath, body) {
     assert.strictEqual(eventBus.tasks.get('TASK-WEB-501').column, 'done');
     console.log('  ✅ Test 8 Passed: API-written status and thread stay authoritative over file reloads.\n');
 
+    // Test 9: a dispatch naming a card this process has not loaded never mints a new card (trial: WEB-211615312)
+    console.log('▶ Test 9: Dispatch for an unloaded card creates no card...');
+    const unloadedCount = eventBus.tasks.size;
+    parseTranscriptStep({
+      type: 'PLANNER_RESPONSE',
+      content: '',
+      tool_calls: [{ name: 'invoke_subagent', args: { TypeName: 'web-tech-lead', Description: 'web-tech-lead: review WEB-777', Prompt: 'Your task: WEB-777. Read it with curl -s "http://localhost:3000/api/tasks/WEB-777?format=md" and follow the kanban-handoff skill.' } }],
+    }, 'conv-handoff');
+    assert.strictEqual(eventBus.tasks.size, unloadedCount, 'A dispatch naming a card must not create a card');
+    assert.ok(!Array.from(eventBus.tasks.values()).some((t) => t.title === 'web-tech-lead: review WEB-777'));
+    // Hash-keyed prompt cards must not inflate the next sequential key
+    const { OrchestrationRules } = require('../server/orchestrationRules');
+    assert.strictEqual(OrchestrationRules.highestKeyNumber([{ key: 'WEB-103' }, { key: 'CC-211615311' }]), 103);
+    console.log('  ✅ Test 9 Passed: Unloaded card dispatches and CC hash keys create no stray cards.\n');
+
+    // Test 10: the requirement closes once its sub-tasks are done; no tester means no testing column (trial: WEB-101/102)
+    console.log('▶ Test 10: Requirement lifecycle closes without a tester...');
+    await request(port, 'POST', '/api/tasks/register', {
+      tasks: [
+        { key: 'WEB-601', type: 'requirement', title: 'Copy card link', assignedTo: 'tech-pm', delegatedBy: 'tech-pm', column: 'in_progress' },
+        { key: 'WEB-602', parentKey: 'WEB-601', title: 'Add copy link button', brief: 'Lead owns it.', assignedTo: 'web-tech-lead', delegatedBy: 'tech-pm', column: 'in_progress' },
+        { key: 'WEB-603', parentKey: 'WEB-602', title: 'Implement copy link button', brief: 'Build it.', assignedTo: 'web-dev', delegatedBy: 'web-tech-lead', column: 'in_progress' },
+      ],
+    });
+    res = await request(port, 'POST', '/api/tasks/WEB-601/status', { agentId: 'tech-pm', column: 'testing' });
+    assert.strictEqual(res.body.task.column, 'review', 'testing maps to review when the roster has no tester');
+    await request(port, 'POST', '/api/tasks/WEB-601/status', { agentId: 'tech-pm', column: 'in_progress' });
+    await request(port, 'POST', '/api/tasks/WEB-603/status', { agentId: 'web-dev', column: 'review', result: 'Built.' });
+    assert.strictEqual(eventBus.tasks.get('TASK-WEB-601').column, 'in_progress', 'Open sub-tasks keep the requirement open');
+    await request(port, 'POST', '/api/tasks/WEB-603/status', { agentId: 'web-tech-lead', column: 'done', note: 'Approved.' });
+    assert.strictEqual(eventBus.tasks.get('TASK-WEB-602').column, 'in_progress', 'A card its owner has not reported stays open');
+    await request(port, 'POST', '/api/tasks/WEB-602/status', { agentId: 'web-tech-lead', column: 'review', result: 'Implemented in WEB-603, approved.' });
+    assert.strictEqual(eventBus.tasks.get('TASK-WEB-602').column, 'done', 'Reviewed lead card closes with the requirement');
+    assert.strictEqual(eventBus.tasks.get('TASK-WEB-601').column, 'done', 'Requirement closes when its sub-tasks are done');
+
+    // Same flow with a tester on the roster keeps the testing column
+    eventBus.agents.set('web-tester', { id: 'web-tester', name: 'QA', role: 'QA Engineer', badge: 'QA', skills: [], theme: { deskPosition: { x: 0, y: 0 }, themeColor: '#000' }, currentPosition: { x: 0, y: 0 } });
+    res = await request(port, 'POST', '/api/tasks/WEB-603/status', { agentId: 'web-tester', column: 'testing' });
+    assert.strictEqual(res.body.task.column, 'testing');
+    eventBus.agents.delete('web-tester');
+    console.log('  ✅ Test 10 Passed: Requirements close from their sub-tasks; testing is only used with a tester.\n');
+
     console.log('🎉 ALL KANBAN HANDOFF CHANNEL TESTS PASSED!');
   } finally {
     server.close();

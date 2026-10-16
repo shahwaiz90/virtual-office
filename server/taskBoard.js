@@ -84,10 +84,79 @@ function appendThreadEntry(task, entry) {
   return record;
 }
 
+/** True only when the roster has a dedicated tester/QA role; no fallback to another agent. */
+function rosterHasTester(agents = eventBus.agents) {
+  const list = Array.isArray(agents) ? agents : Array.from(agents ? agents.values() : []);
+  return list.some((a) => {
+    const id = String(a.id || '').toLowerCase();
+    const role = String(a.role || '').toLowerCase();
+    return /(^|-)(tester|test|qa)($|-)/.test(id) || /\b(qa|tester|quality)\b/.test(role) || a.badge === 'QA';
+  });
+}
+
+/** Without a tester nobody pulls cards out of `testing`, so verification happens in `review`. */
+function effectiveColumn(column) {
+  return column === 'testing' && !rosterHasTester() ? 'review' : column;
+}
+
+function childrenOf(task) {
+  if (!task || !task.key) return [];
+  return Array.from(eventBus.tasks.values()).filter((t) => t.parentKey && t.parentKey === task.key);
+}
+
+/** Nothing is left on a card: it is done, or its owner handed it up and all of its delegated work is done. */
+function isSettled(task) {
+  if (task.column === 'done') return true;
+  const kids = childrenOf(task);
+  return task.column === 'review' && kids.length > 0 && kids.every((k) => k.column === 'done');
+}
+
+function closeCard(task, reason) {
+  if (task.column === 'done') return false;
+  const previous = task.column;
+  task.column = 'done';
+  task.progress = 100;
+  task.updatedAt = new Date().toISOString();
+  appendThreadEntry(task, { agentId: 'system', kind: 'status', text: `Moved ${previous} → done. ${reason}` });
+  return true;
+}
+
+/**
+ * Walks up from a card whose status changed and closes parents that have nothing left:
+ * - a requirement closes when every child is settled, and its reviewed children close with it;
+ * - a task already in review (its owner reported) closes when all of its children are done.
+ * Returns the cards it closed.
+ */
+function reconcileParents(task) {
+  const closed = [];
+  const seen = new Set();
+  let parent = task && task.parentKey ? findTask(task.parentKey) : null;
+  while (parent && !seen.has(parent.key)) {
+    seen.add(parent.key);
+    if (parent.column === 'done') break;
+    const kids = childrenOf(parent);
+    if (!kids.length) break;
+    if (parent.type === 'requirement') {
+      if (!kids.every(isSettled)) break;
+      for (const k of kids) if (closeCard(k, `Requirement ${parent.key} is complete.`)) closed.push(k);
+      if (closeCard(parent, `All sub-tasks (${kids.map((k) => k.key).join(', ')}) are done.`)) closed.push(parent);
+    } else if (parent.column === 'review' && kids.every((k) => k.column === 'done')) {
+      if (closeCard(parent, `All sub-tasks (${kids.map((k) => k.key).join(', ')}) are done.`)) closed.push(parent);
+    } else {
+      break;
+    }
+    parent = parent.parentKey ? findTask(parent.parentKey) : null;
+  }
+  return closed;
+}
+
 function setTaskStatus(task, { column, agentId, note, result }) {
   if (!COLUMNS.includes(column)) {
     throw new Error(`column must be one of: ${COLUMNS.join(', ')}`);
   }
+  const requested = column;
+  column = effectiveColumn(column);
+  if (requested !== column) note = [`No tester on the team, so ${requested} → ${column}.`, note].filter(Boolean).join(' ');
   const previous = task.column;
   task.column = column;
   task.progress = column === 'done' ? 100 : task.progress || 0;
@@ -98,6 +167,7 @@ function setTaskStatus(task, { column, agentId, note, result }) {
     .filter(Boolean)
     .join(' ');
   appendThreadEntry(task, { agentId: agentId || task.assignedTo, kind: result ? 'result' : 'status', text });
+  if (column === 'done' || column === 'review') reconcileParents(task);
   return task;
 }
 
@@ -263,6 +333,9 @@ module.exports = {
   getTaskDetail,
   appendThreadEntry,
   setTaskStatus,
+  reconcileParents,
+  rosterHasTester,
+  effectiveColumn,
   renderTaskMarkdown,
   normalizeCardDeliverable,
   recordCardDeliverable,

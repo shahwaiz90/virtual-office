@@ -7,7 +7,7 @@ const { eventBus } = require('./eventBus');
 const { getProjectRoot, discoverAgents } = require('./agentDiscovery');
 const { autoDiscoverAndRegisterAgents } = require('./agentRuntimeRegistry');
 const { listClaudeTranscripts, toTranscriptSteps } = require('./claudeTranscripts');
-const { appendThreadEntry } = require('./taskBoard');
+const { appendThreadEntry, effectiveColumn, rosterHasTester } = require('./taskBoard');
 
 /**
  * Validates whether a file path or directory strictly belongs to the currently active project root
@@ -705,7 +705,7 @@ function registerRealAgentTask(taskData, options = {}) {
   const explicitTitle = taskData.title ? String(taskData.title).trim().replace(/^[*`#]+|[*`#]+$/g, '') : '';
   const cleanTitle = (explicitTitle ? sanitizeTaskTitle(explicitTitle) : formatConciseTaskTitle(taskData.title, taskData.description, taskData.assignedTo)) || cleanKey;
   const cleanDesc = String(taskData.description || taskData.brief || (existing && existing.description) || taskData.title || '').trim();
-  const targetCol = existing && existing.column === 'done' ? 'done' : (taskData.column || (existing ? existing.column : col));
+  const targetCol = existing && existing.column === 'done' ? 'done' : effectiveColumn(taskData.column || (existing ? existing.column : col));
   const finalProgress = taskData.progress !== undefined ? taskData.progress : (targetCol === 'done' ? 100 : 0);
 
   const taskObj = {
@@ -2716,7 +2716,7 @@ function parseTranscriptStep(step, convId = '') {
         if (targetTask) {
           targetTaskId = targetTask.id;
           assigned = actor || eventBus.agents.get(targetTask.assignedTo) || assigned;
-          if (isTest && !actor) {
+          if (isTest && !actor && rosterHasTester()) {
             targetTask.column = 'testing';
             column = 'testing';
             phase = 'Verification';
@@ -2837,9 +2837,9 @@ function parseTranscriptStep(step, convId = '') {
       }
 
       const isTest = cmd.includes('test') || cmd.includes('gradlew test') || cmd.includes('pytest') || cmd.includes('jest') || cmd.includes('vitest');
-      const assigned = actor || (isTest ? testerAgent : devAgent);
+      const assigned = actor || (isTest && rosterHasTester() ? testerAgent : devAgent);
 
-      if (isTest && !actor) {
+      if (isTest && !actor && rosterHasTester()) {
         if (hasRealAgentTasks(eventBus.tasks)) {
           const realTasks = Array.from(eventBus.tasks.values()).filter((t) => !t.id.startsWith('DELIV-'));
           const testTask = realTasks.find((t) => t.assignedTo === testerAgent.id && t.column !== 'done') || realTasks.find((t) => t.column === 'testing');
@@ -2969,7 +2969,8 @@ function parseTranscriptStep(step, convId = '') {
 
         // Board-first handoff: the prompt names the card(s) the subagent must read. Prefer the card the
         // target works on, then one it delegated (a review handed back up), then any card it names.
-        const referencedCards = (prompt.match(/\b[A-Z][A-Z0-9]+-\d+\b/g) || [])
+        const namedCardKeys = prompt.match(/\b[A-Z][A-Z0-9]+-\d+\b/g) || [];
+        const referencedCards = namedCardKeys
           .map((k) => Array.from(eventBus.tasks.values()).find((t) => t.key === k))
           .filter(Boolean);
         const referencedCard =
@@ -3003,7 +3004,10 @@ function parseTranscriptStep(step, convId = '') {
         if (!activeHandoffTask && parsedPromptTasks.length > 0) {
           activeHandoffTask = parsedPromptTasks[0];
         }
-        if (!activeHandoffTask && !isInvokingPm) {
+        // A dispatch that names a card ("Your task: WEB-103 ...") is about that card, even when this
+        // process hasn't loaded it (another sprint, a restart mid-replay); never mint a new card for it
+        const dispatchNamesCard = /\byour task:?\s*[A-Z][A-Z0-9]+-\d+\b/i.test(prompt) || (namedCardKeys.length > 0 && !referencedCard && /\/api\/tasks\//.test(prompt));
+        if (!activeHandoffTask && !isInvokingPm && !dispatchNamesCard) {
           // Handoff without a card: put it on the board anyway, with the delegator's own words as the brief
           activeHandoffTask = registerRealAgentTask({
             title: taskTitle,

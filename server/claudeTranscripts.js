@@ -85,14 +85,18 @@ function textFromContent(content) {
     .join('\n');
 }
 
+// Messages the host app injects into the conversation as user turns (side-session notes,
+// cross-session messages, background-task and CI notifications). None of them is a request.
+const INJECTED_EVENT_TAGS = /^<(side-sessions-event|cross-session-message|task-notification|ci-monitor-event|system-reminder|local-command|command-|bash-)/i;
+
 function isHumanPrompt(entry) {
   if (entry.type !== 'user' || entry.isMeta || entry.isSidechain) return false;
   const content = entry.message && entry.message.content;
   if (Array.isArray(content) && content.some((c) => c && c.type === 'tool_result')) return false;
   if (entry.origin && entry.origin.kind) return entry.origin.kind === 'human';
-  const text = textFromContent(content).trim();
-  // Slash-command wrappers, local command output and interrupts are not prompts
-  return Boolean(text) && !/^<(command-|local-command|bash-)/i.test(text) && !/^\[Request interrupted/i.test(text);
+  const text = stripInjectedMarkup(textFromContent(content));
+  // App-injected events, slash-command wrappers, local command output and interrupts are not prompts
+  return Boolean(text) && !INJECTED_EVENT_TAGS.test(text) && !/^\[Request interrupted/i.test(text);
 }
 
 /**
