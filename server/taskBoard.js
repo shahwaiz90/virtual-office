@@ -7,6 +7,7 @@
  * operations behind GET /api/tasks/:key, POST /api/tasks/:key/thread and /status.
  */
 const { eventBus } = require('./eventBus');
+const { isInjectedText } = require('./claudeTranscripts');
 
 const COLUMNS = ['backlog', 'assigned', 'in_progress', 'review', 'testing', 'done'];
 const THREAD_KINDS = ['handoff', 'question', 'answer', 'update', 'decision', 'result', 'status'];
@@ -111,6 +112,14 @@ function isSettled(task) {
   return task.column === 'review' && kids.length > 0 && kids.every((k) => k.column === 'done');
 }
 
+/** The column a card was last moved to through the status API, or null if it never was. */
+function explicitColumn(task) {
+  const moves = (task.thread || []).filter((m) => m.kind === 'status' || m.kind === 'result');
+  const last = moves.length ? moves[moves.length - 1] : null;
+  const m = last && /^Moved \S+ → (\w+)/.exec(last.text || '');
+  return m ? m[1] : null;
+}
+
 function closeCard(task, reason) {
   if (task.column === 'done') return false;
   const previous = task.column;
@@ -137,6 +146,8 @@ function reconcileParents(task) {
     const kids = childrenOf(parent);
     if (!kids.length) break;
     if (parent.type === 'requirement') {
+      // An owner who moved the requirement to review is checking it themselves; leave it to them
+      if (parent.column === 'review' && explicitColumn(parent) === 'review') break;
       if (!kids.every(isSettled)) break;
       for (const k of kids) if (closeCard(k, `Requirement ${parent.key} is complete.`)) closed.push(k);
       if (closeCard(parent, `All sub-tasks (${kids.map((k) => k.key).join(', ')}) are done.`)) closed.push(parent);
@@ -148,6 +159,37 @@ function reconcileParents(task) {
     parent = parent.parentKey ? findTask(parent.parentKey) : null;
   }
   return closed;
+}
+
+/**
+ * Repairs a board loaded from disk: removes cards created from app-injected messages
+ * (side-session notes, cross-session messages) and orphan cards minted for a dispatch that
+ * named an existing card, then closes parents whose sub-tasks are all done.
+ * Returns what changed so the caller can persist it.
+ */
+function cleanUpBoard() {
+  const removed = [];
+  const all = () => Array.from(eventBus.tasks.values());
+  for (const task of all()) {
+    const injected = String(task.id || '').startsWith('TASK-CC-') && isInjectedText(task.description || task.title);
+    const dispatch = /^Your task:?\s*([A-Z][A-Z0-9]+-\d+)\b/.exec(String(task.brief || task.description || '').trim());
+    const orphanDispatch =
+      dispatch &&
+      dispatch[1] !== task.key &&
+      !task.parentKey &&
+      findTask(dispatch[1]) &&
+      !childrenOf(task).length &&
+      (task.thread || []).every((m) => m.kind === 'handoff');
+    if (injected || orphanDispatch) {
+      eventBus.tasks.delete(task.id);
+      removed.push(task.key);
+    }
+  }
+  const closed = [];
+  for (const task of all()) {
+    if (task.column === 'done' || task.column === 'review') closed.push(...reconcileParents(task).map((t) => t.key));
+  }
+  return { removed, closed: [...new Set(closed)] };
 }
 
 function setTaskStatus(task, { column, agentId, note, result }) {
@@ -334,6 +376,7 @@ module.exports = {
   appendThreadEntry,
   setTaskStatus,
   reconcileParents,
+  cleanUpBoard,
   rosterHasTester,
   effectiveColumn,
   renderTaskMarkdown,
