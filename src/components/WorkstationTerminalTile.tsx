@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Agent, NormalizedEvent } from '../types/office';
 import { ArrowUp, Copy, Check, Maximize2 } from 'lucide-react';
+import { TokenBreakdown } from '../services/tokenFormat';
+import { TokenBreakdownTip } from './TokenBreakdownTip';
 
 export interface WorkstationTerminalTileProps {
   agent: Agent;
@@ -8,6 +10,8 @@ export interface WorkstationTerminalTileProps {
   onSelectAgent: (agent: Agent) => void;
   /** Recorded token usage for this role, e.g. "144k in · 17k out · 1.2M cached"; null hides the row */
   tokenLine?: string | null;
+  /** Exact numbers behind tokenLine, shown on hover or keyboard focus */
+  tokenDetail?: TokenBreakdown | null;
 }
 
 /**
@@ -268,6 +272,7 @@ export const WorkstationTerminalTile: React.FC<WorkstationTerminalTileProps> = (
   events = [],
   onSelectAgent,
   tokenLine = null,
+  tokenDetail = null,
 }) => {
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [scrollPinMode, setScrollPinMode] = useState<'bottom' | 'top'>('bottom');
@@ -530,12 +535,12 @@ export const WorkstationTerminalTile: React.FC<WorkstationTerminalTileProps> = (
       </div>
 
       {tokenLine && (
-        <div
+        <TokenBreakdownTip
+          breakdown={tokenDetail}
           className="px-3 py-1 border-b border-sand-200 bg-surface text-[10.5px] font-mono text-sand-600 truncate shrink-0"
-          title="Model tokens recorded for this role"
         >
           🪙 {tokenLine}
-        </div>
+        </TokenBreakdownTip>
       )}
 
       {/* Live Working Status Banner */}
