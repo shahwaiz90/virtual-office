@@ -69,7 +69,7 @@ VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s 
 - The older calls still work: `POST /api/tasks/<KEY>/status` (`column`, `note`, `result`) and `POST /api/deliverables` (`taskKey`, `type`, `title`, `content`). Board replies are short; `?format=full` returns the whole card or office state.
 
 ## 5. Hand back up
-Finishing in `review` hands the card to its delegator. A Claude Code subagent cannot start another subagent, so it ends its reply with:
+Finishing in `review` hands the card to its delegator. A subagent cannot start another subagent (Claude Code; OpenCode by default), so it ends its reply with:
 ```
 WEB-312 -> review, result on the card
 HANDOFF WEB-312 -> web-tech-lead
