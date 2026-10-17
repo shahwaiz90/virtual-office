@@ -351,6 +351,7 @@ export const App: React.FC = () => {
             isLoading={state === null}
             events={eventsToDisplay}
             onViewModeChange={setViewMode}
+            tokenStats={tokenStats}
           />
         </section>
 

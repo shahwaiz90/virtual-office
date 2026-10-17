@@ -334,6 +334,7 @@
 }
 
 :root.dark {
+  /* Neutrals: warm charcoal, not near-black; secondary text kept at 4.5:1+ on cards for small labels */
   --c-slate-50: 2 6 23;
   --c-slate-100: 30 41 59;
   --c-slate-200: 41 53 72;
@@ -576,16 +577,16 @@
   --c-blue-800: 191 219 254;
   --c-blue-900: 219 234 254;
   --c-blue-950: 239 246 255;
-  --c-sand-50: 20 17 14;
-  --c-sand-100: 43 38 31;
-  --c-sand-200: 56 49 42;
-  --c-sand-300: 74 65 55;
-  --c-sand-400: 133 117 97;
-  --c-sand-500: 168 151 127;
-  --c-sand-600: 194 178 155;
-  --c-sand-700: 213 198 176;
-  --c-sand-800: 231 221 205;
-  --c-sand-900: 243 237 227;
+  --c-sand-50: 30 27 23;
+  --c-sand-100: 54 48 41;
+  --c-sand-200: 70 63 54;
+  --c-sand-300: 124 112 96;
+  --c-sand-400: 178 165 146;
+  --c-sand-500: 198 186 168;
+  --c-sand-600: 215 205 189;
+  --c-sand-700: 229 221 208;
+  --c-sand-800: 239 233 223;
+  --c-sand-900: 247 243 237;
   --c-sand-950: 250 247 242;
   --c-brand-50: 34 45 39;
   --c-brand-100: 36 57 50;
@@ -620,11 +621,30 @@
   --c-olive-800: 212 218 176;
   --c-olive-900: 233 236 214;
   --c-olive-950: 246 247 238;
-  --surface: 32 28 23;
-  --surface-raised: 43 38 31;
+  --surface: 41 37 31;
+  --surface-raised: 50 45 38;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-pop: 0 10px 30px -10px rgb(0 0 0 / 0.6);
   color-scheme: dark;
+}
+
+/* Dark mode: accent colors that double as button fills are too dim as text on dark cards; text uses a lighter step */
+:root.dark .text-brand-500,
+:root.dark .text-brand-600 {
+  color: rgb(var(--c-brand-400));
+}
+:root.dark .text-rose-500,
+:root.dark .text-rose-600 {
+  color: rgb(var(--c-rose-400));
+}
+:root.dark .text-red-600 {
+  color: rgb(var(--c-red-400));
+}
+:root.dark .text-blue-600 {
+  color: rgb(var(--c-blue-400));
+}
+:root.dark .text-sand-300 {
+  color: rgb(var(--c-sand-400));
 }
 
 /* Terminals and code blocks keep their light-mode palette (dark surfaces) in both themes */

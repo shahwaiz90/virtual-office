@@ -6,6 +6,8 @@ export interface WorkstationTerminalTileProps {
   agent: Agent;
   events?: NormalizedEvent[];
   onSelectAgent: (agent: Agent) => void;
+  /** Recorded token usage for this role, e.g. "144k in · 17k out · 1.2M cached"; null hides the row */
+  tokenLine?: string | null;
 }
 
 /**
@@ -265,6 +267,7 @@ export const WorkstationTerminalTile: React.FC<WorkstationTerminalTileProps> = (
   agent,
   events = [],
   onSelectAgent,
+  tokenLine = null,
 }) => {
   const [autoScroll, setAutoScroll] = useState<boolean>(true);
   const [scrollPinMode, setScrollPinMode] = useState<'bottom' | 'top'>('bottom');
@@ -525,6 +528,15 @@ export const WorkstationTerminalTile: React.FC<WorkstationTerminalTileProps> = (
           </button>
         </div>
       </div>
+
+      {tokenLine && (
+        <div
+          className="px-3 py-1 border-b border-sand-200 bg-surface text-[10.5px] font-mono text-sand-600 truncate shrink-0"
+          title="Model tokens recorded for this role"
+        >
+          🪙 {tokenLine}
+        </div>
+      )}
 
       {/* Live Working Status Banner */}
       <div

@@ -226,6 +226,35 @@ try {
   assert.ok(eventBus.getStateSnapshot().tokenUsageAnalytics.some((t) => t.agentId === 'web-dev'));
   console.log('  ✅ Test 6 Passed: Input and cache tokens surfaced per agent.\n');
 
+  // Test 7: a session started after the portal is read from its first line, so its first prompt becomes a card
+  console.log('▶ Test 7: Verifying sessions started after the portal get their card...');
+  const { attachTranscriptTail } = require('../server/watchers');
+  eventBus.clearedAt = Date.now() - 60000; // the portal started a minute ago
+  const writeSession = (name, entries) => {
+    const file = path.join(projectDir, `${name}.jsonl`);
+    fs.writeFileSync(file, entries.map((e) => JSON.stringify(e)).join('\n') + '\n');
+    return file;
+  };
+  const briefEntry = (uuid, at, text) => ({
+    type: 'user',
+    uuid,
+    timestamp: new Date(at).toISOString(),
+    message: { role: 'user', content: [{ type: 'text', text: '<system-reminder>Linked sessions now</system-reminder>' }, { type: 'text', text }] },
+  });
+  // Started after the portal, noticed a few seconds later (as a side session from another session is)
+  const newFile = writeSession('session-new', [briefEntry('n-1', Date.now() - 3000, 'Task (from the session that started this one):\nBackground (from the session that started this one):\nVirtual Office is a local portal.\n\nTask:\nMake the portal header mobile-friendly\n\nDone when: tests pass')]);
+  // Started before the portal: its old prompt is history
+  const oldFile = writeSession('session-old', [briefEntry('o-1', Date.now() - 120000, 'An old request from before the restart')]);
+  attachTranscriptTail(newFile, { format: 'claude', convId: 'claude-session-new' });
+  attachTranscriptTail(oldFile, { format: 'claude', convId: 'claude-session-old' });
+  const cardOf = (conv) => Array.from(eventBus.tasks.values()).find((t) => t.sourceConversation === conv && t.type === 'requirement');
+  assert.ok(cardOf('claude-session-new'), 'The first prompt of a new session becomes its card');
+  assert.strictEqual(cardOf('claude-session-new').title, 'Make the portal header mobile-friendly');
+  assert.ok(!cardOf('claude-session-old'), 'A session from before the portal started is not replayed');
+  fs.unwatchFile(newFile);
+  fs.unwatchFile(oldFile);
+  console.log('  ✅ Test 7 Passed: New sessions are read from their first line.\n');
+
   console.log('🎉 Claude Code transcript ingestion tests passed!');
 } finally {
   fs.rmSync(testRoot, { recursive: true, force: true });

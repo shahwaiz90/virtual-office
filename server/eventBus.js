@@ -272,14 +272,42 @@ class EventBus extends EventEmitter {
       outputTokens: 0,
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
+      cost: 0,
     };
     existing.messages += 1;
     existing.inputTokens += usage.input_tokens || 0;
     existing.outputTokens += usage.output_tokens || 0;
     existing.cacheReadTokens += usage.cache_read_input_tokens || 0;
     existing.cacheCreationTokens += usage.cache_creation_input_tokens || 0;
+    existing.cost = (existing.cost || 0) + (Number(usage.cost) > 0 ? Number(usage.cost) : 0);
     existing.lastUsedAt = new Date().toISOString();
     this.tokenUsageMap.set(agentId, existing);
+  }
+
+  /**
+   * Adds one message's usage to a card as tokenUsage { input, output, cacheRead, cacheWrite, cost }.
+   * Returns false when the card is unknown or the usage is empty, so callers know whether to persist.
+   */
+  recordTaskTokenUsage(taskId, usage) {
+    const task = taskId ? this.tasks.get(taskId) : null;
+    if (!task || !usage) return false;
+    const add = {
+      input: usage.input_tokens || 0,
+      output: usage.output_tokens || 0,
+      cacheRead: usage.cache_read_input_tokens || 0,
+      cacheWrite: usage.cache_creation_input_tokens || 0,
+      cost: Number(usage.cost) > 0 ? Number(usage.cost) : 0,
+    };
+    if (!add.input && !add.output && !add.cacheRead && !add.cacheWrite && !add.cost) return false;
+    const current = task.tokenUsage || { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
+    task.tokenUsage = {
+      input: (current.input || 0) + add.input,
+      output: (current.output || 0) + add.output,
+      cacheRead: (current.cacheRead || 0) + add.cacheRead,
+      cacheWrite: (current.cacheWrite || 0) + add.cacheWrite,
+      cost: (current.cost || 0) + add.cost,
+    };
+    return true;
   }
 
   /** Durations are only added when measured; callers that don't know one pass nothing. */
