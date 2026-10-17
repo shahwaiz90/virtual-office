@@ -90,7 +90,10 @@ function boardQuickReference(agent, { isOrchestrator, delegates }) {
         ? ` Reviewing a card you delegated: finish that card with \`"column":"done"\`, or \`"column":"in_progress"\` and what is missing in \`"note"\`${deliverableFor(agent).includes('code_review') ? ' (deliverable type `code_review`)' : ''}.`
         : '')
   );
-  lines.push(`Edge cases (no card yet, key rules, server down): \`${skillPath('kanban-handoff')}\`.`);
+  lines.push(
+    "- Long text (a contract, review notes): write the JSON body to a file and send it with `-d @file.json`.",
+    `Edge cases (no card yet, key rules, server down): \`${skillPath('kanban-handoff')}\`.`
+  );
   return lines;
 }
 
@@ -124,9 +127,14 @@ function rolePrompt(agent, registry, { dispatch = 'handoff-lines' } = {}) {
 
   if (targets.length) {
     lines.push(`## Handing work on`, `Only to ${targets.map(nameOf).join(', ')}: register a card written for that role (parentKey = your card), then delegate it by key only.`);
-    if (dispatch === 'invoke_subagent' || dispatch === 'opencode-subagent') {
-      const how = dispatch === 'opencode-subagent' ? 'OpenCode\'s subagent tool (`subagent`, or `task` in OpenCode 1.x) with the role\'s agent id' : '`invoke_subagent`';
-      lines.push(`Start the delegate with ${how} and the prompt \`${DELEGATION_PROMPT}\` Nothing else goes in the prompt.`);
+    if (dispatch === 'invoke_subagent') {
+      lines.push(`Start the delegate with \`invoke_subagent\` and the prompt \`${DELEGATION_PROMPT}\` Nothing else goes in the prompt.`);
+    } else if (dispatch === 'opencode-subagent') {
+      // OpenCode allows one level of subagents by default, so a role started as a subagent cannot start another
+      lines.push(
+        'Started as a subagent? End your reply with one `HANDOFF <KEY> -> <agentId>` line per card; the agent that started you starts it. ' +
+          `Only as the top-level agent, start the delegate yourself with the subagent tool and the prompt \`${DELEGATION_PROMPT}\` and nothing else.`
+      );
     } else {
       lines.push('You cannot start subagents: end your reply with one `HANDOFF <KEY> -> <agentId>` line per card for the main session to dispatch.');
     }
@@ -134,7 +142,7 @@ function rolePrompt(agent, registry, { dispatch = 'handoff-lines' } = {}) {
   }
   lines.push(
     '## Handing work back',
-    `Finishing your card in \`review\` returns it to its delegator${dispatch === 'handoff-lines' ? ': end your reply with `HANDOFF <your KEY> -> <delegatedBy>` (skip it for a card you delegated to yourself)' : ''}.`,
+    `Finishing your card in \`review\` returns it to its delegator${dispatch === 'handoff-lines' || dispatch === 'opencode-subagent' ? ': end your reply with `HANDOFF <your KEY> -> <delegatedBy>` (skip it for a card you delegated to yourself)' : ''}.`,
     ''
   );
   if ((agent.prohibited_actions || []).length) lines.push('## Never', ...agent.prohibited_actions.map((a) => `- ${a}`), '');

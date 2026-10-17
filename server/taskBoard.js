@@ -443,10 +443,12 @@ function renderTaskList(tasks) {
  * Returns the line that says what happened, for the top of the brief.
  */
 function startTask(task, { agentId, note } = {}) {
-  const actor = agentId || task.assignedTo;
+  // Without an agentId (the delegation prompt's call), a card waiting for review is dispatched to its delegator
+  const inReview = ['review', 'testing'].includes(task.column);
+  const actor = agentId || (inReview && task.delegatedBy ? task.delegatedBy : task.assignedTo);
   const open = (task.dependsOn || []).map((k) => findTask(k)).filter((d) => d && d.column !== 'done');
   if (actor !== task.assignedTo) {
-    return ['review', 'testing'].includes(task.column)
+    return inReview
       ? `${task.key} is in ${task.column}: review it as ${actor}, then finish it with column "done", or "in_progress" with what is missing.`
       : `${task.key} is assigned to ${task.assignedTo} (${task.column}); you are reading it as ${actor}.`;
   }
@@ -500,6 +502,7 @@ module.exports = {
   COLUMNS,
   THREAD_KINDS,
   findTask,
+  summarize,
   getTaskDetail,
   appendThreadEntry,
   setTaskStatus,

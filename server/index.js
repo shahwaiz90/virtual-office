@@ -498,7 +498,11 @@ app.post('/api/deliverables', (req, res) => {
     }
     // A deliverable posted with taskKey is linked to that card (id, sprint, delivered-to, card link)
     const saved = eventBus.recordDeliverable(taskBoard.normalizeCardDeliverable(item));
-    if (req.query.format === 'brief') return res.json({ success: true, id: saved.id });
+    // The reply leaves out the posted content and the office state unless ?format=full asks for them
+    if (req.query.format !== 'full') {
+      const { content, ...rest } = saved;
+      return res.json({ success: true, id: saved.id, deliverable: rest });
+    }
     res.json({
       success: true,
       deliverable: saved,
@@ -627,8 +631,9 @@ app.post('/api/tasks/register', (req, res) => {
     state: snap,
   });
 
-  // Agents pass ?format=brief: just the cards they registered, not the whole office state
-  if (req.query.format === 'brief') {
+  // Agents are the callers here and keep every reply in their context: the registered cards only.
+  // ?format=full adds the full cards and the office state (the UI gets state over the WebSocket).
+  if (req.query.format !== 'full') {
     return res.json({ success: true, count: registered.length, tasks: registered.map((t) => ({ key: t.key, title: t.title, column: t.column, assignedTo: t.assignedTo })) });
   }
   res.json({
@@ -719,8 +724,8 @@ app.post('/api/tasks/:key/thread', (req, res) => {
   }
   const entry = taskBoard.appendThreadEntry(task, { agentId, text, kind, to });
   broadcastBoard();
-  if (req.query.format === 'brief') return res.json({ success: true, id: entry.id });
-  res.json({ success: true, entry, task: taskBoard.getTaskDetail(task) });
+  if (req.query.format === 'full') return res.json({ success: true, entry, task: taskBoard.getTaskDetail(task) });
+  res.json({ success: true, id: entry.id, task: taskBoard.summarize(task) });
 });
 
 // POST /api/tasks/:key/status - { column, agentId, note?, result? } move the card and say why
@@ -734,8 +739,8 @@ app.post('/api/tasks/:key/status', (req, res) => {
   }
   taskBoard.recordCardDeliverable(task, req.body || {});
   broadcastBoard();
-  if (req.query.format === 'brief') return res.json({ success: true, key: task.key, column: task.column });
-  res.json({ success: true, task: taskBoard.getTaskDetail(task) });
+  if (req.query.format === 'full') return res.json({ success: true, task: taskBoard.getTaskDetail(task) });
+  res.json({ success: true, task: taskBoard.summarize(task) });
 });
 
 // -------------------------------------------------------------

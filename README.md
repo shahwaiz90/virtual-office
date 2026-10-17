@@ -121,7 +121,7 @@ The calls agents make are kept small, because every response stays in the agent'
 | `POST /api/tasks/<KEY>/finish` | Deliverable, result and move (`review`, or `done` on a card you own) in one call |
 | `GET /api/tasks/<KEY>?format=md` | The whole card with its full thread, for people and edge cases |
 
-Agents can send JSON with a plain `curl -d` (no Content-Type header). The older `/status`, `/thread` and `/api/deliverables` calls still work; add `?format=brief` for a short reply.
+Agents can send JSON with a plain `curl -d` (no Content-Type header). The older `/status`, `/thread`, `/register` and `POST /api/deliverables` calls still work and reply with a short summary; `?format=full` returns the old reply with the whole card and office state.
 
 > [!TIP]
 > **Zero Global Installation Required:** You do **not** need to install anything globally, run `npm init`, or pollute your codebase with extra configuration files.

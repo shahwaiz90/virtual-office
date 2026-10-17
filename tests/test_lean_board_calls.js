@@ -86,6 +86,12 @@ function request(port, method, urlPath, body, { form = false } = {}) {
     assert.strictEqual(res.body.count, 3);
     assert.ok(!res.body.state, 'The brief response leaves out the office state');
     assert.deepStrictEqual(Object.keys(res.body.tasks[0]).sort(), ['assignedTo', 'column', 'key', 'title']);
+    res = await request(port, 'POST', '/api/tasks/register', { key: 'WEB-903', title: 'Spare', assignedTo: 'web-dev', column: 'backlog' });
+    assert.ok(!res.body.state && res.body.tasks[0].key === 'WEB-903', 'Agent-facing replies leave out the office state by default');
+    res = await request(port, 'POST', '/api/tasks/register?format=full', { key: 'WEB-903', title: 'Spare', assignedTo: 'web-dev', column: 'backlog' });
+    assert.ok(res.body.state && res.body.tasks[0].thread, '?format=full keeps the old reply');
+    res = await request(port, 'POST', '/api/deliverables', { taskKey: 'WEB-903', agentId: 'web-dev', title: 'Spare', content: 'long text' });
+    assert.ok(res.body.id && !res.body.state && !res.body.deliverable.content && res.body.deliverable.type === 'source_code');
     res = await request(port, 'POST', '/api/tasks/WEB-901/thread', '{not json', { form: true });
     assert.strictEqual(res.status, 400, 'A malformed body is rejected with a message');
     console.log('  ✅ Test 1 Passed.\n');
@@ -109,7 +115,8 @@ function request(port, method, urlPath, body, { form = false } = {}) {
     const long = 'x'.repeat(5000);
     for (let i = 0; i < 8; i++) {
       res = await request(port, 'POST', '/api/tasks/WEB-902/thread?format=brief', { agentId: 'web-dev', kind: 'update', text: `step ${i} ${long}` }, { form: true });
-      assert.deepStrictEqual(Object.keys(res.body).sort(), ['id', 'success']);
+      assert.deepStrictEqual(Object.keys(res.body).sort(), ['id', 'success', 'task']);
+      assert.ok(!res.body.task.thread, 'The reply carries a card summary, not the thread');
     }
     const full = await request(port, 'GET', '/api/tasks/WEB-902?format=md');
     const brief = await request(port, 'GET', '/api/tasks/WEB-902?format=brief');
@@ -139,6 +146,8 @@ function request(port, method, urlPath, body, { form = false } = {}) {
     const d = eventBus.deliverables.get(res.body.deliverable);
     assert.ok(d && d.type === 'source_code' && d.metadata.taskKey === 'WEB-902' && d.deliveredTo === 'web-tech-lead');
     assert.ok(!Array.from(eventBus.deliverables.values()).some((x) => x.metadata?.taskKey === 'WEB-902' && x.metadata?.auto), 'No fallback deliverable next to the posted one');
+    const dispatched = await request(port, 'POST', '/api/tasks/WEB-902/start');
+    assert.ok(dispatched.text.startsWith('WEB-902 is in review: review it as web-tech-lead'), 'A review card started without agentId goes to its delegator');
     const reviewView = await request(port, 'POST', '/api/tasks/WEB-902/start', { agentId: 'web-tech-lead' });
     assert.ok(reviewView.text.startsWith('WEB-902 is in review: review it as web-tech-lead'));
     assert.strictEqual(card.column, 'review', 'Reading a card to review it does not move it');

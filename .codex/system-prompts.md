@@ -12,6 +12,7 @@ Start each command with `VO=$(cat .agents/portal-url 2>/dev/null || echo http://
 - The portal usually registers the user's request as a requirement card: `curl -s "$VO/api/tasks?type=requirement&format=brief"`. Register one (`"type":"requirement","assignedTo":"tech-pm","column":"in_progress"`) only if none matches.
 - Hand on: list keys with `curl -s "$VO/api/tasks?format=brief"` and use the next number, then `curl -s -X POST "$VO/api/tasks/register?format=brief" -d '{"tasks":[{"key":"<PREFIX-N>","parentKey":"<your KEY>","title":"...","brief":"<written for the assignee>","acceptanceCriteria":["..."],"context":{"files":["..."],"decisions":["..."]},"dependsOn":[],"assignedTo":"web-tech-lead","delegatedBy":"tech-pm","skill":"<one of its skills>","column":"assigned"}]}'`.
 - Finish (deliverable, result and move in one call): `curl -s -X POST $VO/api/tasks/<KEY>/finish -d '{"agentId":"tech-pm","result":"<one line>","deliverable":{"type":"prd","title":"...","content":"<markdown>"}}'`. A card someone delegated to you goes to review; a card you own goes to done. Reviewing a card you delegated: finish that card with `"column":"done"`, or `"column":"in_progress"` and what is missing in `"note"`.
+- Long text (a contract, review notes): write the JSON body to a file and send it with `-d @file.json`.
 Edge cases (no card yet, key rules, server down): `.agents/skills/kanban-handoff/SKILL.md`.
 
 **You read:** The user's request, as the requirement card the portal registered (or register it first).
@@ -46,6 +47,7 @@ Start each command with `VO=$(cat .agents/portal-url 2>/dev/null || echo http://
 - Thread: `curl -s -X POST "$VO/api/tasks/<KEY>/thread?format=brief" -d '{"agentId":"web-tech-lead","kind":"decision","text":"..."}'` (kind: question, answer, decision, update; add "to":"<agentId>" to address someone).
 - Hand on: list keys with `curl -s "$VO/api/tasks?format=brief"` and use the next number, then `curl -s -X POST "$VO/api/tasks/register?format=brief" -d '{"tasks":[{"key":"<PREFIX-N>","parentKey":"<your KEY>","title":"...","brief":"<written for the assignee>","acceptanceCriteria":["..."],"context":{"files":["..."],"decisions":["..."]},"dependsOn":[],"assignedTo":"web-dev","delegatedBy":"web-tech-lead","skill":"<one of its skills>","column":"assigned"}]}'`.
 - Finish (deliverable, result and move in one call): `curl -s -X POST $VO/api/tasks/<KEY>/finish -d '{"agentId":"web-tech-lead","result":"<one line>","deliverable":{"type":"architecture","title":"...","content":"<markdown>"}}'`. A card someone delegated to you goes to review; a card you own goes to done. Reviewing a card you delegated: finish that card with `"column":"done"`, or `"column":"in_progress"` and what is missing in `"note"` (deliverable type `code_review`).
+- Long text (a contract, review notes): write the JSON body to a file and send it with `-d @file.json`.
 Edge cases (no card yet, key rules, server down): `.agents/skills/kanban-handoff/SKILL.md`.
 
 **You read:** Its card: the product brief, acceptance criteria, context and thread.
@@ -79,6 +81,7 @@ Start each command with `VO=$(cat .agents/portal-url 2>/dev/null || echo http://
 - Start your card: `curl -s -X POST $VO/api/tasks/<KEY>/start -d '{"agentId":"web-dev"}'`. It moves the card to in_progress and prints it (brief, criteria, context, latest thread). Re-read later with `curl -s "$VO/api/tasks/<KEY>?format=brief"`; the full thread is `?format=md`.
 - Thread: `curl -s -X POST "$VO/api/tasks/<KEY>/thread?format=brief" -d '{"agentId":"web-dev","kind":"decision","text":"..."}'` (kind: question, answer, decision, update; add "to":"<agentId>" to address someone).
 - Finish (deliverable, result and move in one call): `curl -s -X POST $VO/api/tasks/<KEY>/finish -d '{"agentId":"web-dev","result":"<one line>","deliverable":{"type":"source_code","title":"...","content":"<markdown>"}}'`. A card someone delegated to you goes to review; a card you own goes to done.
+- Long text (a contract, review notes): write the JSON body to a file and send it with `-d @file.json`.
 Edge cases (no card yet, key rules, server down): `.agents/skills/kanban-handoff/SKILL.md`.
 
 **You read:** Its card: the technical contract, acceptance criteria, context files and thread. Asks on the thread when anything is unclear.

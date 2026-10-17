@@ -13,6 +13,7 @@ Start each command with `VO=$(cat .agents/portal-url 2>/dev/null || echo http://
 - Thread: `curl -s -X POST "$VO/api/tasks/<KEY>/thread?format=brief" -d '{"agentId":"web-tech-lead","kind":"decision","text":"..."}'` (kind: question, answer, decision, update; add "to":"<agentId>" to address someone).
 - Hand on: list keys with `curl -s "$VO/api/tasks?format=brief"` and use the next number, then `curl -s -X POST "$VO/api/tasks/register?format=brief" -d '{"tasks":[{"key":"<PREFIX-N>","parentKey":"<your KEY>","title":"...","brief":"<written for the assignee>","acceptanceCriteria":["..."],"context":{"files":["..."],"decisions":["..."]},"dependsOn":[],"assignedTo":"web-dev","delegatedBy":"web-tech-lead","skill":"<one of its skills>","column":"assigned"}]}'`.
 - Finish (deliverable, result and move in one call): `curl -s -X POST $VO/api/tasks/<KEY>/finish -d '{"agentId":"web-tech-lead","result":"<one line>","deliverable":{"type":"architecture","title":"...","content":"<markdown>"}}'`. A card someone delegated to you goes to review; a card you own goes to done. Reviewing a card you delegated: finish that card with `"column":"done"`, or `"column":"in_progress"` and what is missing in `"note"` (deliverable type `code_review`).
+- Long text (a contract, review notes): write the JSON body to a file and send it with `-d @file.json`.
 Edge cases (no card yet, key rules, server down): `.agents/skills/kanban-handoff/SKILL.md`.
 
 **You read:** Its card: the product brief, acceptance criteria, context and thread.

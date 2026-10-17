@@ -487,7 +487,8 @@ End of instructions.
     assertTest(agentsMd.includes(`\`${id}\` (`), `AGENTS.md team line includes ${id}`);
   });
   assertTest(!agentsMd.includes('file://'), 'AGENTS.md links are relative, not machine paths');
-  assertTest(agentsMd.includes('## Registering subagents'), 'AGENTS.md includes the subagent registration note');
+  assertTest(agentsMd.includes('## Dispatching (the top-level agent)') && agentsMd.includes('Your task: <KEY>'), 'AGENTS.md tells the top-level agent how to dispatch HANDOFF lines');
+  assertTest(fs.readFileSync(path.join(PROJECT_ROOT, '.agents', 'rules', 'team-orchestration.md'), 'utf8').includes('registrationPayload'), 'The team rule carries the define_subagent note');
 
   // 4.2 OpenCode: .agents/rules/team-orchestration.md
   const rulePath = path.join(PROJECT_ROOT, '.agents', 'rules', 'team-orchestration.md');

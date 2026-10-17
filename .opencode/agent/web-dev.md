@@ -11,6 +11,7 @@ Start each command with `VO=$(cat .agents/portal-url 2>/dev/null || echo http://
 - Start your card: `curl -s -X POST $VO/api/tasks/<KEY>/start -d '{"agentId":"web-dev"}'`. It moves the card to in_progress and prints it (brief, criteria, context, latest thread). Re-read later with `curl -s "$VO/api/tasks/<KEY>?format=brief"`; the full thread is `?format=md`.
 - Thread: `curl -s -X POST "$VO/api/tasks/<KEY>/thread?format=brief" -d '{"agentId":"web-dev","kind":"decision","text":"..."}'` (kind: question, answer, decision, update; add "to":"<agentId>" to address someone).
 - Finish (deliverable, result and move in one call): `curl -s -X POST $VO/api/tasks/<KEY>/finish -d '{"agentId":"web-dev","result":"<one line>","deliverable":{"type":"source_code","title":"...","content":"<markdown>"}}'`. A card someone delegated to you goes to review; a card you own goes to done.
+- Long text (a contract, review notes): write the JSON body to a file and send it with `-d @file.json`.
 Edge cases (no card yet, key rules, server down): `.agents/skills/kanban-handoff/SKILL.md`.
 
 **You read:** Its card: the technical contract, acceptance criteria, context files and thread. Asks on the thread when anything is unclear.
@@ -20,7 +21,7 @@ Edge cases (no card yet, key rules, server down): `.agents/skills/kanban-handoff
 **Deliverable** (in the finish call): `source_code`: what changed and why, every changed file (also in `metadata.files`), how each acceptance criterion is met, how you tested.
 
 ## Handing work back
-Finishing your card in `review` returns it to its delegator.
+Finishing your card in `review` returns it to its delegator: end your reply with `HANDOFF <your KEY> -> <delegatedBy>` (skip it for a card you delegated to yourself).
 
 ## Never
 - No breaking architectural contracts

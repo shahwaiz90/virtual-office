@@ -66,7 +66,7 @@ VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s 
 - Cards move only through the board API; edits, commands and words in your reply never move them.
 - Finishing again with the same deliverable `type` updates it. The server links it to the card, sprint and delegator.
 - A requirement closes by itself once all its sub-tasks are done, and a card waiting in `review` closes once all its own sub-tasks are done.
-- The older calls still work: `POST /api/tasks/<KEY>/status` (`column`, `note`, `result`) and `POST /api/deliverables` (`taskKey`, `type`, `title`, `content`).
+- The older calls still work: `POST /api/tasks/<KEY>/status` (`column`, `note`, `result`) and `POST /api/deliverables` (`taskKey`, `type`, `title`, `content`). Board replies are short; `?format=full` returns the whole card or office state.
 
 ## 5. Hand back up
 Finishing in `review` hands the card to its delegator. A Claude Code subagent cannot start another subagent, so it ends its reply with:
