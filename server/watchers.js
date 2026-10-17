@@ -1573,12 +1573,33 @@ function attachTranscriptTail(filePath, options = {}) {
   }
 }
 
+/** Time (ms) of a transcript's first timestamped entry, or 0 when unknown. Reads at most 64KB. */
+function firstEntryTime(filePath) {
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(64 * 1024);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    fs.closeSync(fd);
+    for (const line of buf.subarray(0, n).toString('utf8').split('\n')) {
+      try {
+        const entry = JSON.parse(line);
+        const ts = Date.parse(entry.timestamp || entry.created_at || '');
+        if (Number.isFinite(ts)) return ts;
+      } catch (e) {} // partial last line or non-JSON
+    }
+  } catch (e) {}
+  return 0;
+}
+
 function attachTailState(filePath, convId, format, agentType = null) {
   try {
     const stats = fs.statSync(filePath);
-    // Start tailing from recent bytes to catch active turns (last 20KB),
-    // or from the current end of file if office state was cleared/reset.
-    const initialOffset = eventBus.clearedAt ? stats.size : Math.max(0, stats.size - 20000);
+    // A session that began after the last reset (server start or Clear) is read from its first line:
+    // it is noticed a few seconds after its first prompt, which must still become its card.
+    // Older files start at their end (after a reset) or their last 20KB, so history is not replayed.
+    let initialOffset;
+    if (!eventBus.clearedAt) initialOffset = Math.max(0, stats.size - 20000);
+    else initialOffset = firstEntryTime(filePath) >= eventBus.clearedAt ? 0 : stats.size;
     const state = {
       filePath,
       convId,
@@ -1711,7 +1732,7 @@ function handleConversationSteps(steps, state) {
       state.promptTaskId = followUpCard.id;
     } else if (step.type === 'USER_INPUT') {
       const prompt = step.turn.prompt;
-      const firstLine = prompt.split('\n').map((l) => l.trim()).filter(Boolean)[0] || prompt;
+      const firstLine = promptTitle(prompt);
       const task = registerRealAgentTask({
         id: promptCardId,
         // The user's request, owned by the orchestrator, who breaks it into role-specific task cards
@@ -1851,6 +1872,19 @@ function handleOpenCodeMessage(message, state) {
     for (const step of steps) step.actorAgentId = message.agent;
   }
   handleConversationSteps(steps, state);
+}
+
+/**
+ * Card title for a prompt: its first real line. Header-only lines such as "Background:" or
+ * "Task (from the session that started this one):" are skipped, and the line after a "Task:" header wins.
+ */
+function promptTitle(prompt) {
+  const lines = String(prompt || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const isHeader = (l) => /^[A-Za-z][\w -]{0,40}(\s*\([^)]*\))?:$/.test(l);
+  for (let i = 0; i < lines.length - 1; i++) {
+    if (isHeader(lines[i]) && /^(task|request)\b/i.test(lines[i]) && !isHeader(lines[i + 1])) return lines[i + 1];
+  }
+  return lines.find((l) => !isHeader(l)) || lines[0] || String(prompt || '');
 }
 
 /** The requirement card a Claude Code conversation started on the active board (its latest one). */
@@ -2018,7 +2052,7 @@ function parseTranscriptStep(step, convId = '') {
     promptText = promptText.replace(/<\/?(?:ADDITIONAL_CONTEXT|CONTEXT_SUMMARY|TASK_INSTRUCTIONS)[^>]*>/gi, '').trim();
 
     if (promptText && promptText.length > 2) {
-      const firstLine = promptText.split('\n').map((s) => s.trim()).filter(Boolean)[0] || promptText;
+      const firstLine = promptTitle(promptText);
       const displayTitle = firstLine.length > 60 ? firstLine.slice(0, 57) + '...' : firstLine;
 
       // New requests join the active sprint; a new sprint starts only when the user starts one
@@ -2560,6 +2594,7 @@ module.exports = {
   handleWorkspaceFileChange,
   parseTranscriptStep,
   handleClaudeEntry,
+  attachTranscriptTail,
   attachOpenCodeSessions,
   readOpenCodeActivity,
   getResolvedAgent,
