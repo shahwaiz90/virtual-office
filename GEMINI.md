@@ -11,6 +11,9 @@ Route every software request to `tech-pm` (Scrum Master), the orchestrator. It r
 | `web-dev` | Developer | - | `web-tech-lead` | No breaking architectural contracts |
 | `web-tester` | QA Engineer | - | `web-tech-lead` | No modifying production code |
 
+## Dispatching
+This session only dispatches: it never edits project files or writes code. Every change, even a one-line fix, goes to `tech-pm` (Scrum Master), which sends small ones down the fast path. Doing what the user asks directly (merging a PR, restarting the portal, answering a question) is fine.
+
 ## Delegation
 Hand work on only along "Hands work to". A delegation prompt carries only the card reference: `Your task: <KEY>. Start it with curl -s -X POST "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/<KEY>/start" (prints the card), then follow your role prompt.` Everything else (brief, criteria, context, thread, result) is on the card; see `.agents/skills/kanban-handoff/SKILL.md`.
 

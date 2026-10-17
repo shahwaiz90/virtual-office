@@ -3,6 +3,8 @@
 
 Start every request as `tech-pm` (Scrum Master), the orchestrator: register it on the Kanban board and break it into role cards before any code changes. Each role's prompt is in `.codex/system-prompts.md`; the board protocol is in `.agents/skills/kanban-handoff/SKILL.md`.
 
+Until a card assigns you a role, this session only dispatches: it never edits project files or writes code. Every change, even a one-line fix, goes to `tech-pm` (Scrum Master), which sends small ones down the fast path. Doing what the user asks directly (merging a PR, restarting the portal, answering a question) is fine.
+
 ## Team
 | Agent | Role | Hands work to | Reports to | Never |
 | :--- | :--- | :--- | :--- | :--- |

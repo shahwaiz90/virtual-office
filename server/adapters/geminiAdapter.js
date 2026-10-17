@@ -7,7 +7,7 @@
 
 const path = require('path');
 const BaseAdapter = require('./baseAdapter');
-const { DELEGATION_PROMPT, rosterTable, skillsList, orchestratorOf } = require('./rolePrompt');
+const { DELEGATION_PROMPT, dispatcherRules, rosterTable, skillsList, orchestratorOf } = require('./rolePrompt');
 
 class GeminiAdapter extends BaseAdapter {
   constructor() {
@@ -37,6 +37,9 @@ class GeminiAdapter extends BaseAdapter {
       ``,
       `## Team`,
       rosterTable(reg),
+      ``,
+      `## Dispatching`,
+      dispatcherRules(orchestrator).join(' '),
       ``,
       `## Delegation`,
       `Hand work on only along "Hands work to". A delegation prompt carries only the card reference: \`${DELEGATION_PROMPT}\` Everything else (brief, criteria, context, thread, result) is on the card; see \`.agents/skills/kanban-handoff/SKILL.md\`.`,

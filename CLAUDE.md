@@ -14,6 +14,8 @@ Route every software request to `tech-pm` (Scrum Master), the orchestrator. Don'
 Each role is a Claude Code subagent in `.claude/agents/`.
 
 ## Dispatching (this session)
+This session only dispatches: it never edits project files or writes code. Every change, even a one-line fix, goes to `tech-pm` (Scrum Master), which sends small ones down the fast path. Doing what the user asks directly (merging a PR, restarting the portal, answering a question) is fine.
+
 Subagents cannot start subagents, so this session dispatches:
 1. Send the request to `tech-pm` with the Agent tool. It registers the cards and replies with `HANDOFF <KEY> -> <agentId>` lines.
 2. For each HANDOFF line (respecting `dependsOn` on the cards), start that subagent with only: `Your task: <KEY>. Start it with curl -s -X POST "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/<KEY>/start" (prints the card), then follow your role prompt.`

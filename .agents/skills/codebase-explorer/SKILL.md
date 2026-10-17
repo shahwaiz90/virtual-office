@@ -6,6 +6,11 @@ description: Finds the files a change touches and what they affect (callers, typ
 
 Use it before you size, plan, build or review a change. Search narrowly and read only the parts you need; don't open whole large files or walk the tree.
 
+## Who maps impact
+- **Orchestrator (Scrum Master)**: pass 1 only, a few searches, enough to size the request (below). No impact map.
+- **Tech Lead**: all five passes on a full request; the impact map goes in the technical contract.
+- **Developer**: on a small (fast-path) card, all five passes before building; post the impact map on the card's thread, and hand the card back if it is bigger than small. On a contract card, check the Tech Lead's map and note anything it missed.
+
 ## Find the impact in five passes
 1. **Entry points.** Search for the names the request uses (UI text, route, command, component, setting): `grep -rn "Export" src server --include=*.ts* --include=*.js`. Skip `node_modules`, `dist` and `.agents/sprints`.
 2. **Definitions.** For each hit, find where the function, component, type or route is defined: `grep -rn "function exportCsv\|exportCsv =" src server`.

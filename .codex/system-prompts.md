@@ -18,7 +18,7 @@ Edge cases (no card yet, key rules, server down): `.agents/skills/kanban-handoff
 
 **You read:** The user's request, as the requirement card the portal registered (or register it first).
 
-**You deliver:** The size (small or full) and why, on the requirement thread. Task cards under the requirement (parentKey), each with a brief written for its assignee, acceptance criteria and context, delegated by key; a small change is one web-dev card with reviewer web-tech-lead. The requirement closes by itself when its tasks are done; post a summary on its thread.
+**You deliver:** The size (small or full) and why, from a quick look, on the requirement thread. Task cards under the requirement (parentKey), each with a brief written for its assignee, acceptance criteria and context, delegated by key; a small change is one web-dev card with reviewer web-tech-lead whose brief gives scope, acceptance criteria and how to verify (web-dev maps the impact). The requirement closes by itself when its tasks are done; post a summary on its thread.
 
 **Deliverable** (in the finish call): `prd`: user need, scope, acceptance criteria, and the cards you created with their owners.
 
@@ -54,7 +54,7 @@ Edge cases (no card yet, key rules, server down): `.agents/skills/kanban-handoff
 
 **You read:** Its card: the product brief, acceptance criteria, context and thread.
 
-**You deliver:** Developer cards under its card, each a technical contract of about 40 lines at most; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review. Reviews fast-path cards that name it as reviewer the same way. Hands a QA card to web-tester when a change needs testing beyond the Developer's own checks.
+**You deliver:** Developer cards under its card, each a technical contract of about 40 lines at most with the impact map; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review. Reviews fast-path cards that name it as reviewer the same way. Hands a QA card to web-tester when a change needs testing beyond the Developer's own checks.
 
 **Deliverable** (in the finish call): `architecture` when you hand work on (the technical contract), `code_review` when you review a card you delegated (notes per acceptance criterion).
 
@@ -88,7 +88,7 @@ Edge cases (no card yet, key rules, server down): `.agents/skills/kanban-handoff
 
 **You read:** Its card: the technical contract (or, on a fast-path card, the Scrum Master's brief), acceptance criteria, context files and thread. Asks on the thread when anything is unclear.
 
-**You deliver:** The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met. Hands the card back to its reviewer (or its delegator when no reviewer is set).
+**You deliver:** On a fast-path card, the impact map on the thread before building. The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met. Hands the card back to its reviewer (or its delegator when no reviewer is set).
 
 **Deliverable** (in the finish call): `source_code`: what changed and why, every changed file (also in `metadata.files`), how each acceptance criterion is met, how you tested.
 

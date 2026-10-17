@@ -12,6 +12,19 @@ function orchestratorOf(registry) {
   return agents.find((a) => a.id === (registry.orchestrator || '')) || agents.find((a) => a.is_primary) || agents[0];
 }
 
+/**
+ * What the dispatching session (the main Claude Code session, the top-level OpenCode agent, a
+ * Gemini or Codex session before it takes a role) may and may not do. One source for every adapter.
+ * `subject` names that session in the first line.
+ */
+function dispatcherRules(orchestrator, { subject = 'This session' } = {}) {
+  return [
+    `${subject} only dispatches: it never edits project files or writes code.`,
+    `Every change, even a one-line fix, goes to \`${orchestrator.id}\` (${orchestrator.name}), which sends small ones down the fast path.`,
+    'Doing what the user asks directly (merging a PR, restarting the portal, answering a question) is fine.',
+  ];
+}
+
 function reportsToOf(agent, orchestrator) {
   if (agent.reportsTo) return agent.reportsTo;
   return agent.id === orchestrator.id ? 'user' : orchestrator.id;
@@ -165,4 +178,4 @@ function rolePrompt(agent, registry, { dispatch = 'handoff-lines' } = {}) {
   return lines.join('\n');
 }
 
-module.exports = { rolePrompt, DELEGATION_PROMPT, boardQuickReference, rosterTable, skillsList, deliverableFor, orchestratorOf, reportsToOf, delegatesOf, toolsOf, skillPath };
+module.exports = { rolePrompt, DELEGATION_PROMPT, dispatcherRules, boardQuickReference, rosterTable, skillsList, deliverableFor, orchestratorOf, reportsToOf, delegatesOf, toolsOf, skillPath };
