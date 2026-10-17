@@ -4,6 +4,9 @@
 
 ### Fixed
 - **OpenCode activity now shows in the portal.** Sessions are read from OpenCode's own database (`opencode.db`), for both OpenCode 2 (`session_v2` / `session_message`) and 1.x (`session` / `message` / `part`), from the TUI or `opencode run`. Each conversation gets one card, with tool calls, commands, file edits and token usage on the activity log; subagent work is credited to its role. Needs Node 22.13+ (built-in SQLite) or the `sqlite3` command.
+- **Roles show as active while OpenCode works.** From the prompt until the turn ends (waiting for the model, thinking, between tool steps) the role is working on the floor plan and its time is logged.
+- Time already worked was dropped when a role switched to another task; it is now kept.
+- Every role is generated as an OpenCode agent (`.opencode/agent/<id>.md`), so OpenCode runs the real roles and their work is credited to them.
 
 ### Removed
 - The bundled OpenCode plugin. Nothing installed it, and OpenCode 2 rejects plugins in its format (and gives plugins no tool events).
