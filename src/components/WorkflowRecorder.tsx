@@ -366,17 +366,18 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
       <div className="relative inline-flex items-center">
         {!isRecording ? (
           <button
+            type="button"
             onClick={() => setShowSourceModal(true)}
             title="Record Workflow"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-surface border border-sand-200/90 hover:bg-sand-50 text-xs font-bold text-sand-700 hover:text-sand-900 transition-all shadow-xs active:scale-95 cursor-pointer"
+            aria-label="Record workflow"
+            className="flex items-center justify-center gap-1.5 w-10 h-10 md:w-auto md:h-auto px-0 md:px-3 py-0 md:py-1.5 rounded-xl bg-surface border border-sand-200/90 hover:bg-sand-50 text-xs font-bold text-sand-700 hover:text-sand-900 transition-all shadow-xs active:scale-95 cursor-pointer"
           >
-            <Video className="w-3.5 h-3.5 text-rose-600" />
-            <span className="hidden sm:inline">Record Workflow</span>
-            <span className="sm:hidden text-xs">Record</span>
+            <Video className="w-3.5 h-3.5 text-rose-600" aria-hidden="true" />
+            <span className="hidden xl:inline">Record Workflow</span>
           </button>
         ) : (
           /* Active Recording State Button with Live Timer */
-          <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 shadow-sm">
+          <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 rounded-xl pl-2.5 pr-0 md:px-3 py-0 md:py-1.5 shadow-sm">
             <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-pulse shrink-0" />
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-black text-rose-700 font-mono">
@@ -385,11 +386,13 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
             </div>
 
             <button
+              type="button"
               onClick={stopRecording}
-              className="ml-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
+              aria-label="Stop and save recording"
+              className="md:ml-2 flex items-center justify-center gap-1.5 w-10 h-10 md:w-auto md:h-auto md:px-2.5 md:py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
             >
-              <Square className="w-3 h-3 fill-current" />
-              <span>Stop & Save</span>
+              <Square className="w-3 h-3 fill-current" aria-hidden="true" />
+              <span className="hidden xl:inline">Stop & Save</span>
             </button>
           </div>
         )}
