@@ -1,0 +1,1009 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Virtual Office turns the hidden work of AI coding agents into an office you can see.">
+<title>Virtual Office</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: an after-hours engineering floor seen from above — a live floor plan stage, then calm bands that unpack it. */
+:root {
+  --bg:#0d1220; --bg2:#111829; --panel:#161f33; --panel2:#1c2740;
+  --line:#283550; --line2:#3a4a6b;
+  --fg:#e9edf6; --muted:#9aa6bf; --faint:#66738f;
+  --lamp:#f4ae47; --lamp-soft:rgba(244,174,71,.15); --on-lamp:#1d1405;
+  --sky:#7cc2ff; --mint:#5ccf9f; --rose:#ff8496;
+  --floor:#10192a; --grid:#1d2840; --wall:#41537a; --desk:#1b2741;
+  --shadow:0 24px 60px -24px rgba(0,0,0,.7);
+  --f-display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body:"Instrument Sans", "Helvetica Neue", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg:#f2f4f9; --bg2:#e9edf5; --panel:#ffffff; --panel2:#f5f7fb;
+  --line:#d6dceb; --line2:#b6c1d8;
+  --fg:#121a2c; --muted:#4d5973; --faint:#7d89a3;
+  --lamp:#b5690a; --lamp-soft:rgba(181,105,10,.12); --on-lamp:#ffffff;
+  --sky:#1b6ec0; --mint:#0f8257; --rose:#c43a4f;
+  --floor:#f8fafd; --grid:#dfe5f0; --wall:#8a99b8; --desk:#e5eaf4;
+  --shadow:0 24px 60px -28px rgba(30,45,80,.35);
+  color-scheme: light;
+} }
+:root[data-theme="light"] {
+  --bg:#f2f4f9; --bg2:#e9edf5; --panel:#ffffff; --panel2:#f5f7fb;
+  --line:#d6dceb; --line2:#b6c1d8;
+  --fg:#121a2c; --muted:#4d5973; --faint:#7d89a3;
+  --lamp:#b5690a; --lamp-soft:rgba(181,105,10,.12); --on-lamp:#ffffff;
+  --sky:#1b6ec0; --mint:#0f8257; --rose:#c43a4f;
+  --floor:#f8fafd; --grid:#dfe5f0; --wall:#8a99b8; --desk:#e5eaf4;
+  --shadow:0 24px 60px -28px rgba(30,45,80,.35);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--fg); font: 16px/1.6 var(--f-body); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: -0.02em; line-height: 1.05; }
+h2 { font-size: clamp(2rem, 4.2vw, 3.1rem); font-weight: 800; }
+h3 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
+p { margin: 0; }
+a { color: inherit; }
+code, .mono { font-family: var(--f-mono); }
+.eyebrow { font: 500 .75rem/1 var(--f-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--lamp); }
+.lede { color: var(--muted); font-size: 1.125rem; max-width: 60ch; }
+:focus-visible { outline: 2px solid var(--lamp); outline-offset: 3px; border-radius: 6px; }
+
+/* ---------- nav ---------- */
+.nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+.nav .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; font: 700 1.05rem var(--f-display); text-decoration: none; }
+.brand-mark { width: 26px; height: 26px; border-radius: 7px; background: var(--panel2); border: 1px solid var(--line2); display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 4px; }
+.brand-mark i { background: var(--line2); border-radius: 2px; }
+.brand-mark i:nth-child(1) { background: var(--lamp); }
+.brand-mark i:nth-child(4) { background: var(--sky); }
+.nav-links { display: flex; gap: 22px; font-size: .9rem; color: var(--muted); }
+.nav-links a { text-decoration: none; }
+.nav-links a:hover { color: var(--fg); }
+@media (max-width: 720px) { .nav-links { display: none; } }
+
+/* ---------- hero ---------- */
+.hero { padding-block: clamp(40px, 7vw, 84px) 28px; position: relative; }
+.hero::before { content: ""; position: absolute; inset: 0; background-image: radial-gradient(var(--grid) 1px, transparent 1px); background-size: 22px 22px; mask-image: linear-gradient(to bottom, #000 0%, transparent 85%); -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 85%); pointer-events: none; }
+.hero-top { position: relative; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 32px 56px; align-items: end; }
+.hero h1 { font-size: clamp(2.9rem, 7.4vw, 6rem); font-weight: 800; line-height: .95; letter-spacing: -0.035em; margin-top: 18px; }
+.hero h1 .lit { color: var(--lamp); position: relative; white-space: nowrap; }
+.hero h1 .lit::after { content: ""; position: absolute; left: -4%; right: -4%; bottom: -6%; height: 40%; background: radial-gradient(ellipse at center, var(--lamp-soft), transparent 70%); z-index: -1; }
+.hero-side { display: grid; gap: 22px; }
+.ctas { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 10px; font: 600 .95rem var(--f-body); text-decoration: none; border: 1px solid transparent; cursor: pointer; transition: transform .15s ease, background .15s ease; }
+.btn:hover { transform: translateY(-1px); }
+.btn-primary { background: var(--lamp); color: var(--on-lamp); }
+.cmd { display: inline-flex; align-items: center; gap: 10px; padding: 11px 12px 11px 16px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line2); font: 500 .9rem var(--f-mono); color: var(--fg); cursor: pointer; }
+.cmd .p { color: var(--lamp); }
+.cmd .copy { font: 500 .72rem var(--f-mono); color: var(--muted); border: 1px solid var(--line2); border-radius: 6px; padding: 3px 7px; }
+.cmd:hover .copy { color: var(--fg); }
+
+/* stage = the portal window */
+.stage { position: relative; margin-top: clamp(32px, 5vw, 56px); border: 1px solid var(--line2); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow); overflow: hidden; }
+.stage-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel2); font: 500 .75rem var(--f-mono); color: var(--muted); flex-wrap: wrap; }
+.dots { display: flex; gap: 6px; }
+.dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line2); }
+.url { flex: 1; min-width: 0; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live { display: inline-flex; align-items: center; gap: 6px; color: var(--mint); }
+.live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 0 var(--mint); animation: ping 1.8s infinite; }
+@keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--mint) 60%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
+.stage-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); }
+.floor { position: relative; border-right: 1px solid var(--line); background: var(--floor); }
+.floor canvas { display: block; width: 100%; height: auto; aspect-ratio: 720 / 430; }
+.side { display: grid; grid-template-rows: auto 1fr; min-width: 0; }
+.panel-h { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 14px 8px; font: 500 .7rem var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+.board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 0 10px 12px; }
+.col { min-width: 0; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 6px; min-height: 196px; display: flex; flex-direction: column; gap: 6px; }
+.col-h { display: flex; justify-content: space-between; font: 500 .62rem var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 2px 3px 4px; }
+.col-h b { font-weight: 500; color: var(--faint); font-variant-numeric: tabular-nums; }
+.card { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--c, var(--line2)); border-radius: 7px; padding: 6px 7px; font-size: .72rem; line-height: 1.3; will-change: transform; }
+.card .k { display: flex; justify-content: space-between; align-items: center; gap: 4px; font: 500 .62rem var(--f-mono); color: var(--muted); }
+.card .k img { width: 16px; height: 16px; border-radius: 50%; background: var(--panel2); }
+.card .t { margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.card.req { --c: var(--lamp); }
+.log { border-top: 1px solid var(--line); padding: 10px 14px 12px; font: 400 .72rem/1.65 var(--f-mono); color: var(--muted); height: 158px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
+.log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: slidein .35s ease both; }
+.log .ts { color: var(--faint); }
+.log .who { display: inline-block; min-width: 13ch; }
+.log .handoff { color: var(--sky); }
+.log .ok { color: var(--mint); }
+@keyframes slidein { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.stage-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 9px 14px; border-top: 1px solid var(--line); font: 400 .7rem var(--f-mono); color: var(--faint); background: var(--panel2); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; }
+.legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--c); vertical-align: 0; }
+@media (max-width: 920px) {
+  .hero-top { grid-template-columns: 1fr; }
+  .stage-grid { grid-template-columns: 1fr; }
+  .floor { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+@media (max-width: 520px) {
+  .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .col { min-height: 120px; }
+}
+
+/* ---------- sections ---------- */
+section { padding-block: clamp(64px, 9vw, 120px); }
+.band { background: var(--bg2); border-block: 1px solid var(--line); }
+.sec-head { display: grid; gap: 16px; margin-bottom: clamp(32px, 5vw, 56px); max-width: 760px; }
+
+/* problem */
+.problem { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 72px); align-items: center; }
+.raw { position: relative; height: 300px; overflow: hidden; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); font: 400 .7rem/1.7 var(--f-mono); color: var(--faint); padding: 14px 16px; }
+.raw::after { content: ""; position: absolute; inset: 0; background: linear-gradient(var(--panel), transparent 25%, transparent 70%, var(--panel)); pointer-events: none; }
+.raw-inner { animation: scrollraw 38s linear infinite; }
+.raw-inner div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@keyframes scrollraw { to { transform: translateY(-50%); } }
+.problem-copy { display: grid; gap: 18px; }
+.problem-copy p.big { font: 700 clamp(1.5rem, 2.8vw, 2.1rem)/1.2 var(--f-display); letter-spacing: -0.015em; text-wrap: balance; }
+.problem-copy p.big em { font-style: normal; color: var(--lamp); }
+@media (max-width: 820px) { .problem { grid-template-columns: 1fr; } .raw { height: 220px; } }
+
+/* flow stepper */
+.steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; position: relative; }
+.step { all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 10px; padding: 14px 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); position: relative; overflow: hidden; transition: border-color .2s, background .2s; }
+.step:hover { border-color: var(--line2); }
+.step:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+.step[aria-selected="true"] { border-color: var(--lamp); background: color-mix(in srgb, var(--lamp) 7%, var(--panel)); }
+.step .n { font: 500 .7rem var(--f-mono); color: var(--faint); }
+.step[aria-selected="true"] .n { color: var(--lamp); }
+.step .s-t { font: 700 1.05rem var(--f-display); }
+.step .s-w { display: flex; align-items: center; gap: 8px; font: 400 .72rem var(--f-mono); color: var(--muted); }
+.step .s-w img, .step .s-w .you { width: 22px; height: 22px; border-radius: 50%; background: var(--panel2); flex: none; }
+.step .s-w .you { display: grid; place-items: center; font: 600 .6rem var(--f-mono); color: var(--fg); border: 1px solid var(--line2); }
+.step .bar { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--lamp); transform-origin: left; transform: scaleX(0); }
+.step[aria-selected="true"] .bar.run { animation: fill var(--dur, 5s) linear forwards; }
+@keyframes fill { to { transform: scaleX(1); } }
+.step-detail { margin-top: 14px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.sd-copy { padding: clamp(20px, 3vw, 32px); display: grid; gap: 12px; align-content: start; }
+.sd-copy p { color: var(--muted); max-width: 52ch; }
+.sd-code { margin: 0; padding: clamp(20px, 3vw, 32px); background: var(--panel2); border-left: 1px solid var(--line); font: 400 .8rem/1.75 var(--f-mono); color: var(--fg); overflow-x: auto; white-space: pre; min-width: 0; }
+.sd-code .c { color: var(--faint); }
+.sd-code .h { color: var(--sky); }
+.sd-code .g { color: var(--mint); }
+.sd-code .a { color: var(--lamp); }
+.fade-in { animation: slidein .4s ease both; }
+@media (max-width: 860px) {
+  .steps { grid-template-columns: repeat(5, minmax(150px, 1fr)); overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x mandatory; }
+  .step { scroll-snap-align: start; }
+  .step-detail { grid-template-columns: 1fr; }
+  .sd-code { border-left: 0; border-top: 1px solid var(--line); }
+}
+
+/* views */
+.views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.view { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); overflow: hidden; display: grid; grid-template-rows: auto 1fr auto; min-width: 0; }
+.view-copy { padding: 22px 22px 6px; display: grid; gap: 8px; }
+.view-copy p { color: var(--muted); font-size: .95rem; }
+.view-vis { padding: 18px 22px; min-height: 210px; display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.view-foot { padding: 10px 22px; border-top: 1px solid var(--line); font: 400 .68rem var(--f-mono); color: var(--faint); }
+@media (max-width: 820px) { .views { grid-template-columns: 1fr; } }
+
+.chat { display: grid; gap: 10px; }
+.msg { display: flex; gap: 10px; align-items: flex-start; max-width: 92%; }
+.msg img { width: 28px; height: 28px; border-radius: 50%; background: var(--panel2); flex: none; }
+.msg .b { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px 12px 12px 12px; padding: 8px 11px; font-size: .82rem; line-height: 1.4; min-width: 0; }
+.msg .b small { display: block; font: 500 .64rem var(--f-mono); color: var(--faint); margin-bottom: 2px; }
+.msg.r { justify-self: end; flex-direction: row-reverse; }
+.msg.r .b { border-radius: 12px 4px 12px 12px; }
+.msg .b .hk { font-family: var(--f-mono); color: var(--sky); font-size: .76rem; }
+.chat .msg { opacity: 0; transform: translateY(6px); transition: opacity .4s, transform .4s; }
+.chat .msg.on { opacity: 1; transform: none; }
+
+.bars { display: grid; gap: 9px; }
+.bar-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) 34px; gap: 10px; align-items: center; font: 400 .74rem var(--f-mono); color: var(--muted); }
+.bar-row .tr { height: 14px; border-radius: 4px; background: var(--panel2); overflow: hidden; }
+.bar-row .fl { height: 100%; width: var(--w); background: var(--c, var(--sky)); border-radius: 4px; transform-origin: left; }
+.play .bar-row .fl { animation: grow 1.1s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i) * 90ms); }
+.bar-row .v { text-align: right; color: var(--fg); font-variant-numeric: tabular-nums; }
+@keyframes grow { from { transform: scaleX(0); } }
+
+.diff { font: 400 .74rem/1.7 var(--f-mono); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel2); }
+.diff-h { display: flex; justify-content: space-between; padding: 7px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: .68rem; gap: 8px; }
+.diff-h b { font-weight: 500; }
+.diff-h .add { color: var(--mint); } .diff-h .del { color: var(--rose); }
+.diff-body { padding: 6px 0; overflow-x: auto; }
+.dl { padding: 0 12px; white-space: pre; }
+.dl.p { background: color-mix(in srgb, var(--mint) 12%, transparent); color: var(--fg); }
+.dl.m { background: color-mix(in srgb, var(--rose) 12%, transparent); color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--rose) 50%, transparent); }
+.dl .g { color: var(--faint); display: inline-block; width: 2ch; }
+.caret::after { content: "▍"; color: var(--lamp); animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+.meters { display: grid; gap: 12px; }
+.meter { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.meter img { width: 34px; height: 34px; border-radius: 50%; background: var(--panel2); }
+.meter .nm { font: 600 .85rem var(--f-body); }
+.meter .st { font: 400 .68rem var(--f-mono); color: var(--faint); }
+.meter .num { text-align: right; font: 500 .8rem var(--f-mono); font-variant-numeric: tabular-nums; }
+.meter .num small { display: block; color: var(--faint); font-size: .66rem; }
+.meter .spark { grid-column: 2 / 4; height: 4px; border-radius: 2px; background: var(--panel2); overflow: hidden; }
+.meter .spark i { display: block; height: 100%; width: var(--w); background: var(--c); transition: width .8s ease; }
+
+/* sync diagram */
+.sync { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: clamp(24px, 6vw, 90px); align-items: center; }
+.sync svg.wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.wire { fill: none; stroke: var(--line2); stroke-width: 1.5; }
+.wire-flow { fill: none; stroke: var(--lamp); stroke-width: 2; stroke-dasharray: 6 22; stroke-linecap: round; animation: flow 1.6s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -28; } }
+.node { position: relative; z-index: 1; background: var(--panel); border: 1px solid var(--line2); border-radius: 14px; padding: 18px; min-width: 0; }
+.node h3 { font-size: 1.05rem; margin-bottom: 10px; }
+.files { display: grid; gap: 6px; font: 400 .76rem var(--f-mono); color: var(--muted); }
+.files div { display: flex; gap: 8px; align-items: center; min-width: 0; overflow-wrap: anywhere; }
+.files div::before { content: ""; width: 10px; height: 12px; border: 1px solid var(--line2); border-radius: 2px; flex: none; }
+.pill { position: relative; z-index: 1; padding: 12px 16px; border-radius: 999px; background: var(--lamp); color: var(--on-lamp); font: 600 .82rem var(--f-mono); white-space: nowrap; box-shadow: 0 0 0 6px var(--lamp-soft); }
+.targets { display: grid; gap: 10px; position: relative; z-index: 1; }
+.target { background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; padding: 11px 14px; display: grid; gap: 2px; min-width: 0; }
+.target b { font: 700 .95rem var(--f-display); }
+.target span { font: 400 .72rem var(--f-mono); color: var(--muted); overflow-wrap: anywhere; }
+.reads { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; font-size: .9rem; color: var(--muted); }
+.chip { font: 400 .74rem var(--f-mono); padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line2); color: var(--fg); background: var(--panel); }
+@media (max-width: 820px) {
+  .sync { grid-template-columns: 1fr; justify-items: stretch; gap: 22px; }
+  .pill { justify-self: center; }
+}
+
+/* trust */
+.trust { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(20px, 4vw, 48px); }
+.trust-item { display: grid; gap: 10px; align-content: start; }
+.trust-item svg { width: 34px; height: 34px; color: var(--lamp); }
+.trust-item p { color: var(--muted); }
+@media (max-width: 820px) { .trust { grid-template-columns: 1fr; } }
+
+/* numbers */
+.numbers { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-block: 1px solid var(--line2); }
+.num-cell { padding: 22px 14px 20px 0; display: grid; gap: 4px; min-width: 0; }
+.num-cell + .num-cell { padding-left: 16px; border-left: 1px solid var(--line); }
+.num-cell b { font: 800 clamp(2.2rem, 4.4vw, 3.4rem)/1 var(--f-display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.num-cell span { font-size: .85rem; color: var(--muted); }
+@media (max-width: 900px) { .numbers { grid-template-columns: repeat(3, minmax(0, 1fr)); } .num-cell:nth-child(4) { border-left: 0; padding-left: 0; } .num-cell:nth-child(n+4) { border-top: 1px solid var(--line); } }
+@media (max-width: 480px) { .numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); } .num-cell:nth-child(n) { border-left: 0; padding-left: 0; } .num-cell:nth-child(even) { padding-left: 14px; border-left: 1px solid var(--line); } .num-cell:nth-child(n+3) { border-top: 1px solid var(--line); } }
+.build { margin-top: 40px; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: clamp(24px, 4vw, 56px); align-items: center; }
+.chart-box { overflow-x: auto; }
+.chart-box svg { display: block; width: 100%; min-width: 460px; height: auto; }
+.chart-box text { font-family: var(--f-mono); }
+.cbar { fill: var(--line2); transform-box: fill-box; transform-origin: bottom; }
+.cbar.hi { fill: var(--lamp); }
+.play .cbar { animation: rise 1s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i) * 120ms); }
+@keyframes rise { from { transform: scaleY(0); } }
+.miles { display: grid; gap: 16px; }
+.mile { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 12px; font-size: .92rem; }
+.mile b { font: 500 .75rem var(--f-mono); color: var(--lamp); padding-top: 3px; }
+.mile span { color: var(--muted); }
+.mile strong { color: var(--fg); font-weight: 600; }
+.src { margin-top: 18px; font: 400 .7rem var(--f-mono); color: var(--faint); }
+@media (max-width: 860px) { .build { grid-template-columns: 1fr; } }
+
+/* start */
+.start { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 5vw, 72px); align-items: center; }
+.term { border: 1px solid var(--line2); border-radius: 14px; background: var(--panel); overflow: hidden; box-shadow: var(--shadow); min-width: 0; }
+.term-body { padding: 20px 22px 24px; font: 400 .85rem/1.9 var(--f-mono); overflow-x: auto; }
+.term-body .p { color: var(--lamp); }
+.term-body .o { color: var(--muted); }
+.term-body .g { color: var(--mint); }
+.how { display: grid; gap: 18px; margin-top: 26px; }
+.how li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; }
+.how ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+.how .i { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line2); display: grid; place-items: center; font: 500 .72rem var(--f-mono); color: var(--lamp); }
+.how p { color: var(--muted); }
+.how strong { color: var(--fg); font-weight: 600; }
+@media (max-width: 860px) { .start { grid-template-columns: 1fr; } }
+
+footer { border-top: 1px solid var(--line); padding-block: 28px; color: var(--faint); font-size: .85rem; }
+footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%) translateY(20px); opacity: 0; background: var(--fg); color: var(--bg); padding: 9px 14px; border-radius: 8px; font: 500 .8rem var(--f-mono); transition: .25s; pointer-events: none; z-index: 30; }
+.toast.on { opacity: 1; transform: translateX(-50%); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+
+<nav class="nav" aria-label="Page">
+  <div class="wrap">
+    <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Virtual Office</a>
+    <div class="nav-links">
+      <a href="#flow">How it works</a>
+      <a href="#views">What you see</a>
+      <a href="#tools">Any AI tool</a>
+      <a href="#build">Progress</a>
+      <a href="#start">Get started</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div class="hero-top">
+      <div>
+        <div class="eyebrow">agent-virtual-office · v1.2.1</div>
+        <h1>Watch your AI team <span class="lit">at work.</span></h1>
+      </div>
+      <div class="hero-side">
+        <p class="lede">Virtual Office turns the hidden work of AI coding agents into an office you can see. A Scrum Master, a Tech Lead and a Developer sit at their desks, hand real cards to each other, and move them across a live Kanban board.</p>
+        <div class="ctas">
+          <a class="btn btn-primary" href="#flow">See a request move <span aria-hidden="true">→</span></a>
+          <button class="cmd" type="button" data-copy="npx agent-virtual-office" aria-label="Copy the install command"><span><span class="p">$</span> npx agent-virtual-office</span><span class="copy">copy</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stage" role="img" aria-label="Animated replay of the Virtual Office portal: three agents at desks hand cards to each other while a Kanban board and activity log update.">
+      <div class="stage-bar">
+        <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="url">127.0.0.1:3000 · Virtual Office · Sprint 1</span>
+        <span class="live">live</span>
+      </div>
+      <div class="stage-grid">
+        <div class="floor"><canvas id="floor" width="720" height="430"></canvas></div>
+        <div class="side">
+          <div>
+            <div class="panel-h"><span>Kanban board</span><span id="cardCount">5 cards</span></div>
+            <div class="board" id="board">
+              <div class="col" data-col="backlog"><div class="col-h">Backlog <b>0</b></div></div>
+              <div class="col" data-col="prog"><div class="col-h">In progress <b>0</b></div></div>
+              <div class="col" data-col="review"><div class="col-h">Review <b>0</b></div></div>
+              <div class="col" data-col="done"><div class="col-h">Done <b>0</b></div></div>
+            </div>
+          </div>
+          <div class="log" id="log" aria-hidden="true"></div>
+        </div>
+      </div>
+      <div class="stage-foot">
+        <div class="legend">
+          <span style="--c: var(--lamp)">Scrum Master</span>
+          <span style="--c: var(--sky)">Tech Lead</span>
+          <span style="--c: var(--mint)">Developer</span>
+        </div>
+        <span>Replay of a typical run, shortened</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="band" id="why">
+  <div class="wrap problem">
+    <div class="raw" aria-hidden="true"><div class="raw-inner" id="raw"></div></div>
+    <div class="problem-copy">
+      <div class="eyebrow">The problem</div>
+      <p class="big">Three AI agents can plan, build and review a feature in minutes. <em>All you usually see is a scrolling terminal.</em></p>
+      <p class="lede">Virtual Office reads the same sessions your tools already record and shows who is working, on which card, what they handed off and why. Managers get the picture at a glance. Engineers get the detail one click away.</p>
+    </div>
+  </div>
+</section>
+
+<section id="flow">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">How one request moves</div>
+      <h2>From a sentence to a finished card, with every handoff on the record.</h2>
+    </div>
+    <div class="steps" role="tablist" aria-label="Stages of a request" id="steps"></div>
+    <div class="step-detail" id="stepDetail" role="tabpanel"></div>
+  </div>
+</section>
+
+<section class="band" id="views">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">What you see</div>
+      <h2>Four views of the same work, all from real sessions.</h2>
+      <p class="lede">Next to the floor plan and the board, the portal shows the conversation between agents, the tools they used, the code they changed and the time and tokens each role spent.</p>
+    </div>
+    <div class="views">
+      <article class="view">
+        <div class="view-copy"><h3>Handoff stream</h3><p>Every delegation with the exact brief that was passed, so you can see why a task moved.</p></div>
+        <div class="view-vis"><div class="chat" id="chat"></div></div>
+        <div class="view-foot">Example conversation</div>
+      </article>
+      <article class="view">
+        <div class="view-copy"><h3>Tool analytics</h3><p>Which tools each agent reached for: file reads, edits, terminal commands and searches.</p></div>
+        <div class="view-vis"><div class="bars" id="bars"></div></div>
+        <div class="view-foot">Example figures for one sprint</div>
+      </article>
+      <article class="view">
+        <div class="view-copy"><h3>Code change inspector</h3><p>The diff each agent produced, filed under the card and the role that made it.</p></div>
+        <div class="view-vis"><div class="diff">
+          <div class="diff-h"><b>src/components/SettingsModal.tsx</b><span><span class="add">+3</span> <span class="del">−1</span></span></div>
+          <div class="diff-body" id="diff"></div>
+        </div></div>
+        <div class="view-foot">Example diff · web-dev · VO-43</div>
+      </article>
+      <article class="view">
+        <div class="view-copy"><h3>Time and tokens</h3><p>Work time is logged per role while it is active, with the token usage your tools recorded.</p></div>
+        <div class="view-vis"><div class="meters" id="meters"></div></div>
+        <div class="view-foot">Example figures, counting up</div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="tools">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">Works with your AI tool</div>
+      <h2>Define the team once. Every tool gets the same roles.</h2>
+      <p class="lede">Roles, skills and rules live as plain Markdown and YAML in your repository. One command writes them out in the format each AI tool reads, so nothing drifts between tools.</p>
+    </div>
+    <div class="sync" id="sync">
+      <svg class="wires" id="wires" aria-hidden="true"></svg>
+      <div class="node" id="srcNode">
+        <h3>Your team, in the repo</h3>
+        <div class="files">
+          <div>.agents/registry.yaml</div>
+          <div>.agents/definitions/tech-pm.md</div>
+          <div>.agents/definitions/web-tech-lead.md</div>
+          <div>.agents/definitions/web-dev.md</div>
+          <div>.agents/skills/ · 59 skills</div>
+        </div>
+      </div>
+      <div class="pill" id="pill">npx agents sync</div>
+      <div class="targets" id="targets">
+        <div class="target"><b>Claude Code</b><span>CLAUDE.md · .claude/agents/</span></div>
+        <div class="target"><b>OpenAI Codex</b><span>AGENTS.md · .codex/</span></div>
+        <div class="target"><b>Gemini · Antigravity</b><span>GEMINI.md</span></div>
+        <div class="target"><b>OpenCode</b><span>.opencode/agent/</span></div>
+      </div>
+    </div>
+    <div class="reads"><span>Activity is read from</span><span class="chip">Claude Code transcripts</span><span class="chip">OpenCode database</span><span class="chip">Antigravity sessions</span><span>Nothing to install in the agent tool.</span></div>
+  </div>
+</section>
+
+<section class="band" id="trust">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">Safe to run on a work laptop</div>
+      <h2>It stays on your machine and shows only what really happened.</h2>
+    </div>
+    <div class="trust">
+      <div class="trust-item">
+        <svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="7" y="15" width="20" height="14" rx="3"/><path d="M11 15v-4a6 6 0 0 1 12 0v4"/><circle cx="17" cy="22" r="1.6" fill="currentColor"/></svg>
+        <h3>Local only</h3>
+        <p>The server listens on 127.0.0.1 and refuses requests from other websites, so a page you visit cannot read your board.</p>
+      </div>
+      <div class="trust-item">
+        <svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="17" r="6"/><path d="M18 17h11M25 17v5M29 17v4"/></svg>
+        <h3>Tokens stay private</h3>
+        <p>Jira and Confluence tokens are saved to a gitignored file readable only by you. The portal never displays them.</p>
+      </div>
+      <div class="trust-item">
+        <svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 18l7 7L28 9"/></svg>
+        <h3>No made-up numbers</h3>
+        <p>Demo mode and mock data were removed. Every card, handoff and token count comes from a real session, and 26 test suites guard it in CI.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="build">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">Progress so far</div>
+      <h2>Built in four days, shipped as an npm package.</h2>
+    </div>
+    <div class="numbers" id="numbers">
+      <div class="num-cell"><b data-n="4">4</b><span>days, first commit to v1.2.1</span></div>
+      <div class="num-cell"><b data-n="71">71</b><span>commits</span></div>
+      <div class="num-cell"><b data-n="16">16</b><span>pull requests merged</span></div>
+      <div class="num-cell"><b data-n="59">59</b><span>skills in the catalog</span></div>
+      <div class="num-cell"><b data-n="26">26</b><span>test suites in CI</span></div>
+      <div class="num-cell"><b data-n="4">4</b><span>AI tools supported</span></div>
+    </div>
+    <div class="build">
+      <div class="chart-box" id="chartBox"></div>
+      <div class="miles">
+        <div class="mile"><b>14 Oct</b><span><strong>The office opens.</strong> Agent discovery from any folder format, a role-to-role task board, cross-platform support.</span></div>
+        <div class="mile"><b>15 Oct</b><span><strong>Seeing the work.</strong> Workflow screen and video recorder, agent-to-agent prompts captured, file changes tab.</span></div>
+        <div class="mile"><b>16 Oct</b><span><strong>One team file.</strong> Universal agent registry, multi-project isolation, project launcher.</span></div>
+        <div class="mile"><b>17 Oct</b><span><strong>Ready to share.</strong> Local-only security, Integrations panel, token usage on desks and cards, OpenCode support, v1.2.1.</span></div>
+      </div>
+    </div>
+    <p class="src">Counted from the repository's git history on 17 Oct 2026.</p>
+  </div>
+</section>
+
+<section class="band" id="start">
+  <div class="wrap start">
+    <div>
+      <div class="eyebrow">Get started</div>
+      <h2 style="margin-top:14px">One command in any project.</h2>
+      <div class="how">
+        <ol>
+          <li><span class="i">1</span><p><strong>Open your project folder</strong> in a terminal. New or existing, any stack.</p></li>
+          <li><span class="i">2</span><p><strong>Run the command.</strong> The portal finds your agents, or helps you pick a team for Android, iOS, Web and more.</p></li>
+          <li><span class="i">3</span><p><strong>Work as usual</strong> in Claude Code, Codex, Gemini or OpenCode. The office fills in as your agents work.</p></li>
+        </ol>
+      </div>
+    </div>
+    <div class="term">
+      <div class="stage-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="url">~/your-project</span><button class="cmd" type="button" data-copy="npx agent-virtual-office" style="padding:4px 8px" aria-label="Copy the install command"><span class="copy" style="border:0;padding:0">copy</span></button></div>
+      <div class="term-body"><div><span class="p">$</span> npx agent-virtual-office</div><div class="o">Found 3 agents in .agents/registry.yaml</div><div class="o">Synced CLAUDE.md, AGENTS.md, GEMINI.md, .opencode/</div><div><span class="g">✓</span> Portal running at http://127.0.0.1:3000</div><div class="o caret">Watching Claude Code and OpenCode sessions </div></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Virtual Office · MIT licence · by Syed Ahmad Shahwaiz</span>
+    <a href="https://github.com/shahwaiz90/virtual-office">github.com/shahwaiz90/virtual-office</a>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = (s, r = document) => r.querySelector(s);
+const IMG = { 'tech-pm': 'img/projectmanager.png', 'web-tech-lead': 'img/techlead.png', 'web-dev': 'img/developer.png' };
+const ROLE = { 'tech-pm': 'Scrum Master', 'web-tech-lead': 'Tech Lead', 'web-dev': 'Developer' };
+const COLOR = { 'tech-pm': '--lamp', 'web-tech-lead': '--sky', 'web-dev': '--mint' };
+const sleep = ms => new Promise(r => setTimeout(r, reduce ? Math.min(ms, 400) : ms));
+
+/* ---------- copy ---------- */
+const toast = $('#toast');
+function say(t) { toast.textContent = t; toast.classList.add('on'); clearTimeout(say.t); say.t = setTimeout(() => toast.classList.remove('on'), 1800); }
+document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', () => {
+  const txt = b.dataset.copy;
+  const p = navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(txt) : Promise.reject();
+  p.then(() => say('Copied: ' + txt)).catch(() => say('Select and copy: ' + txt));
+}));
+
+/* ---------- theme tokens for canvas ---------- */
+let T = {};
+function readTokens() {
+  const cs = getComputedStyle(document.documentElement);
+  ['--floor','--grid','--wall','--desk','--line','--line2','--fg','--muted','--faint','--panel','--panel2','--lamp','--sky','--mint','--rose'].forEach(k => T[k] = cs.getPropertyValue(k).trim());
+}
+readTokens();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readTokens);
+new MutationObserver(readTokens).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* ---------- floor plan ---------- */
+const cv = $('#floor'), ctx = cv.getContext('2d');
+const W = 720, H = 430, CORR = 262;
+const imgs = {};
+for (const [k, src] of Object.entries(IMG)) { const im = new Image(); im.src = src; imgs[k] = im; }
+const desks = { 'tech-pm': { x: 140, y: 74 }, 'web-tech-lead': { x: 360, y: 74 }, 'web-dev': { x: 580, y: 74 } };
+const seat = id => ({ x: desks[id].x, y: desks[id].y + 92 });
+const DOOR = { x: 92, y: 440 };
+const agents = {};
+for (const id of Object.keys(desks)) { const s = seat(id); agents[id] = { id, x: s.x, y: s.y, path: [], working: false, status: null, walk: 0, done: null }; }
+const packets = [];
+
+function size() {
+  const r = cv.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.width * H / W * dpr);
+  ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+}
+new ResizeObserver(size).observe(cv); size();
+
+function walkTo(id, p) {
+  const a = agents[id];
+  return new Promise(res => {
+    if (reduce) { a.x = p.x; a.y = p.y; return res(); }
+    a.path = [{ x: a.x, y: CORR }, { x: p.x, y: CORR }, { x: p.x, y: p.y }];
+    a.done = res;
+  });
+}
+const beside = (id, from) => { const s = seat(id); const dir = agents[from].x < s.x ? -1 : 1; return { x: s.x + dir * 48, y: s.y + 8 }; };
+const home = id => walkTo(id, seat(id));
+function packet(from, to, label, color) {
+  return new Promise(res => {
+    if (reduce) return res();
+    packets.push({ fx: from.x, fy: from.y, tx: to.x, ty: to.y, t: 0, dur: 850, label, color, res });
+  });
+}
+
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+let last = performance.now(), clock = 0;
+function frame(now) {
+  const dt = Math.min(50, now - last); last = now; clock += dt;
+  // move agents
+  for (const a of Object.values(agents)) {
+    if (!a.path.length) continue;
+    const t = a.path[0], dx = t.x - a.x, dy = t.y - a.y, d = Math.hypot(dx, dy), step = 0.17 * dt;
+    a.walk += dt;
+    if (d <= step) { a.x = t.x; a.y = t.y; a.path.shift(); if (!a.path.length && a.done) { const f = a.done; a.done = null; f(); } }
+    else { a.x += dx / d * step; a.y += dy / d * step; }
+  }
+  for (let i = packets.length - 1; i >= 0; i--) { const p = packets[i]; p.t += dt; if (p.t >= p.dur) { packets.splice(i, 1); p.res(); } }
+  draw();
+  requestAnimationFrame(frame);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = T['--floor']; ctx.fillRect(0, 0, W, H);
+  // floor grid
+  ctx.fillStyle = T['--grid'];
+  for (let x = 30; x < W; x += 20) for (let y = 30; y < H; y += 20) ctx.fillRect(x, y, 1.4, 1.4);
+  // walls with door gap
+  ctx.strokeStyle = T['--wall']; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(62, 412); ctx.lineTo(18, 412); ctx.lineTo(18, 18); ctx.lineTo(702, 18); ctx.lineTo(702, 412); ctx.lineTo(122, 412); ctx.stroke();
+  // door swing
+  ctx.lineWidth = 1; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.arc(62, 412, 60, -Math.PI / 2, 0); ctx.stroke(); ctx.setLineDash([]);
+  // inner partition for stand-up area
+  ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(250, 412); ctx.lineTo(250, 330); ctx.moveTo(470, 330); ctx.lineTo(470, 412); ctx.stroke();
+  // labels
+  ctx.font = '500 10px "JetBrains Mono", monospace'; ctx.fillStyle = T['--faint']; ctx.textAlign = 'left';
+  ctx.fillText('ENGINEERING FLOOR', 32, 38);
+  ctx.textAlign = 'center'; ctx.fillText('STAND-UP', 360, 404); ctx.fillText('ENTRANCE', 92, 400);
+  // stand-up table
+  ctx.fillStyle = T['--desk']; ctx.strokeStyle = T['--line2']; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(360, 365, 70, 20, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; ctx.beginPath(); ctx.arc(360 + Math.cos(a) * 88, 365 + Math.sin(a) * 30, 6, 0, Math.PI * 2); ctx.stroke(); }
+  // plants
+  for (const [px, py] of [[675, 385], [44, 60], [675, 50]]) {
+    ctx.fillStyle = T['--mint']; ctx.globalAlpha = .35;
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; ctx.beginPath(); ctx.ellipse(px + Math.cos(a) * 7, py + Math.sin(a) * 7, 7, 4, a, 0, Math.PI * 2); ctx.fill(); }
+    ctx.globalAlpha = 1;
+  }
+  // kanban wall board on right
+  ctx.strokeStyle = T['--line2']; ctx.lineWidth = 1; rr(600, 300, 84, 64, 4); ctx.stroke();
+  for (let c = 0; c < 4; c++) for (let r = 0; r < 3 - (c % 2); r++) { ctx.fillStyle = [T['--lamp'], T['--sky'], T['--rose'], T['--mint']][c]; ctx.globalAlpha = .55; ctx.fillRect(606 + c * 19.5, 308 + r * 13, 14, 9); }
+  ctx.globalAlpha = 1; ctx.fillStyle = T['--faint']; ctx.fillText('BOARD', 642, 380);
+
+  // desks
+  for (const [id, d] of Object.entries(desks)) {
+    const a = agents[id], col = T[COLOR[id]];
+    const working = a.working && Math.hypot(a.x - seat(id).x, a.y - seat(id).y) < 2;
+    if (working) {
+      const g = ctx.createRadialGradient(d.x, d.y + 60, 4, d.x, d.y + 60, 110);
+      g.addColorStop(0, hexA(col, .28)); g.addColorStop(1, hexA(col, 0));
+      ctx.fillStyle = g; ctx.fillRect(d.x - 120, d.y - 40, 240, 220);
+    }
+    ctx.fillStyle = T['--desk']; ctx.strokeStyle = T['--line2']; ctx.lineWidth = 1.5;
+    rr(d.x - 70, d.y, 140, 54, 6); ctx.fill(); ctx.stroke();
+    // monitor
+    ctx.fillStyle = working ? col : T['--line2'];
+    rr(d.x - 26, d.y + 10, 52, 8, 2); ctx.fill();
+    if (working) { // code lines flicker
+      ctx.globalAlpha = .7;
+      for (let i = 0; i < 3; i++) { const w = 10 + ((Math.sin(clock / 180 + i * 2) + 1) * 14); ctx.fillRect(d.x - 26, d.y + 24 + i * 7, w, 3); }
+      ctx.globalAlpha = 1;
+    }
+    // keyboard + chair
+    ctx.strokeStyle = T['--line2']; rr(d.x - 18, d.y + 40, 36, 7, 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(seat(id).x, seat(id).y + 4, 22, 0, Math.PI * 2); ctx.stroke();
+    ctx.font = '500 10px "JetBrains Mono", monospace'; ctx.textAlign = 'left'; ctx.fillStyle = T['--faint'];
+    ctx.fillText(id, d.x - 66, d.y - 8);
+  }
+
+  // packets
+  for (const p of packets) {
+    const k = ease(p.t / p.dur), x = p.fx + (p.tx - p.fx) * k, y = p.fy + (p.ty - p.fy) * k - Math.sin(k * Math.PI) * 50;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(Math.sin(k * Math.PI) * -.15);
+    ctx.shadowColor = p.color; ctx.shadowBlur = 14;
+    ctx.fillStyle = T['--panel']; ctx.strokeStyle = p.color; ctx.lineWidth = 1.5;
+    rr(-28, -11, 56, 22, 4); ctx.fill(); ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.fillStyle = p.color; ctx.fillRect(-28, -11, 3, 22);
+    ctx.fillStyle = T['--fg']; ctx.font = '500 10px "JetBrains Mono", monospace'; ctx.textAlign = 'center'; ctx.fillText(p.label, 2, 4);
+    ctx.restore();
+  }
+
+  // agents (sorted by y)
+  for (const a of Object.values(agents).sort((p, q) => p.y - q.y)) {
+    const col = T[COLOR[a.id]], moving = a.path.length > 0, bob = moving ? Math.abs(Math.sin(a.walk / 110)) * 4 : 0;
+    const x = a.x, y = a.y - bob, R = 21;
+    ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(a.x, a.y + R + 2, 16 - bob, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.save(); ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fillStyle = T['--panel2']; ctx.fill(); ctx.clip();
+    const im = imgs[a.id];
+    if (im.complete && im.naturalWidth) ctx.drawImage(im, x - R - 2, y - R - 1, R * 2 + 4, R * 2 + 4);
+    ctx.restore();
+    ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, R + 1.5, 0, Math.PI * 2); ctx.stroke();
+    // name plate
+    ctx.font = '600 11px "Instrument Sans", system-ui, sans-serif'; ctx.textAlign = 'center';
+    const label = ROLE[a.id], tw = ctx.measureText(label).width + 12;
+    ctx.fillStyle = T['--panel']; rr(x - tw / 2, y + R + 7, tw, 17, 8.5); ctx.fill();
+    ctx.strokeStyle = T['--line']; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = T['--fg']; ctx.fillText(label, x, y + R + 19.5);
+    // status bubble
+    if (a.status) {
+      ctx.font = '500 10px "JetBrains Mono", monospace';
+      const txt = a.status, bw = ctx.measureText(txt).width + 34, bx = x + 16, by = y - R - 26;
+      ctx.fillStyle = T['--panel']; ctx.strokeStyle = col; ctx.lineWidth = 1.2;
+      rr(bx, by, bw, 20, 10); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(bx + 6, by + 18); ctx.lineTo(bx - 2, by + 26); ctx.lineTo(bx + 14, by + 19); ctx.closePath(); ctx.fillStyle = T['--panel']; ctx.fill();
+      ctx.fillStyle = T['--fg']; ctx.textAlign = 'left'; ctx.fillText(txt, bx + 9, by + 13.5);
+      for (let i = 0; i < 3; i++) { ctx.fillStyle = col; ctx.globalAlpha = .35 + .65 * Math.max(0, Math.sin(clock / 160 - i * .9)); ctx.beginPath(); ctx.arc(bx + bw - 20 + i * 5.5, by + 10, 1.7, 0, Math.PI * 2); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+const ease = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+function hexA(c, a) {
+  const m = c.match(/^#([0-9a-f]{6})$/i); if (!m) return c;
+  const n = parseInt(m[1], 16); return `rgba(${n >> 16},${n >> 8 & 255},${n & 255},${a})`;
+}
+requestAnimationFrame(frame);
+
+/* ---------- kanban ---------- */
+const board = $('#board'), cards = {};
+const colEl = c => board.querySelector(`[data-col="${c}"]`);
+function cardNode(key, title, role, req) {
+  const el = document.createElement('div');
+  el.className = 'card' + (req ? ' req' : '');
+  if (!req) el.style.setProperty('--c', `var(${COLOR[role]})`);
+  el.innerHTML = `<div class="k"><span>${key}</span><img alt="" src="${IMG[role]}"></div><div class="t"></div>`;
+  el.querySelector('.t').textContent = title;
+  return el;
+}
+function counts() {
+  board.querySelectorAll('.col').forEach(c => c.querySelector('.col-h b').textContent = c.querySelectorAll('.card').length);
+  $('#cardCount').textContent = board.querySelectorAll('.card').length + ' cards';
+}
+function trimDone() {
+  const d = [...colEl('done').querySelectorAll('.card')];
+  d.slice(3).forEach(el => { const k = Object.keys(cards).find(k => cards[k] === el); delete cards[k]; el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: reduce ? 1 : 300 }).onfinish = () => { el.remove(); counts(); }; });
+}
+function addCard(key, title, role, req, col = 'backlog') {
+  const el = cardNode(key, title, role, req); cards[key] = el;
+  colEl(col).querySelector('.col-h').after(el);
+  if (!reduce) el.animate([{ opacity: 0, transform: 'scale(.85)' }, { opacity: 1, transform: 'none' }], { duration: 350, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  counts();
+}
+function move(key, col) {
+  const el = cards[key]; if (!el) return;
+  const all = [...board.querySelectorAll('.card')], first = new Map(all.map(e => [e, e.getBoundingClientRect()]));
+  colEl(col).querySelector('.col-h').after(el);
+  if (!reduce) for (const e of all) {
+    const a = first.get(e), b = e.getBoundingClientRect(), dx = a.left - b.left, dy = a.top - b.top;
+    if (dx || dy) e.animate([{ transform: `translate(${dx}px,${dy}px)` }, { transform: 'none' }], { duration: e === el ? 600 : 350, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  }
+  if (col === 'done') { el.animate && !reduce && el.animate([{ boxShadow: '0 0 0 3px ' + T['--mint'] }, { boxShadow: '0 0 0 0 transparent' }], { duration: 900, delay: 400 }); setTimeout(trimDone, 700); }
+  counts();
+}
+
+/* ---------- log ---------- */
+const logEl = $('#log');
+let simMin = 9 * 60 + 2;
+function log(who, text, cls = '') {
+  simMin += 1 + Math.floor(Math.random() * 2);
+  const ts = `${String(Math.floor(simMin / 60) % 24).padStart(2, '0')}:${String(simMin % 60).padStart(2, '0')}`;
+  const d = document.createElement('div');
+  d.innerHTML = `<span class="ts">${ts}</span>  <span class="who"></span><span class="msg-t ${cls}"></span>`;
+  d.querySelector('.who').textContent = who; d.querySelector('.msg-t').textContent = text;
+  logEl.appendChild(d);
+  while (logEl.children.length > 7) logEl.firstChild.remove();
+}
+
+/* seed: a board and log that already have history */
+addCard('VO-38', 'Mobile-friendly portal header', 'web-dev', false, 'done');
+addCard('VO-39', 'Contract: header breakpoints', 'web-tech-lead', false, 'done');
+addCard('VO-40', 'Readable dark mode', 'web-dev', false, 'review');
+log('web-dev', 'run   npm test  26 suites passed', 'ok');
+log('web-tech-lead', 'review VO-40  in progress');
+
+/* ---------- the replay ---------- */
+const REQUESTS = [
+  { title: 'Add a dark mode toggle to Settings', build: 'Build the theme toggle', files: [['src/components/SettingsModal.tsx', 42, 3], ['src/styles/tokens.css', 18, 0]] },
+  { title: 'Show token usage on Kanban cards', build: 'Token badge on cards', files: [['src/components/KanbanBoard.tsx', 36, 8], ['server/taskBoard.js', 21, 2]] },
+  { title: 'Keep logged time across handoffs', build: 'Persist work time', files: [['server/agentRunner.js', 27, 11], ['tests/test_work_time.js', 64, 0]] },
+];
+let keyN = 41;
+const nk = () => 'VO-' + keyN++;
+async function cycle(req) {
+  const R = nk(), C = nk(), B = nk(), pm = 'tech-pm', tl = 'web-tech-lead', dev = 'web-dev';
+  log('you', `"${req.title}"`);
+  await packet(DOOR, seat(pm), 'goal', T['--lamp']);
+  agents[pm].working = true; agents[pm].status = 'planning';
+  addCard(R, req.title, pm, true);
+  log(pm, `register ${R}  requirement`);
+  if (cards['VO-40']) { move('VO-40', 'done'); log(tl, 'review VO-40  approved', 'ok'); }
+  await sleep(1300);
+  move(R, 'prog');
+  addCard(C, 'Contract: ' + req.build.toLowerCase(), tl); await sleep(350);
+  addCard(B, req.build, dev);
+  log(pm, `task ${C} → web-tech-lead, ${B} → web-dev`);
+  await sleep(1100);
+  agents[pm].working = false; agents[pm].status = null;
+  await walkTo(pm, beside(tl, pm));
+  log(pm, `HANDOFF ${C} -> web-tech-lead`, 'handoff');
+  await packet(agents[pm], seat(tl), C, T['--sky']);
+  home(pm);
+  agents[tl].working = true; agents[tl].status = 'writing contract'; move(C, 'prog');
+  await sleep(2400);
+  log(tl, `contract ${C}: ${req.files.length} files, 3 criteria`);
+  move(C, 'done'); agents[tl].working = false; agents[tl].status = null;
+  await sleep(400);
+  await walkTo(tl, beside(dev, tl));
+  log(tl, `HANDOFF ${B} -> web-dev`, 'handoff');
+  await packet(agents[tl], seat(dev), B, T['--mint']);
+  home(tl);
+  agents[dev].working = true; agents[dev].status = 'building'; move(B, 'prog');
+  for (const [f, a, d] of req.files) { await sleep(1300); log(dev, `edit  ${f.split('/').pop()}  +${a} −${d}`); }
+  await sleep(1000); agents[dev].status = 'running tests';
+  await sleep(1300); log(dev, 'run   npm test  26 suites passed', 'ok');
+  move(B, 'review'); agents[dev].working = false; agents[dev].status = null;
+  await walkTo(tl, beside(dev, tl));
+  agents[tl].status = 'reviewing';
+  await sleep(1800);
+  agents[tl].status = null; move(B, 'done'); log(tl, `review ${B}  approved`, 'ok');
+  home(tl);
+  await sleep(600);
+  move(R, 'done'); log(pm, `${R} done · 3 cards · 2 handoffs`, 'ok');
+  await sleep(2600);
+}
+(async () => { let i = 0; await sleep(900); for (;;) { await cycle(REQUESTS[i++ % REQUESTS.length]); } })();
+
+/* ---------- raw transcript (problem) ---------- */
+const RAW = [
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"curl -s $PORTAL/api/tasks/VO-42?format=md"}}]}}',
+  '{"type":"user","message":{"content":[{"type":"tool_result","content":"# VO-42 Technical contract\\n## Acceptance criteria\\n- toggle persists"}]}}',
+  '{"type":"assistant","message":{"content":[{"type":"text","text":"Reading SettingsModal.tsx to find the preferences form"}]}}',
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/components/SettingsModal.tsx"}}]}}',
+  '{"type":"assistant","message":{"usage":{"input_tokens":18422,"output_tokens":911,"cache_read_input_tokens":40211}}}',
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"old_string":"<Toggle","new_string":"<ThemeToggle"}}]}}',
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"web-dev","prompt":"Your task: VO-43"}}]}}',
+  '{"type":"user","message":{"content":[{"type":"tool_result","content":"HANDOFF VO-43 -> web-dev"}]}}',
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}',
+  '{"type":"user","message":{"content":[{"type":"tool_result","content":"ok 26 suites"}]}}',
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Grep","input":{"pattern":"data-theme","path":"src"}}]}}',
+  '{"type":"assistant","message":{"content":[{"type":"text","text":"Moving VO-43 to review with the verification notes"}]}}',
+];
+const rawEl = $('#raw');
+for (let k = 0; k < 4; k++) RAW.forEach(l => { const d = document.createElement('div'); d.textContent = l; rawEl.appendChild(d); });
+
+/* ---------- stepper ---------- */
+const STEPS = [
+  { t: 'Request', who: 'you', w: 'You', body: 'You describe the goal in plain words, in whichever AI tool you already use. The portal registers it as a requirement card on the board.',
+    code: `<span class="c"># your message</span>\n<span class="a">"Add a dark mode toggle to Settings"</span>\n\n<span class="c"># the board</span>\nVO-41  requirement  backlog` },
+  { t: 'Plan', who: 'tech-pm', w: 'Scrum Master', body: 'The Scrum Master splits the requirement into one task per role, each with a brief, acceptance criteria and the order they must run in. It never writes application code.',
+    code: `VO-41  Requirement · Dark mode toggle\n├─ VO-42  web-tech-lead  Technical contract\n└─ VO-43  web-dev        Build the toggle\n                         <span class="c">dependsOn VO-42</span>\n\n<span class="h">HANDOFF VO-42 -> web-tech-lead</span>` },
+  { t: 'Contract', who: 'web-tech-lead', w: 'Tech Lead', body: 'The Tech Lead turns the card into a technical contract: the files to touch, the data and APIs involved, the edge cases, and how each criterion will be checked.',
+    code: `<span class="c">## VO-43 contract</span>\nFiles    SettingsModal.tsx, tokens.css\nState    theme in localStorage, 'system' default\nEdge     no flash of the wrong theme on load\nVerify   choice survives reload; contrast ≥ 4.5:1\n\n<span class="h">HANDOFF VO-43 -> web-dev</span>` },
+  { t: 'Build', who: 'web-dev', w: 'Developer', body: 'The Developer implements one card at a time, checks every acceptance criterion, writes the result on the card and moves it to review.',
+    code: `edit  SettingsModal.tsx      <span class="g">+42</span> −3\nedit  tokens.css             <span class="g">+18</span>\nrun   npm test               <span class="g">26 suites passed</span>\n\n✓ choice survives reload\n✓ contrast 7.1:1\nmove  VO-43 → review` },
+  { t: 'Review', who: 'web-tech-lead', w: 'Tech Lead', body: 'The Tech Lead reviews the change against the contract. When every task is done, the requirement closes itself and a summary is posted on its thread.',
+    code: `review VO-43  <span class="g">approved</span>\n\nVO-41  <span class="g">done</span>\n  3 cards · 2 handoffs\n  time logged per role\n  tokens recorded per card` },
+];
+const stepsEl = $('#steps'), detail = $('#stepDetail');
+let cur = 0, auto = !reduce, timer;
+const DUR = 5200;
+STEPS.forEach((s, i) => {
+  const b = document.createElement('button');
+  b.className = 'step'; b.type = 'button'; b.setAttribute('role', 'tab'); b.id = 'step-' + i;
+  b.innerHTML = `<span class="n">${String(i + 1).padStart(2, '0')}</span><span class="s-t">${s.t}</span><span class="s-w">${s.who === 'you' ? '<span class="you">you</span>' : `<img alt="" src="${IMG[s.who]}">`}${s.w}</span><span class="bar"></span>`;
+  b.addEventListener('click', () => { auto = false; show(i); });
+  stepsEl.appendChild(b);
+});
+function show(i) {
+  cur = i; clearTimeout(timer);
+  [...stepsEl.children].forEach((b, j) => {
+    b.setAttribute('aria-selected', j === i); b.tabIndex = j === i ? 0 : -1;
+    const bar = b.querySelector('.bar'); bar.classList.remove('run'); bar.style.transform = j < i && auto ? 'scaleX(1)' : '';
+    if (j === i && auto) { void bar.offsetWidth; bar.style.setProperty('--dur', DUR + 'ms'); bar.classList.add('run'); }
+  });
+  const s = STEPS[i];
+  detail.setAttribute('aria-labelledby', 'step-' + i);
+  detail.innerHTML = `<div class="sd-copy fade-in"><div class="eyebrow">${s.w}</div><h3>${s.t}</h3><p>${s.body}</p></div><pre class="sd-code fade-in">${s.code}</pre>`;
+  if (auto) timer = setTimeout(() => show((i + 1) % STEPS.length), DUR);
+}
+stepsEl.addEventListener('keydown', e => {
+  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+  auto = false; const n = (cur + (e.key === 'ArrowRight' ? 1 : STEPS.length - 1)) % STEPS.length; show(n); stepsEl.children[n].focus();
+});
+show(0);
+// only auto-advance while visible
+new IntersectionObserver(([e]) => { if (!auto) return; if (e.isIntersecting) show(cur); else clearTimeout(timer); }).observe(stepsEl);
+
+/* ---------- views ---------- */
+const CHAT = [
+  ['tech-pm', 'Scrum Master → Tech Lead', 'Please write the contract for <span class="hk">VO-42</span>. The toggle must survive a reload and default to the system theme.', false],
+  ['web-tech-lead', 'Tech Lead → Developer', 'Contract is on <span class="hk">VO-43</span>: two files, three checks. Start once you have read it.', true],
+  ['web-dev', 'Developer → Tech Lead', 'Done and tested. All 26 suites pass; contrast measured at 7.1:1. Moved to review.', false],
+];
+const chat = $('#chat');
+CHAT.forEach(([id, h, t, r]) => { const m = document.createElement('div'); m.className = 'msg' + (r ? ' r' : ''); m.innerHTML = `<img alt="" src="${IMG[id]}"><div class="b"><small>${h}</small>${t}</div>`; chat.appendChild(m); });
+const msgs = [...chat.children];
+if (reduce) msgs.forEach(m => m.classList.add('on'));
+else (async () => { for (;;) { for (const m of msgs) { m.classList.add('on'); await sleep(1300); } await sleep(3200); msgs.forEach(m => m.classList.remove('on')); await sleep(700); } })();
+
+const BARS = [['Read', 52, '--sky'], ['Edit', 38, '--mint'], ['Bash', 24, '--lamp'], ['Grep', 17, '--sky'], ['Write', 9, '--mint'], ['Agent', 6, '--rose']];
+$('#bars').innerHTML = BARS.map(([n, v, c], i) => `<div class="bar-row" style="--i:${i}"><span>${n}</span><span class="tr"><span class="fl" style="--w:${v / 52 * 100}%;--c:var(${c})"></span></span><span class="v">${v}</span></div>`).join('');
+
+const DIFF = [
+  ['c', '  const [theme, setTheme] = usePrefs("theme");'],
+  ['m', '  <Toggle label="Dark" />'],
+  ['p', '  <ThemeToggle value={theme} onChange={setTheme}'],
+  ['p', '    options={["system", "light", "dark"]} />'],
+  ['p', '  <p className="hint">Saved on this device</p>'],
+  ['c', '  </Section>'],
+];
+const diffEl = $('#diff');
+function renderDiff(n, partial) {
+  diffEl.innerHTML = DIFF.map(([k, t], i) => {
+    if (k === 'p' && i > n) return '';
+    const text = k === 'p' && i === n && partial != null ? t.slice(0, partial) : t;
+    return `<div class="dl ${k === 'c' ? '' : k}${k === 'p' && i === n && partial != null ? ' caret' : ''}"><span class="g">${k === 'p' ? '+' : k === 'm' ? '−' : ' '}</span>${esc(text)}</div>`;
+  }).join('');
+}
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+renderDiff(99);
+if (!reduce) (async () => { for (;;) { await sleep(2500); for (let i = 2; i <= 4; i++) { const L = DIFF[i][1].length; for (let c = 0; c <= L; c += 2) { renderDiff(i, c); await sleep(28); } } renderDiff(99); } })();
+
+const METERS = [['tech-pm', 'planning, 2 cards', 6 * 60 + 12, 18.4], ['web-tech-lead', 'contract + review', 9 * 60 + 47, 27.9], ['web-dev', 'building VO-43', 18 * 60 + 5, 41.2]];
+const mEl = $('#meters');
+mEl.innerHTML = METERS.map(([id, st], i) => `<div class="meter"><img alt="" src="${IMG[id]}"><div><div class="nm">${ROLE[id]}</div><div class="st">${st}</div></div><div class="num" id="m${i}"></div><div class="spark"><i id="s${i}" style="--c:var(${COLOR[id]})"></i></div></div>`).join('');
+let tick = 0;
+function renderMeters() {
+  METERS.forEach(([id, , sec, tok], i) => {
+    const s = sec + (reduce ? 0 : Math.floor(tick * (i + 1) * .6)), k = tok + (reduce ? 0 : tick * (i + 1) * .07);
+    $('#m' + i).innerHTML = `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s<small>${k.toFixed(1)}k tokens</small>`;
+    $('#s' + i).style.width = Math.min(100, s / 1500 * 100) + '%';
+  });
+}
+renderMeters();
+if (!reduce) setInterval(() => { tick++; renderMeters(); }, 1000);
+
+/* play-on-view for bar charts */
+const playIO = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.remove('play'); void e.target.offsetWidth; e.target.classList.add('play'); playIO.unobserve(e.target); } }), { threshold: .35 });
+if (!reduce) { playIO.observe($('#bars')); }
+
+/* ---------- sync wires ---------- */
+const sync = $('#sync'), wires = $('#wires');
+function drawWires() {
+  const box = sync.getBoundingClientRect(), r = el => { const b = el.getBoundingClientRect(); return { l: b.left - box.left, r: b.right - box.left, t: b.top - box.top, b: b.bottom - box.top, cx: b.left - box.left + b.width / 2, cy: b.top - box.top + b.height / 2 }; };
+  const src = r($('#srcNode')), pill = r($('#pill')), tg = [...$('#targets').children].map(r);
+  const stacked = matchMedia('(max-width: 820px)').matches;
+  const paths = [];
+  if (stacked) {
+    paths.push(`M${src.cx},${src.b} L${pill.cx},${pill.t}`);
+    paths.push(`M${pill.cx},${pill.b} L${tg[0].cx},${tg[0].t}`);
+  } else {
+    paths.push(`M${src.r},${src.cy} C${(src.r + pill.l) / 2},${src.cy} ${(src.r + pill.l) / 2},${pill.cy} ${pill.l},${pill.cy}`);
+    tg.forEach(t => { const mx = (pill.r + t.l) / 2; paths.push(`M${pill.r},${pill.cy} C${mx},${pill.cy} ${mx},${t.cy} ${t.l},${t.cy}`); });
+  }
+  wires.setAttribute('viewBox', `0 0 ${box.width} ${box.height}`);
+  wires.innerHTML = paths.map((d, i) => `<path class="wire" d="${d}"/><path class="wire-flow" d="${d}" style="animation-delay:${-i * .3}s"/>`).join('');
+}
+new ResizeObserver(drawWires).observe(sync);
+document.fonts && document.fonts.ready.then(drawWires);
+
+/* ---------- build chart ---------- */
+const DAYS = [['14 Oct', 14], ['15 Oct', 4], ['16 Oct', 10], ['17 Oct', 43]];
+(function chart() {
+  const w = 560, h = 260, pl = 40, pr = 12, pt = 18, pb = 34, max = 50, ih = h - pt - pb, iw = w - pl - pr, bw = iw / DAYS.length;
+  const y = v => pt + ih - v / max * ih;
+  let s = `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Commits per day: 14 on 14 Oct, 4 on 15 Oct, 10 on 16 Oct, 43 on 17 Oct">`;
+  for (const v of [0, 25, 50]) s += `<line x1="${pl}" x2="${w - pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1" ${v ? 'stroke-dasharray="3 4"' : ''}/><text x="${pl - 8}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--faint)">${v}</text>`;
+  DAYS.forEach(([d, v], i) => {
+    const x = pl + i * bw + bw * .2, bwid = bw * .6, hi = v === 43;
+    s += `<rect class="cbar${hi ? ' hi' : ''}" style="--i:${i}" x="${x}" y="${y(v)}" width="${bwid}" height="${y(0) - y(v)}" rx="4"/>`;
+    s += `<text x="${x + bwid / 2}" y="${y(v) - 8}" text-anchor="middle" font-size="13" font-weight="500" fill="var(--fg)">${v}</text>`;
+    s += `<text x="${x + bwid / 2}" y="${h - 12}" text-anchor="middle" font-size="11" fill="var(--muted)">${d}</text>`;
+  });
+  s += `<text x="${pl}" y="11" font-size="11" fill="var(--faint)">Commits per day</text></svg>`;
+  $('#chartBox').innerHTML = s;
+  if (!reduce) playIO.observe($('#chartBox'));
+})();
+
+/* ---------- count-up numbers ---------- */
+const numIO = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return; numIO.disconnect();
+  e.target.querySelectorAll('b[data-n]').forEach(b => {
+    const n = +b.dataset.n, t0 = performance.now(), d = 1100 + n * 6;
+    const step = now => { const k = Math.min(1, (now - t0) / d); b.textContent = Math.round(n * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+}), { threshold: .5 });
+if (!reduce) numIO.observe($('#numbers'));
+})();
+</script>
+</body>
+</html>
