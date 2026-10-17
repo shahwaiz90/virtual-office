@@ -10,6 +10,7 @@
  *   node scripts/bench.js run --model opencode/deepseek-v4.1-flash-free --label after --out bench/after.json
  *   node scripts/bench.js run --vo /path/to/other/checkout --label before --out bench/before.json
  *   node scripts/bench.js compare bench/before.json bench/after.json
+ *   node scripts/bench.js summary --before b1.json,b2.json --after a1.json,a2.json
  *
  * Options for `run`:
  *   --vo <dir>         Virtual Office checkout whose server, definitions and skills are used (default: this one)
@@ -342,9 +343,60 @@ function report(results) {
   return lines.join('\n');
 }
 
+const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+const pct = (a, b) => (a ? `${Math.round(((b - a) / a) * 100)}%` : '-');
+
+/** Before/after means per role plus quality markers, for a PR description. */
+function summary(groups) {
+  const [before, after] = groups;
+  const roleIds = [...new Set([...before, ...after].flatMap((r) => Object.keys(r.roles)))].filter((id) =>
+    [...before, ...after].filter((r) => r.roles[id]).length > 1
+  );
+  const stat = (runs, f) => mean(runs.map(f));
+  const lines = [
+    `Means over ${before.length} before and ${after.length} after runs (${before[0].model}). Context = input + cache read + cache write tokens, summed over steps.`,
+    '',
+    '| Role | Steps before → after | Context tokens before → after | Change |',
+    '| :--- | :--- | :--- | :--- |',
+  ];
+  for (const id of roleIds) {
+    const sb = stat(before, (r) => (r.roles[id] || {}).steps || 0);
+    const sa = stat(after, (r) => (r.roles[id] || {}).steps || 0);
+    const cb = stat(before, (r) => (r.roles[id] || {}).contextTokens || 0);
+    const ca = stat(after, (r) => (r.roles[id] || {}).contextTokens || 0);
+    lines.push(`| ${id} | ${sb.toFixed(1)} → ${sa.toFixed(1)} | ${k(Math.round(cb))} → ${k(Math.round(ca))} | ${pct(cb, ca)} |`);
+  }
+  const tb = (f) => stat(before, f);
+  const ta = (f) => stat(after, f);
+  lines.push(`| **Total** | **${tb((r) => r.totals.steps).toFixed(1)} → ${ta((r) => r.totals.steps).toFixed(1)}** | **${k(Math.round(tb((r) => r.totals.contextTokens)))} → ${k(Math.round(ta((r) => r.totals.contextTokens)))}** | **${pct(tb((r) => r.totals.contextTokens), ta((r) => r.totals.contextTokens))}** |`);
+  lines.push(`| Output + reasoning tokens | | ${k(Math.round(tb((r) => r.totals.output)))} → ${k(Math.round(ta((r) => r.totals.output)))} | ${pct(tb((r) => r.totals.output), ta((r) => r.totals.output))} |`);
+  lines.push(`| Board calls (reply bytes) | ${tb((r) => r.totals.boardCalls).toFixed(1)} → ${ta((r) => r.totals.boardCalls).toFixed(1)} | ${k(Math.round(tb((r) => r.totals.boardOutputBytes)))} → ${k(Math.round(ta((r) => r.totals.boardOutputBytes)))} | ${pct(tb((r) => r.totals.boardOutputBytes), ta((r) => r.totals.boardOutputBytes))} |`);
+  lines.push(`| Minutes | ${tb((r) => r.minutes).toFixed(1)} → ${ta((r) => r.minutes).toFixed(1)} | | |`);
+  const count = (runs, f) => `${runs.filter(f).length}/${runs.length}`;
+  const markers = [
+    ['Requirement card done', (r) => r.board.requirementColumn === 'done'],
+    ['Every work card done', (r) => r.board.allWorkDone],
+    ['Every work card has acceptance criteria', (r) => r.board.cardsWithCriteria === Object.keys(r.board.taskColumns).length],
+    ['Every work card has a result', (r) => r.board.cardsWithResult === Object.keys(r.board.taskColumns).length],
+    ['prd, architecture, source_code and code_review deliverables', (r) => ['prd', 'architecture', 'source_code', 'code_review'].every((t) => r.board.deliverableTypes[t])],
+    ['Review verdict recorded', (r) => Boolean(r.board.reviewVerdict)],
+    ['npm test passes', (r) => r.quality.testsPass],
+    ['Hidden check (--json output, default unchanged)', (r) => r.quality.jsonOutput && r.quality.defaultUnchanged],
+  ];
+  lines.push('', '| Quality marker | Before | After |', '| :--- | :--- | :--- |');
+  for (const [name, f] of markers) lines.push(`| ${name} | ${count(before, f)} | ${count(after, f)} |`);
+  const perCard = (r) => r.board.acceptanceCriteria / Math.max(1, Object.keys(r.board.taskColumns).length);
+  lines.push(`| Acceptance criteria per work card (mean) | ${tb(perCard).toFixed(1)} | ${ta(perCard).toFixed(1)} |`);
+  return lines.join('\n');
+}
+
 async function main() {
   const { command, opts } = parseArgs(process.argv.slice(2));
   if (command === 'run') return run(opts);
+  if (command === 'summary') {
+    const load = (list) => String(list || '').split(',').filter(Boolean).map((f) => JSON.parse(fs.readFileSync(f, 'utf8')));
+    return console.log(summary([load(opts.before), load(opts.after)]));
+  }
   if (command === 'compare') return console.log(report(opts._.map((f) => JSON.parse(fs.readFileSync(f, 'utf8')))));
   console.log(fs.readFileSync(__filename, 'utf8').split('*/')[0]);
 }
@@ -356,4 +408,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { report, measureSessions, hiddenCheck, REQUIREMENT };
+module.exports = { report, summary, measureSessions, hiddenCheck, REQUIREMENT };

@@ -68,7 +68,7 @@ function deliverableTypeFor(agent) {
  * The board calls a role needs, ready to run, so it reads the full kanban-handoff skill only for
  * edge cases. No Content-Type header is needed: the portal parses JSON bodies sent by plain `curl -d`.
  */
-function boardQuickReference(agent, { isOrchestrator, delegates }) {
+function boardQuickReference(agent, { isOrchestrator, delegates, agents = [] }) {
   const id = agent.id;
   const lines = [
     '## Board (quick reference)',
@@ -80,8 +80,14 @@ function boardQuickReference(agent, { isOrchestrator, delegates }) {
     lines.push(`- The portal usually registers the user's request as a requirement card: \`curl -s "$VO/api/tasks?type=requirement&format=brief"\`. Register one (\`"type":"requirement","assignedTo":"${id}","column":"in_progress"\`) only if none matches.`);
   }
   if (delegates.length) {
+    // Name the delegates' skills so the card's `skill` needs no lookup
+    const skillsOf = (id) => ((agents.find((a) => a.id === id) || {}).skillIds || []).filter((sk) => sk !== 'kanban-handoff');
+    const skillHint = delegates
+      .map((id) => (skillsOf(id).length ? `${delegates.length > 1 ? `${id}: ` : ''}${skillsOf(id).join(', ')}` : ''))
+      .filter(Boolean)
+      .join('; ');
     lines.push(
-      `- Hand on: list keys with \`curl -s "$VO/api/tasks?format=brief"\` and use the next number, then \`curl -s -X POST "$VO/api/tasks/register?format=brief" -d '{"tasks":[{"key":"<PREFIX-N>","parentKey":"<your KEY>","title":"...","brief":"<written for the assignee>","acceptanceCriteria":["..."],"context":{"files":["..."],"decisions":["..."]},"dependsOn":[],"assignedTo":"${delegates[0]}","delegatedBy":"${id}","skill":"<one of its skills>","column":"assigned"}]}'\`.`
+      `- Hand on: list keys with \`curl -s "$VO/api/tasks?format=brief"\` and use the next number, then \`curl -s -X POST "$VO/api/tasks/register?format=brief" -d '{"tasks":[{"key":"<PREFIX-N>","parentKey":"<your KEY>","title":"...","brief":"<written for the assignee>","acceptanceCriteria":["..."],"context":{"files":["..."],"decisions":["..."]},"dependsOn":[],"assignedTo":"${delegates[0]}","delegatedBy":"${id}","skill":"<one of its skills>","column":"assigned"}]}'\`.${skillHint ? ` Skills to choose from: ${skillHint}.` : ''}`
     );
   }
   lines.push(
@@ -118,7 +124,7 @@ function rolePrompt(agent, registry, { dispatch = 'handoff-lines' } = {}) {
   const lines = [
     `You are **${agent.name}**, the ${agent.role} of the ${team} agent team${isOrchestrator ? ' and its orchestrator: every user request comes to you first' : ''}. Your agent id is \`${agent.id}\`; use it as \`agentId\` on every board call. Started with a raw request instead of a card key? Put it on a card first.`,
     '',
-    ...boardQuickReference(agent, { isOrchestrator, delegates: targets }),
+    ...boardQuickReference(agent, { isOrchestrator, delegates: targets, agents }),
     '',
   ];
   if (agent.inputContract) lines.push(`**You read:** ${agent.inputContract}`, '');

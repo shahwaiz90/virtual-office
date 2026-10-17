@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **Fewer tokens per role.** Every board reply stays in an agent's context for the rest of its work, so the calls agents make are now small:
+  - `POST /api/tasks/<KEY>/start` moves the card to `in_progress` and prints the compact card in one call. A card with an open dependency stays put. A card in review is read by its delegator.
+  - `GET /api/tasks/<KEY>?format=brief` is the compact card: brief, acceptance criteria, context, sub-tasks with results, deliverable ids and the latest 4 thread entries (`&thread=<n>` for more). `?format=md` still returns everything.
+  - `POST /api/tasks/<KEY>/finish` posts the deliverable, records the result and moves the card (`review`, or `done` on a card you own) in one call.
+  - `register`, `thread`, `status` and `POST /api/deliverables` reply with a short summary instead of the whole office state, the thread or the posted content. Pass `?format=full` for the old reply.
+  - JSON sent with a plain `curl -d` (no Content-Type header) is accepted.
+- AGENTS.md (injected into every OpenCode agent, subagents included) holds only routing and the dispatch steps; the Mermaid diagram, roster table and skill list are gone. It no longer points at `.agents/runtime-manifest.json`. The `define_subagent` note moved to `.agents/rules/team-orchestration.md`.
+- Each role prompt has a board quick reference with its own calls ready to run. It reads the `kanban-handoff` skill only for edge cases, and the card's `skill` before it starts.
+- OpenCode allows one level of subagents by default. Roles started as subagents now end their reply with `HANDOFF <KEY> -> <agentId>` lines instead of failing to start a subagent, and AGENTS.md tells the top-level agent to dispatch them.
+
+### Added
+- Optional `model: provider/model` in a role's definition is written to `.opencode/agent/<id>.md`. Off by default.
+- `npm run bench`: runs a fixed requirement through OpenCode in a scratch project and reports per-role steps and tokens with quality markers (see `docs/benchmarks/`).
+
 ## 1.2.1
 
 ### Fixed
