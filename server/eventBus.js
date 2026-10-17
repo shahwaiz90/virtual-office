@@ -805,6 +805,7 @@ class EventBus extends EventEmitter {
           fromPos: { ...fromAgent.currentPosition },
           toPos: { ...toAgent.theme.deskPosition },
           taskTitle,
+          taskKey: payload.key || payload.taskKey || undefined,
           skill: payload.allowedSkill || 'General',
           startedAt: Date.now(),
           durationMs: 3000,

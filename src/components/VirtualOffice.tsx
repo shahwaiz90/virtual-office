@@ -1,8 +1,34 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
 import { Agent, ActiveHandoff, NormalizedEvent, TokenUsageStat } from '../types/office';
 import { deskTokenLine } from '../services/tokenFormat';
 import { Pencil, Sparkles, Users, Terminal, LayoutGrid } from 'lucide-react';
 import { WorkstationTerminalTile } from './WorkstationTerminalTile';
+import {
+  computeFloorLayout,
+  routeBetween,
+  routeBack,
+  besidePoint,
+  ART,
+  REF_ROOM_W,
+  type FloorLayout,
+  type DeskSlot,
+  type Pt,
+  type Rect,
+} from './floorLayout';
+import {
+  createChoreo,
+  markSeen,
+  ensureActor,
+  enqueueHandoff,
+  stepChoreo,
+  snapAll,
+  pruneAgents,
+  packetPosition,
+  handoffLabels,
+  type Choreo,
+  type ChoreoEnv,
+  type Handoff,
+} from './handoffChoreo';
 
 interface VirtualOfficeProps {
   agents: Agent[];
@@ -29,6 +55,35 @@ interface RoomWorkingState {
   handoffTaskFullTitle?: string;
   handoffPartnerName?: string;
 }
+
+/** Everything one frame draws from: the layout, the live choreography and the pointer state */
+interface SceneView {
+  layout: FloorLayout;
+  choreo: Choreo;
+  hoveredId: string | null;
+  selectedId: string | null;
+  avatars: Map<string, HTMLCanvasElement>;
+  /** Animation clock in ms (paused with the tab) */
+  clock: number;
+  reduced: boolean;
+  tokenStats: TokenUsageStat[];
+  /** Avatars as drawn this frame, in draw order (hit-testing reads the last frame's list) */
+  drawn: DrawnAvatar[];
+}
+
+interface DrawnAvatar {
+  id: string;
+  /** Head centre and radius in floor coordinates */
+  x: number;
+  y: number;
+  r: number;
+}
+
+/** Statuses that light a desk (plus a set currentTask or the receiving window) */
+const WORK_STATUSES = ['working', 'coding', 'testing', 'reviewing', 'planning', 'delegating', 'handoff'];
+/** agent_handoff events older than this on arrival are history, not a live handoff */
+const LIVE_EVENT_MS = 15_000;
+const DEFAULT_WIDTH = 1200;
 
 /**
  * Creates a pre-filtered, bicubic downsampled canvas for high-resolution images
@@ -120,6 +175,79 @@ function createCrispAvatarCanvas(img: HTMLImageElement, targetSize = 160): HTMLC
 
 const NO_TOKEN_STATS: TokenUsageStat[] = [];
 
+/** Characters, plates and bubbles scale with the room art, but never below legibility */
+function charScale(roomScale: number): number {
+  return Math.max(0.7, Math.min(1, roomScale));
+}
+
+/** Agent lookup used by handoff events: id, then case-insensitive id, then name (as server/eventBus.js) */
+function resolveAgent(agents: Agent[], ref: string | undefined | null): Agent | undefined {
+  if (!ref) return undefined;
+  const lower = ref.toLowerCase();
+  return (
+    agents.find((a) => a.id === ref) ||
+    agents.find((a) => a.id.toLowerCase() === lower) ||
+    agents.find((a) => a.name === ref)
+  );
+}
+
+function agentShortName(agent: Agent | undefined, fallback: string): string {
+  return agent?.badgeText || agent?.theme?.badge || agent?.name || fallback;
+}
+
+function buildHandoff(
+  id: string,
+  from: Agent,
+  to: Agent,
+  title: string,
+  taskKey: string | undefined,
+  now: number
+): Handoff {
+  const labels = handoffLabels(title, taskKey);
+  return {
+    id,
+    fromId: from.id,
+    toId: to.id,
+    title: title || 'Task Handover',
+    taskKey: labels.key,
+    label: labels.label,
+    shortTask: labels.shortTask,
+    fromName: from.name,
+    toName: agentShortName(to, 'Teammate'),
+    toColor: to.theme?.themeColor || '#0d9488',
+    createdAt: now,
+  };
+}
+
+/** Choreography environment for one frame: seats and routes come only from the client layout */
+function makeChoreoEnv(layout: FloorLayout, agents: Agent[], now: number, reduced: boolean): ChoreoEnv {
+  const indexOf = new Map<string, number>();
+  agents.forEach((a, i) => {
+    if (i < layout.slots.length) indexOf.set(a.id, i);
+  });
+  const slotOf = (id: string): DeskSlot | null => {
+    const i = indexOf.get(id);
+    return i === undefined ? null : layout.slots[i];
+  };
+  return {
+    now,
+    reduced,
+    seatOf: (id) => slotOf(id)?.seat ?? null,
+    scaleOf: (id) => slotOf(id)?.scale ?? 1,
+    route: (fromId, toId, from) => {
+      const a = indexOf.get(fromId);
+      const b = indexOf.get(toId);
+      if (a === undefined || b === undefined) return null;
+      return routeBetween(layout, from, a, b);
+    },
+    routeBack,
+    isWorking: (id) => {
+      const agent = agents[indexOf.get(id) ?? -1];
+      return Boolean(agent && WORK_STATUSES.includes(agent.status));
+    },
+  };
+}
+
 export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   agents,
   activeHandoff,
@@ -134,12 +262,38 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   tokenStats = NO_TOKEN_STATS,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [viewMode, setViewMode] = useState<'floor' | 'terminal_grid'>('floor');
   const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
-  const [, setImagesLoadedVersion] = useState<number>(0);
+  const [containerWidth, setContainerWidth] = useState<number>(DEFAULT_WIDTH);
   const crispAvatarsRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
 
   const events = rawEvents;
+
+  // Rooms, seats, doors and corridors come only from the agent order and the container width.
+  // The server's per-agent room bounds, desk and current positions come from its old two-column slot
+  // generator, so they are ignored here.
+  const layout = useMemo(() => computeFloorLayout(agents.length, containerWidth), [agents.length, containerWidth]);
+
+  // Live values for the animation loop, which is created once and must not restart on new props
+  const agentsRef = useRef<Agent[]>(agents);
+  const eventsRef = useRef<NormalizedEvent[]>(events);
+  const tokenStatsRef = useRef<TokenUsageStat[]>(tokenStats);
+  const selectedRef = useRef<string | null>(selectedAgentId);
+  const hoveredRef = useRef<string | null>(null);
+  const layoutRef = useRef<FloorLayout | null>(null);
+  const choreoRef = useRef<Choreo>(createChoreo());
+  const reducedRef = useRef<boolean>(false);
+  const drawnRef = useRef<DrawnAvatar[]>([]);
+
+  // TEMP-HARNESS (not committed)
+  if (import.meta.env.DEV) (window as any).__vo = { drawnRef, selectedRef, choreoRef, layoutRef, hoveredRef, agentsRef };
+  useLayoutEffect(() => {
+    agentsRef.current = agents;
+    eventsRef.current = events;
+    tokenStatsRef.current = tokenStats;
+    selectedRef.current = selectedAgentId;
+  }, [agents, events, tokenStats, selectedAgentId]);
 
   const handleSetViewMode = (mode: 'floor' | 'terminal_grid') => {
     setViewMode(mode);
@@ -155,38 +309,98 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     return () => observer.disconnect();
   }, []);
 
+  // prefers-reduced-motion, followed live
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    reducedRef.current = mq.matches;
+    const onChange = (e: MediaQueryListEvent) => {
+      reducedRef.current = e.matches;
+    };
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
   useEffect(() => {
     if (canvasRef.current && onCanvasReady) {
       onCanvasReady(canvasRef.current);
     }
   }, [onCanvasReady]);
 
-  // Logical coordinate space for high-DPI canvas (Dynamically scales to fit 1 to 12+ agents)
-  const LOGICAL_WIDTH = 1200;
-  const totalSlots = Math.max(agents.length, 4);
-  const leftCount = Math.ceil(totalSlots / 2);
-  const rightCount = Math.floor(totalSlots / 2);
-  const maxRows = Math.max(leftCount, rightCount, 2);
-  const rowHeight = maxRows <= 2 ? 290 : 240;
-  const rowGap = maxRows <= 2 ? 30 : 25;
-  const topMargin = 35;
-  const LOGICAL_HEIGHT = topMargin + maxRows * rowHeight + (maxRows - 1) * rowGap + topMargin;
+  // Logical canvas width = the wrapper's CSS width (debounced to one measurement per animation frame)
+  useLayoutEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const w = Math.round(el.clientWidth);
+      if (w > 0) setContainerWidth((prev) => (prev === w ? prev : w));
+    };
+    measure();
+    const observer = new ResizeObserver(() => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
 
-  // Agent room boundary helper for hit-testing and layouts
-  const getAgentBounds = useCallback(
-    (agent: Agent, idx: number) => {
-      const isLeft = idx % 2 === 0;
-      const row = Math.floor(idx / 2);
-      const defaultBounds = {
-        x: isLeft ? 35 : 745,
-        y: topMargin + row * (rowHeight + rowGap),
-        w: 420,
-        h: rowHeight,
-      };
-      return agent.theme?.roomBounds || defaultBounds;
-    },
-    [rowHeight, rowGap, topMargin]
-  );
+  // Size the canvas to the layout; a layout change puts every walker back on its (new) seat
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(layout.width * dpr);
+    canvas.height = Math.round(layout.height * dpr);
+    canvas.style.width = `${layout.width}px`;
+    canvas.style.height = `${layout.height}px`;
+    const previous = layoutRef.current;
+    layoutRef.current = layout;
+    if (previous && previous !== layout) {
+      snapAll(choreoRef.current, makeChoreoEnv(layout, agentsRef.current, Date.now(), reducedRef.current));
+    }
+  }, [layout]);
+
+  // Handoff trigger 1: a new activeHandoff id (the server clears it after 3 s; the client keeps playing)
+  useEffect(() => {
+    if (!activeHandoff) return;
+    const choreo = choreoRef.current;
+    if (!markSeen(choreo, `active:${activeHandoff.id}`)) return;
+    const list = agentsRef.current;
+    const from = resolveAgent(list, activeHandoff.fromId);
+    const to = resolveAgent(list, activeHandoff.toId);
+    const currentLayout = layoutRef.current;
+    if (!from || !to || from.id === to.id || !currentLayout) return;
+    const seat = currentLayout.slots[list.indexOf(from)]?.seat;
+    if (!seat) return;
+    const now = Date.now();
+    enqueueHandoff(choreo, buildHandoff(`active:${activeHandoff.id}`, from, to, activeHandoff.taskTitle, activeHandoff.taskKey, now), seat);
+  }, [activeHandoff]);
+
+  // Handoff trigger 2: fresh agent_handoff events (history older than 15 s is not replayed on load)
+  useEffect(() => {
+    const choreo = choreoRef.current;
+    const list = agentsRef.current;
+    const currentLayout = layoutRef.current;
+    const now = Date.now();
+    for (const e of events) {
+      if (e.type !== 'agent_handoff' || !e.eventId) continue;
+      if (!markSeen(choreo, `event:${e.eventId}`)) continue;
+      const at = new Date(e.timestamp).getTime();
+      if (!Number.isFinite(at) || now - at > LIVE_EVENT_MS) continue;
+      const p = e.payload || {};
+      const from = resolveAgent(list, p.fromAgent || e.agentId);
+      const to = resolveAgent(list, p.toAgent || p.handoffTo);
+      if (!from || !to || from.id === to.id || !currentLayout) continue;
+      const seat = currentLayout.slots[list.indexOf(from)]?.seat;
+      if (!seat) continue;
+      const title = p.task || p.taskTitle || 'Task Delegation';
+      enqueueHandoff(choreo, buildHandoff(`event:${e.eventId}`, from, to, title, p.key || p.taskKey, now), seat);
+    }
+  }, [events]);
 
   // Preload and step-downsample all agent avatar images
   useEffect(() => {
@@ -198,9 +412,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         img.src = url;
         img.onload = () => {
           if (!mounted) return;
-          const crisp = createCrispAvatarCanvas(img, 160);
-          crispAvatarsRef.current.set(url, crisp);
-          setImagesLoadedVersion((v) => v + 1);
+          crispAvatarsRef.current.set(url, createCrispAvatarCanvas(img, 160));
         };
       }
     });
@@ -209,173 +421,154 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     };
   }, [agents]);
 
-  // Main high-DPI render loop
+  // Main render loop: created once, reads everything from refs
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
-    // High-DPI / Retina Device Pixel Ratio scaling for razor-sharp rendering
-    const dpr = Math.max(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.round(LOGICAL_WIDTH * dpr);
-    canvas.height = Math.round(LOGICAL_HEIGHT * dpr);
-    canvas.style.width = '100%';
-    canvas.style.height = 'auto';
-
-    let animationId: number;
+    let animationId = 0;
     let tick = 0;
+    let clock = 0;
+    let last = performance.now();
 
-    const render = () => {
+    const render = (frameTime: number) => {
+      const dt = Math.min(50, Math.max(0, frameTime - last));
+      last = frameTime;
       tick++;
+      clock += dt;
 
-      // Reset transform and enable high quality smoothing on every frame
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const layout = layoutRef.current;
+      if (!layout) {
+        animationId = requestAnimationFrame(render);
+        return;
+      }
+      const agents = agentsRef.current;
+      const events = eventsRef.current;
+      const choreo = choreoRef.current;
+      const reduced = reducedRef.current;
+      const env = makeChoreoEnv(layout, agents, Date.now(), reduced);
+
+      pruneAgents(choreo, new Set(agents.map((a) => a.id)), env);
+      agents.forEach((agent, idx) => {
+        const slot = layout.slots[idx];
+        if (slot) ensureActor(choreo, agent.id, slot.seat);
+      });
+      stepChoreo(choreo, dt, env);
+
+      const backing = canvas.width / layout.width;
+      ctx.setTransform(backing, 0, 0, backing, 0, 0);
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
 
-      // 1. Crisp slate background
+      const view: SceneView = {
+        layout,
+        choreo,
+        hoveredId: hoveredRef.current,
+        selectedId: selectedRef.current,
+        avatars: crispAvatarsRef.current,
+        clock,
+        reduced,
+        tokenStats: tokenStatsRef.current,
+        drawn: [],
+      };
+
+      // 1. Floor, corridors and spare cells (coffee bar decor only)
       ctx.fillStyle = tc('#f8fafc');
-      ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+      ctx.fillRect(0, 0, layout.width, layout.height);
+      drawOfficeFloor(ctx, layout.width, layout.height);
+      drawCorridors(ctx, layout);
+      drawSpareCells(ctx, layout, tick);
 
-      // 2. Crisp subtle grid
-      drawOfficeFloor(ctx, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+      // 2. Rooms: walls with a door, desk lamp, workstation, chair, token badge
+      drawOfficeRooms(ctx, view, agents, events, tick);
 
-      // 3. Central Executive Lounge & Barista Coffee Station (stretches with floor height)
-      drawCentralLoungeAndCoffeeBar(ctx, tick, LOGICAL_HEIGHT);
-
-      // 4. Dedicated Agent Workstations (Clean non-overlapping suites for all roles)
-      drawOfficeRooms(ctx, agents, activeHandoff, events, tick);
-      // Each role's recorded token usage at the room's bottom-left, above a handover ribbon (roles with none show nothing)
-      agents.forEach((agent, idx) => {
-        const line = deskTokenLine(tokenStats.find((t) => t.agentId === agent.id));
-        if (!line) return;
-        const b = getAgentBounds(agent, idx);
-        const ribbon = getRoomWorkingState({ ...b, assignedAgentId: agent.id }, agents, activeHandoff, events);
-        const lift = ribbon.isReceivingHandoff && ribbon.handoffTaskShortTitle ? 58 : 30;
-        drawDeskTokenBadge(ctx, b.x + 14, b.y + b.h - lift, line);
-      });
-
-      // 5. 3D Volumetric Animated Characters (with Crisp Retina Avatars & Role Badges)
+      // 3. Characters sorted by y (walkers pass in front of / behind each other), then their bubbles
       draw3DCharacters(
         ctx,
+        view,
         agents,
-        activeHandoff,
-        hoveredAgentId,
-        selectedAgentId,
-        crispAvatarsRef.current,
         events,
         tick
       );
 
-      // 6. Active Task Delegation Arc (Handoff Animation)
-      if (activeHandoff) {
-        drawHandoffAnimation(ctx, activeHandoff, tick);
-      }
+      // 4. Card packets in flight, or the reduced-motion static cue
+      drawPackets(ctx, view);
+      drawReducedMotionCues(ctx, view, agents);
 
+      drawnRef.current = view.drawn;
       animationId = requestAnimationFrame(render);
     };
 
-    render();
-
+    animationId = requestAnimationFrame(render);
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [agents, activeHandoff, hoveredAgentId, selectedAgentId, LOGICAL_HEIGHT, events, tokenStats, getAgentBounds]);
+  }, []);
 
-  // Click handler
+  /** One hit test for click, hover and touch: avatars as drawn last frame (topmost first), then rooms */
+  const hitTest = useCallback((clientX: number, clientY: number): string | null => {
+    const canvas = canvasRef.current;
+    const currentLayout = layoutRef.current;
+    if (!canvas || !currentLayout) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const x = ((clientX - rect.left) * currentLayout.width) / rect.width;
+    const y = ((clientY - rect.top) * currentLayout.height) / rect.height;
+
+    const drawn = drawnRef.current;
+    for (let i = drawn.length - 1; i >= 0; i--) {
+      const d = drawn[i];
+      if (Math.hypot(x - d.x, y - d.y) <= d.r) return d.id;
+    }
+    const list = agentsRef.current;
+    for (const slot of currentLayout.slots) {
+      const r = slot.room;
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) return list[slot.index]?.id ?? null;
+    }
+    return null;
+  }, []);
+
+  const selectById = useCallback(
+    (id: string | null) => {
+      if (!id) return;
+      const agent = agentsRef.current.find((a) => a.id === id);
+      if (agent) onSelectAgent(agent);
+    },
+    [onSelectAgent]
+  );
+
   const handleCanvasClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = LOGICAL_WIDTH / rect.width;
-      const scaleY = LOGICAL_HEIGHT / rect.height;
-      const clickX = (e.clientX - rect.left) * scaleX;
-      const clickY = (e.clientY - rect.top) * scaleY;
-
-      for (let idx = 0; idx < agents.length; idx++) {
-        const agent = agents[idx];
-        const bounds = getAgentBounds(agent, idx);
-        const insideRoom =
-          clickX >= bounds.x &&
-          clickX <= bounds.x + bounds.w &&
-          clickY >= bounds.y &&
-          clickY <= bounds.y + bounds.h;
-        const pos = agent.currentPosition || agent.theme.deskPosition;
-        const dist = Math.hypot(clickX - pos.x, clickY - (pos.y - 20));
-        if (insideRoom || dist < 55) {
-          onSelectAgent(agent);
-          return;
-        }
-      }
-    },
-    [agents, onSelectAgent, LOGICAL_HEIGHT, getAgentBounds]
+    (e: React.MouseEvent<HTMLCanvasElement>) => selectById(hitTest(e.clientX, e.clientY)),
+    [hitTest, selectById]
   );
 
-  // Mouse move handler
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = LOGICAL_WIDTH / rect.width;
-      const scaleY = LOGICAL_HEIGHT / rect.height;
-      const mouseX = (e.clientX - rect.left) * scaleX;
-      const mouseY = (e.clientY - rect.top) * scaleY;
-
-      let found: string | null = null;
-      for (let idx = 0; idx < agents.length; idx++) {
-        const agent = agents[idx];
-        const bounds = getAgentBounds(agent, idx);
-        const insideRoom =
-          mouseX >= bounds.x &&
-          mouseX <= bounds.x + bounds.w &&
-          mouseY >= bounds.y &&
-          mouseY <= bounds.y + bounds.h;
-        const pos = agent.currentPosition || agent.theme.deskPosition;
-        const dist = Math.hypot(mouseX - pos.x, mouseY - (pos.y - 20));
-        if (insideRoom || dist < 55) {
-          found = agent.id;
-          break;
-        }
-      }
-      setHoveredAgentId(found);
-    },
-    [agents, LOGICAL_HEIGHT, getAgentBounds]
-  );
-
-  // Mobile Touch handler
   const handleTouchStart = useCallback(
     (e: React.TouchEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (!canvas || e.touches.length === 0) return;
+      if (e.touches.length === 0) return;
       const touch = e.touches[0];
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = LOGICAL_WIDTH / rect.width;
-      const scaleY = LOGICAL_HEIGHT / rect.height;
-      const clickX = (touch.clientX - rect.left) * scaleX;
-      const clickY = (touch.clientY - rect.top) * scaleY;
+      selectById(hitTest(touch.clientX, touch.clientY));
+    },
+    [hitTest, selectById]
+  );
 
-      for (let idx = 0; idx < agents.length; idx++) {
-        const agent = agents[idx];
-        const bounds = getAgentBounds(agent, idx);
-        const insideRoom =
-          clickX >= bounds.x &&
-          clickX <= bounds.x + bounds.w &&
-          clickY >= bounds.y &&
-          clickY <= bounds.y + bounds.h;
-        const pos = agent.currentPosition || agent.theme.deskPosition;
-        const dist = Math.hypot(clickX - pos.x, clickY - pos.y);
-        if (insideRoom || dist < 75) {
-          onSelectAgent(agent);
-          break;
-        }
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const found = hitTest(e.clientX, e.clientY);
+      e.currentTarget.style.cursor = found ? 'pointer' : 'default';
+      if (hoveredRef.current !== found) {
+        hoveredRef.current = found;
+        setHoveredAgentId(found);
       }
     },
-    [agents, LOGICAL_HEIGHT, onSelectAgent, getAgentBounds]
+    [hitTest]
   );
+
+  const handleMouseLeave = useCallback(() => {
+    hoveredRef.current = null;
+    setHoveredAgentId(null);
+  }, []);
 
   return (
     <div className="relative w-full bg-surface rounded-2xl border border-sand-200/90 shadow-sm overflow-hidden">
@@ -473,15 +666,17 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
       </div>
 
       {/* 2D Canvas Floor Plan View (Preserved in DOM to maintain canvas context & onCanvasReady) */}
-      <div className={viewMode === 'floor' ? 'relative block' : 'hidden'}>
+      <div ref={wrapperRef} className={viewMode === 'floor' ? 'relative block' : 'hidden'}>
         <canvas
           ref={canvasRef}
           onClick={handleCanvasClick}
           onTouchStart={handleTouchStart}
           onMouseMove={handleMouseMove}
-          onMouseLeave={() => setHoveredAgentId(null)}
-          className="w-full h-auto cursor-pointer block select-none touch-manipulation"
+          onMouseLeave={handleMouseLeave}
+          className="block select-none touch-manipulation"
           style={{ imageRendering: 'auto' }}
+          aria-label={`Office floor plan with ${agents.length} workstations`}
+          role="img"
         />
 
         {/* Empty State Overlay when no agents are configured */}
@@ -556,7 +751,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
 };
 
 /* =========================================================================
-   FLOOR TILES & CENTRAL LOUNGE / COFFEE BAR (SCANDINAVIAN MODERN PALETTE)
+   FLOOR, CORRIDORS & SPARE CELLS
    ========================================================================= */
 
 function drawOfficeFloor(ctx: CanvasRenderingContext2D, width: number, height: number) {
@@ -576,506 +771,375 @@ function drawOfficeFloor(ctx: CanvasRenderingContext2D, width: number, height: n
   ctx.stroke();
 }
 
-/**
- * Renders the Central Open Atrium with 3D Coffee Bar, Espresso Machine, Steam, Lounge Sofa & Plants
- */
-function drawCentralLoungeAndCoffeeBar(ctx: CanvasRenderingContext2D, tick: number, floorHeight: number = 680) {
-  const cx = 600;
-
-  // 1. Central Parquet Flooring Zone (Warm Natural Linen / Light Ash)
-  ctx.fillStyle = tc('#fbf9f5');
-  ctx.beginPath();
-  ctx.roundRect(cx - 115, 35, 230, Math.max(610, floorHeight - 70), 16);
-  ctx.fill();
-  ctx.strokeStyle = tc('#e6e2da');
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Zone Title Pill
-  ctx.font = 'bold 11px Inter, sans-serif';
-  const title = '☕ Executive Cafe & Break Lounge';
-  const tw = ctx.measureText(title).width;
-  ctx.fillStyle = tc('#ffffff');
-  ctx.beginPath();
-  ctx.roundRect(cx - (tw + 20) / 2, 45, tw + 20, 24, 8);
-  ctx.fill();
-  ctx.strokeStyle = tc('#e2e0d8');
+/** Corridor bands and walkways: a slightly darker runner with a dashed centre line */
+function drawCorridors(ctx: CanvasRenderingContext2D, layout: FloorLayout) {
+  ctx.save();
+  ctx.fillStyle = tc('#f1f5f9');
+  ctx.globalAlpha = 0.7;
+  for (const r of [...layout.hCorridors, ...layout.vCorridors]) ctx.fillRect(r.x, r.y, r.w, r.h);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = tc('#e2e8f0');
   ctx.lineWidth = 1;
+  ctx.setLineDash([6, 8]);
+  ctx.beginPath();
+  for (const r of layout.hCorridors) {
+    ctx.moveTo(0, r.y + r.h / 2);
+    ctx.lineTo(layout.width, r.y + r.h / 2);
+  }
   ctx.stroke();
-  ctx.fillStyle = tc('#475569');
-  ctx.fillText(title, cx - tw / 2, 61);
+  ctx.setLineDash([]);
+  ctx.restore();
+}
 
-  // 2. 3D Barista Coffee Counter (Warm Honey Oak & Quartz Marble)
-  const barY = 160;
-  // Ambient drop shadow
+/** Empty cells in the last row: a small coffee bar, never in a room or a corridor */
+function drawSpareCells(ctx: CanvasRenderingContext2D, layout: FloorLayout, tick: number) {
+  layout.spare.forEach((cell, i) => {
+    const s = Math.min(1, cell.w / REF_ROOM_W);
+    ctx.save();
+    ctx.strokeStyle = tc('#e2e8f0');
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 6]);
+    ctx.beginPath();
+    ctx.roundRect(cell.x + 6, cell.y + 6, cell.w - 12, cell.h - 12, 14);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (i === 0) {
+      ctx.translate(cell.x + cell.w / 2, cell.y + cell.h / 2);
+      ctx.scale(s, s);
+      drawCoffeeBar(ctx, tick);
+    } else {
+      drawPlant(ctx, cell.x + cell.w / 2, cell.y + cell.h / 2, s);
+    }
+    ctx.restore();
+  });
+}
+
+function drawCoffeeBar(ctx: CanvasRenderingContext2D, tick: number) {
+  // Honey oak counter with a quartz top
   ctx.fillStyle = 'rgba(15, 23, 42, 0.06)';
   ctx.beginPath();
-  ctx.roundRect(cx - 85, barY - 15, 170, 52, 10);
+  ctx.roundRect(-88, -12, 176, 52, 10);
   ctx.fill();
-
-  // Natural Honey Oak Front Panel
   ctx.fillStyle = '#c89666';
   ctx.beginPath();
-  ctx.roundRect(cx - 85, barY - 10, 170, 44, 8);
+  ctx.roundRect(-85, -8, 170, 44, 8);
   ctx.fill();
-  // Fluted wooden slats
   ctx.strokeStyle = '#b88452';
   ctx.lineWidth = 2;
-  for (let sx = cx - 75; sx <= cx + 75; sx += 14) {
+  for (let sx = -75; sx <= 75; sx += 14) {
     ctx.beginPath();
-    ctx.moveTo(sx, barY - 8);
-    ctx.lineTo(sx, barY + 32);
+    ctx.moveTo(sx, -6);
+    ctx.lineTo(sx, 34);
     ctx.stroke();
   }
-
-  // Pure White Quartz Countertop with 3D perspective
   ctx.fillStyle = tc('#ffffff');
   ctx.beginPath();
-  ctx.roundRect(cx - 90, barY - 22, 180, 22, 6);
+  ctx.roundRect(-90, -20, 180, 22, 6);
   ctx.fill();
   ctx.strokeStyle = tc('#e2e8f0');
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // 3D Espresso Machine (Nordic Pearl White & Chrome with twin spouts & steam)
-  const emX = cx - 30;
-  const emY = barY - 24;
-
+  // Espresso machine with steam
+  const emX = -30;
+  const emY = -22;
   ctx.fillStyle = tc('#f8fafc');
   ctx.fillRect(emX - 22, emY - 24, 44, 24);
   ctx.strokeStyle = tc('#cbd5e1');
-  ctx.lineWidth = 1.5;
   ctx.strokeRect(emX - 22, emY - 24, 44, 24);
-
-  // Chrome Cup Warmer Rack
-  ctx.fillStyle = tc('#e2e8f0');
-  ctx.fillRect(emX - 20, emY - 28, 40, 4);
-
-  // Pressure gauge dials
-  ctx.fillStyle = tc('#ffffff');
-  ctx.beginPath();
-  ctx.arc(emX - 10, emY - 13, 3.5, 0, Math.PI * 2);
-  ctx.arc(emX + 10, emY - 13, 3.5, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Twin Portafilters
   ctx.fillStyle = tc('#334155');
   ctx.fillRect(emX - 14, emY, 7, 7);
   ctx.fillRect(emX + 7, emY, 7, 7);
-
-  // Animated Steam rising from Espresso Machine!
   for (let i = 0; i < 3; i++) {
-    const steamAge = ((tick * 1.2 + i * 20) % 50) / 50;
-    const sy = emY - 30 - steamAge * 26;
-    const sx = emX - 10 + i * 10 + Math.sin(steamAge * Math.PI * 2 + i) * 3;
-    const alpha = Math.sin(steamAge * Math.PI) * 0.55;
-
-    ctx.strokeStyle = `rgba(148, 163, 184, ${alpha})`;
+    const age = ((tick * 1.2 + i * 20) % 50) / 50;
+    const sy = emY - 30 - age * 26;
+    const sx = emX - 10 + i * 10 + Math.sin(age * Math.PI * 2 + i) * 3;
+    ctx.strokeStyle = `rgba(148, 163, 184, ${Math.sin(age * Math.PI) * 0.55})`;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(sx, sy + 6);
     ctx.quadraticCurveTo(sx + 3, sy + 3, sx, sy);
     ctx.stroke();
   }
-
-  // Coffee cups stacked on counter
+  // Cups
   ctx.fillStyle = tc('#ffffff');
   ctx.beginPath();
-  ctx.arc(cx + 40, barY - 15, 6, 0, Math.PI * 2);
-  ctx.arc(cx + 56, barY - 15, 6, 0, Math.PI * 2);
+  ctx.arc(40, -13, 6, 0, Math.PI * 2);
+  ctx.arc(56, -13, 6, 0, Math.PI * 2);
   ctx.fill();
   ctx.strokeStyle = tc('#e2e8f0');
   ctx.lineWidth = 1;
   ctx.stroke();
 
-  // Bar Stools (Beechwood Legs with Cognac Leather Cushions)
-  [-50, 50].forEach((offset) => {
-    const bx = cx + offset;
-    const by = barY + 40;
-    ctx.fillStyle = tc('#cbd5e1');
-    ctx.beginPath();
-    ctx.ellipse(bx, by + 8, 11, 4.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillRect(bx - 2, by - 6, 4, 14);
-    // Cognac Round Leather Cushion
-    ctx.fillStyle = '#b45309';
-    ctx.beginPath();
-    ctx.ellipse(bx, by - 6, 13, 7, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#92400e';
-    ctx.stroke();
-  });
-
-  // 3. Central Activities Zone: Clean Executive Huddle Table & Lounge
-  // Executive Modern Huddle Table (Mid Lounge at Y: 280)
-  const ttX = cx;
-  const ttY = 280;
-  // Drop shadow
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.08)';
-  ctx.beginPath();
-  ctx.ellipse(ttX, ttY + 28, 55, 12, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Natural Beechwood Table surface
-  ctx.fillStyle = tc('#f1f5f9');
-  ctx.beginPath();
-  ctx.roundRect(ttX - 52, ttY - 20, 104, 44, 8);
-  ctx.fill();
-  ctx.strokeStyle = tc('#cbd5e1');
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Center wood grain accent
-  ctx.strokeStyle = tc('#e2e8f0');
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(ttX - 44, ttY + 2);
-  ctx.lineTo(ttX + 44, ttY + 2);
-  ctx.stroke();
-
-  // Tablet & Notepad on table
-  ctx.fillStyle = tc('#334155');
-  ctx.fillRect(ttX - 22, ttY - 10, 16, 20);
-  ctx.fillStyle = tc('#6366f1');
-  ctx.fillRect(ttX - 20, ttY - 8, 12, 16);
-
-  ctx.fillStyle = tc('#ffffff');
-  ctx.fillRect(ttX + 8, ttY - 8, 14, 18);
-  ctx.strokeStyle = tc('#cbd5e1');
-  ctx.strokeRect(ttX + 8, ttY - 8, 14, 18);
-
-  // Label Pill: Team Huddle
-  ctx.font = 'bold 8.5px Inter, sans-serif';
-  ctx.fillStyle = tc('#475569');
-  ctx.fillText('🤝 Team Huddle Area', ttX - 44, ttY - 26);
-
-  // 4. Retro Arcade Gaming Cabinet & Snack Bar (Y: 390)
-  const arcX = cx - 55;
-  const arcY = 385;
-
-  // Arcade Cabinet (Matte Charcoal with neon cyan marquee)
-  ctx.fillStyle = SCENE_INK_SOFT;
-  ctx.beginPath();
-  ctx.roundRect(arcX - 16, arcY - 28, 32, 52, 5);
-  ctx.fill();
-  ctx.strokeStyle = '#06b6d4';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Marquee Header with glowing retro title
-  const glow = 0.5 + 0.5 * Math.sin(tick * 0.1);
-  ctx.fillStyle = '#06b6d4';
-  ctx.fillRect(arcX - 13, arcY - 26, 26, 8);
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 6.5px JetBrains Mono, monospace';
-  ctx.fillText('ARCADE', arcX - 11, arcY - 20);
-
-  // CRT Screen with 8-bit animated scanline glow
-  ctx.fillStyle = SCENE_INK;
-  ctx.fillRect(arcX - 12, arcY - 14, 24, 18);
-  ctx.fillStyle = glow > 0.5 ? '#10b981' : '#3b82f6';
-  ctx.fillRect(arcX - 8, arcY - 10, 8, 8); // pixel character
-  ctx.fillStyle = '#f59e0b';
-  ctx.beginPath();
-  ctx.arc(arcX + 4, arcY - 6, 2, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Joystick & dual buttons
-  ctx.fillStyle = '#ef4444';
-  ctx.beginPath();
-  ctx.arc(arcX - 4, arcY + 10, 2.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#eab308';
-  ctx.beginPath();
-  ctx.arc(arcX + 4, arcY + 10, 2, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Snack & Organic Juice Bar (Opposite to Arcade at cx + 50)
-  const snackX = cx + 50;
-  const snackY = 385;
-  // Natural Oak Shelf
-  ctx.fillStyle = tc('#e2e8f0');
-  ctx.beginPath();
-  ctx.roundRect(snackX - 22, snackY - 24, 44, 48, 6);
-  ctx.fill();
-  ctx.strokeStyle = tc('#cbd5e1');
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Glass Jars with healthy snacks & fruits
-  ctx.fillStyle = '#f59e0b'; // Oranges
-  ctx.beginPath();
-  ctx.arc(snackX - 10, snackY - 12, 5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#ef4444'; // Apples
-  ctx.beginPath();
-  ctx.arc(snackX + 8, snackY - 12, 5, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Cold Brew & Energy Drink Fridge Shelf
-  ctx.fillStyle = '#0284c7';
-  ctx.fillRect(snackX - 16, snackY + 4, 8, 14);
-  ctx.fillStyle = '#10b981';
-  ctx.fillRect(snackX - 4, snackY + 4, 8, 14);
-  ctx.fillStyle = '#a855f7';
-  ctx.fillRect(snackX + 8, snackY + 4, 8, 14);
-
-  ctx.font = 'bold 8.5px Inter, sans-serif';
+  ctx.font = 'bold 10px Inter, sans-serif';
+  ctx.textAlign = 'center';
   ctx.fillStyle = tc('#64748b');
-  ctx.fillText('Refreshments Bar', snackX - 32, snackY + 32);
+  ctx.fillText('☕ Coffee bar', 0, 62);
+  ctx.textAlign = 'left';
+}
 
-  // 5. 3D Plush Nordic Oat/Boucle Lounge Sofa & Oak Table (Bottom Lounge Y: 535)
-  const sofaY = 535;
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.08)';
-  ctx.beginPath();
-  ctx.ellipse(cx, sofaY + 22, 75, 14, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Warm Oat / Biscuit Base
-  ctx.fillStyle = tc('#ece7de');
-  ctx.beginPath();
-  ctx.roundRect(cx - 75, sofaY - 24, 150, 42, 10);
-  ctx.fill();
-  ctx.strokeStyle = tc('#d5cebf');
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Natural Sand Boucle Cushions
-  ctx.fillStyle = tc('#f5f3ee');
-  ctx.beginPath();
-  ctx.roundRect(cx - 68, sofaY - 16, 64, 28, 7);
-  ctx.roundRect(cx + 4, sofaY - 16, 64, 28, 7);
-  ctx.fill();
-
-  // Amber Accent Throw Pillows
-  ctx.fillStyle = '#d97706';
-  ctx.beginPath();
-  ctx.roundRect(cx - 64, sofaY - 14, 18, 18, 4);
-  ctx.roundRect(cx + 46, sofaY - 14, 18, 18, 4);
-  ctx.fill();
-
-  // Low Blonde Oak Coffee Table
-  ctx.fillStyle = '#e4cfb4';
-  ctx.beginPath();
-  ctx.roundRect(cx - 44, sofaY - 54, 88, 24, 5);
-  ctx.fill();
-  ctx.strokeStyle = '#cfb99b';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Magazine & Coffee Cups
-  ctx.fillStyle = tc('#4f46e5');
-  ctx.fillRect(cx - 28, sofaY - 50, 24, 14);
-  ctx.fillStyle = tc('#ffffff');
-  ctx.beginPath();
-  ctx.arc(cx + 22, sofaY - 42, 4.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = tc('#e2e8f0');
-  ctx.stroke();
-
-  // 6. Extended Campus Amenities for larger teams (5 to 12+ roles)
-  if (floorHeight > 750) {
-    // Glass Architectural Whiteboard Wall at Y: 720
-    const wbY = 720;
-    ctx.fillStyle = tc('#ffffff');
+function drawPlant(ctx: CanvasRenderingContext2D, x: number, y: number, s: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  ctx.fillStyle = '#059669';
+  ctx.globalAlpha = 0.45;
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
     ctx.beginPath();
-    ctx.roundRect(cx - 75, wbY - 24, 150, 48, 8);
+    ctx.ellipse(Math.cos(a) * 12, Math.sin(a) * 12, 12, 7, a, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = tc('#cbd5e1');
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // Whiteboard diagram lines
-    ctx.fillStyle = tc('#6366f1');
-    ctx.fillRect(cx - 60, wbY - 14, 28, 12);
-    ctx.fillStyle = '#06b6d4';
-    ctx.fillRect(cx - 14, wbY - 14, 28, 12);
-    ctx.fillStyle = '#10b981';
-    ctx.fillRect(cx + 32, wbY - 14, 28, 12);
-    ctx.strokeStyle = tc('#94a3b8');
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(cx - 32, wbY - 8); ctx.lineTo(cx - 14, wbY - 8);
-    ctx.moveTo(cx + 14, wbY - 8); ctx.lineTo(cx + 32, wbY - 8);
-    ctx.stroke();
-
-    ctx.font = 'bold 8.5px Inter, sans-serif';
-    ctx.fillStyle = tc('#64748b');
-    ctx.fillText('Architecture Flow', cx - 38, wbY + 16);
   }
-
-  if (floorHeight > 980) {
-    // High-Top Standing Collaboration Table at Y: 940
-    const htY = 940;
-    ctx.fillStyle = tc('#e2e8f0');
-    ctx.beginPath();
-    ctx.roundRect(cx - 60, htY - 18, 120, 36, 8);
-    ctx.fill();
-    ctx.strokeStyle = tc('#94a3b8');
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    // Laptops on standing desk
-    ctx.fillStyle = SCENE_INK_SOFT;
-    ctx.fillRect(cx - 40, htY - 10, 20, 14);
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillRect(cx - 38, htY - 8, 16, 10);
-
-    ctx.fillStyle = SCENE_INK_SOFT;
-    ctx.fillRect(cx + 20, htY - 10, 20, 14);
-    ctx.fillStyle = '#a855f7';
-    ctx.fillRect(cx + 22, htY - 8, 16, 10);
-
-    ctx.font = 'bold 8.5px Inter, sans-serif';
-    ctx.fillStyle = tc('#64748b');
-    ctx.fillText('Sync & Pairing Pod', cx - 38, htY + 28);
-  }
-
-  if (floorHeight > 1200) {
-    // Indoor Botanical Planter Box & Hydration Station at Y: 1160
-    const plY = 1160;
-    ctx.fillStyle = '#dbeafe';
-    ctx.beginPath();
-    ctx.roundRect(cx - 65, plY - 20, 130, 40, 8);
-    ctx.fill();
-    ctx.strokeStyle = '#93c5fd';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    ctx.fillStyle = '#059669';
-    ctx.beginPath();
-    ctx.arc(cx - 35, plY - 6, 12, 0, Math.PI * 2);
-    ctx.arc(cx - 10, plY - 10, 14, 0, Math.PI * 2);
-    ctx.arc(cx + 15, plY - 8, 13, 0, Math.PI * 2);
-    ctx.arc(cx + 40, plY - 6, 12, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.font = 'bold 8.5px Inter, sans-serif';
-    ctx.fillStyle = '#0369a1';
-    ctx.fillText('🌿 Nordic Botanical Atrium', cx - 55, plY + 30);
-  }
+  ctx.restore();
 }
 
 /* =========================================================================
-   FOUR OFFICE SUITES & DYNAMIC ACTIVE WORK HIGHLIGHTING
+   ROOMS & DYNAMIC ACTIVE WORK HIGHLIGHTING
    ========================================================================= */
 
+/** Desk lamp on: receiving window, a working status, or a current task */
+function deskWorks(agent: Agent, view: SceneView): boolean {
+  return view.choreo.receiving.has(agent.id) || WORK_STATUSES.includes(agent.status) || Boolean(agent.currentTask);
+}
+
 function getRoomWorkingState(
-  room: { x: number; y: number; w: number; h: number; assignedAgentId: string },
+  agent: Agent | undefined,
   agents: Agent[],
-  activeHandoff: ActiveHandoff | null,
+  view: SceneView,
   events: NormalizedEvent[] = []
 ): RoomWorkingState {
-  const assignedAgent = agents.find((a) => a.id === room.assignedAgentId);
+  if (!agent) return { isWorking: false, label: '' };
 
-  const checkAgent = (agent: Agent | undefined): RoomWorkingState => {
-    if (!agent) return { isWorking: false, label: '' };
+  // Handoffs come from the client choreography (the server's activeHandoff is gone after 3 s)
+  const actor = view.choreo.actors.get(agent.id);
+  if (actor?.current && actor.phase !== 'seated') {
+    const toAgent = agents.find((a) => a.id === actor.current!.toId);
+    const toName = agentShortName(toAgent, 'Teammate');
+    return {
+      isWorking: true,
+      label: `DELEGATING ➔ ${toName}`,
+      workerName: agent.name,
+      isDelegatingHandoff: true,
+      handoffPartnerName: toName,
+    };
+  }
+  const receiving = view.choreo.receiving.get(agent.id);
+  if (receiving) {
+    const fromAgent = agents.find((a) => a.id === receiving.handoff.fromId);
+    const shortTask = receiving.handoff.shortTask;
+    return {
+      isWorking: true,
+      label: `INCOMING: ${shortTask}`,
+      workerName: agent.name,
+      isReceivingHandoff: true,
+      handoffTaskShortTitle: shortTask,
+      handoffTaskFullTitle: receiving.handoff.title,
+      handoffPartnerName: agentShortName(fromAgent, 'Lead'),
+    };
+  }
 
-    if (activeHandoff) {
-      if (activeHandoff.fromId === agent.id) {
-        const toAgent = agents.find((a) => a.id === activeHandoff.toId);
-        const toName = toAgent?.badgeText || toAgent?.theme?.badge || toAgent?.name || 'Teammate';
-        return {
-          isWorking: true,
-          label: `DELEGATING ➔ ${toName}`,
-          workerName: agent.name,
-          isDelegatingHandoff: true,
-          handoffPartnerName: toName,
-        };
-      }
-      if (activeHandoff.toId === agent.id) {
-        let shortTask = activeHandoff.taskTitle || 'Task Handover';
-        if (shortTask.includes(':')) {
-          const parts = shortTask.split(':');
-          if (parts[1] && parts[1].trim().length > 3) {
-            shortTask = parts[1].trim();
-          }
-        }
-        if (shortTask.length > 24) {
-          shortTask = shortTask.slice(0, 22) + '...';
-        }
+  const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id));
+  let latestEvent: NormalizedEvent | null = null;
+  if (agentEvents.length > 0) {
+    latestEvent = agentEvents.reduce((latest, curr) => {
+      const tLatest = new Date(latest.timestamp).getTime();
+      const tCurr = new Date(curr.timestamp).getTime();
+      return tCurr >= tLatest ? curr : latest;
+    }, agentEvents[0]);
+  }
 
-        const fromAgent = agents.find((a) => a.id === activeHandoff.fromId);
-        const fromName = fromAgent?.badgeText || fromAgent?.theme?.badge || fromAgent?.name || 'Lead';
+  const isRecentEvent = latestEvent
+    ? (Date.now() - new Date(latestEvent.timestamp).getTime() < 15000)
+    : false;
 
-        return {
-          isWorking: true,
-          label: `INCOMING: ${shortTask}`,
-          workerName: agent.name,
-          isReceivingHandoff: true,
-          handoffTaskShortTitle: shortTask,
-          handoffTaskFullTitle: activeHandoff.taskTitle,
-          handoffPartnerName: fromName,
-        };
-      }
+  if (isRecentEvent && latestEvent) {
+    const p = latestEvent.payload || {};
+    if (latestEvent.type === 'file_modified') {
+      return { isWorking: true, label: 'REFACTORING', workerName: agent.name };
     }
-
-    const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id));
-    let latestEvent: NormalizedEvent | null = null;
-    if (agentEvents.length > 0) {
-      latestEvent = agentEvents.reduce((latest, curr) => {
-        const tLatest = new Date(latest.timestamp).getTime();
-        const tCurr = new Date(curr.timestamp).getTime();
-        return tCurr >= tLatest ? curr : latest;
-      }, agentEvents[0]);
+    if (latestEvent.type === 'tool_executing' || latestEvent.type === 'tool_started') {
+      return { isWorking: true, label: 'EXECUTING TOOL', workerName: agent.name };
     }
-
-    const isRecentEvent = latestEvent
-      ? (Date.now() - new Date(latestEvent.timestamp).getTime() < 15000)
-      : false;
-
-    if (isRecentEvent && latestEvent) {
-      const p = latestEvent.payload || {};
-      if (latestEvent.type === 'file_modified') {
-        return { isWorking: true, label: 'REFACTORING', workerName: agent.name };
-      }
-      if (latestEvent.type === 'tool_executing' || latestEvent.type === 'tool_started') {
-        return { isWorking: true, label: 'EXECUTING TOOL', workerName: agent.name };
-      }
-      if (latestEvent.type === 'command_executing') {
-        const isTest = p.command && p.command.includes('test');
-        return { isWorking: true, label: isTest ? 'RUNNING TESTS' : 'EXECUTING COMMAND', workerName: agent.name };
-      }
-      if (latestEvent.type === 'test_result') {
-        return { isWorking: true, label: 'RUNNING TESTS', workerName: agent.name };
-      }
-      if (latestEvent.type === 'planning_started') {
-        return { isWorking: true, label: 'PLANNING', workerName: agent.name };
-      }
+    if (latestEvent.type === 'command_executing') {
+      const isTest = p.command && p.command.includes('test');
+      return { isWorking: true, label: isTest ? 'RUNNING TESTS' : 'EXECUTING COMMAND', workerName: agent.name };
     }
-
-    const activeStatuses = ['working', 'coding', 'testing', 'reviewing', 'planning', 'delegating', 'busy'];
-    if (activeStatuses.includes(agent.status)) {
-      let activeLabel = agent.status.toUpperCase();
-      if (agent.status === 'coding') activeLabel = 'CODING';
-      else if (agent.status === 'testing') activeLabel = 'RUNNING TESTS';
-      else if (agent.status === 'working') {
-        if (latestEvent && latestEvent.type === 'file_modified') activeLabel = 'REFACTORING';
-        else if (latestEvent && (latestEvent.type === 'tool_executing' || latestEvent.type === 'tool_started')) activeLabel = 'EXECUTING TOOL';
-        else activeLabel = 'WORKING';
-      }
-      return { isWorking: true, label: activeLabel, workerName: agent.name };
+    if (latestEvent.type === 'test_result') {
+      return { isWorking: true, label: 'RUNNING TESTS', workerName: agent.name };
     }
-
-    if (agent.currentTask && agent.status !== 'idle' && agent.status !== 'available') {
-      return { isWorking: true, label: 'ACTIVE', workerName: agent.name };
-    }
-
-    return { isWorking: false, label: '' };
-  };
-
-  const primaryState = checkAgent(assignedAgent);
-  if (primaryState.isWorking) return primaryState;
-
-  for (const a of agents) {
-    const pos = a.currentPosition || a.theme.deskPosition;
-    if (pos.x >= room.x && pos.x <= room.x + room.w && pos.y >= room.y && pos.y <= room.y + room.h) {
-      const state = checkAgent(a);
-      if (state.isWorking) return state;
+    if (latestEvent.type === 'planning_started') {
+      return { isWorking: true, label: 'PLANNING', workerName: agent.name };
     }
   }
 
+  const activeStatuses = ['working', 'coding', 'testing', 'reviewing', 'planning', 'delegating', 'busy'];
+  if (activeStatuses.includes(agent.status)) {
+    let activeLabel = agent.status.toUpperCase();
+    if (agent.status === 'coding') activeLabel = 'CODING';
+    else if (agent.status === 'testing') activeLabel = 'RUNNING TESTS';
+    else if (agent.status === 'working') {
+      if (latestEvent && latestEvent.type === 'file_modified') activeLabel = 'REFACTORING';
+      else if (latestEvent && (latestEvent.type === 'tool_executing' || latestEvent.type === 'tool_started')) activeLabel = 'EXECUTING TOOL';
+      else activeLabel = 'WORKING';
+    }
+    return { isWorking: true, label: activeLabel, workerName: agent.name };
+  }
+
+  if (agent.currentTask && agent.status !== 'idle' && agent.status !== 'available') {
+    return { isWorking: true, label: 'ACTIVE', workerName: agent.name };
+  }
+
   return { isWorking: false, label: '' };
+}
+
+/**
+ * Every room draws its art in the reference box: translate to the room, scale by slot.scale.
+ * The local box is room.w/scale wide, so wide rooms (scale 1) fill their width.
+ */
+function drawOfficeRooms(
+  ctx: CanvasRenderingContext2D,
+  view: SceneView,
+  agents: Agent[],
+  events: NormalizedEvent[],
+  tick: number
+) {
+  agents.forEach((agent, idx) => {
+    const slot = view.layout.slots[idx];
+    if (!slot) return;
+    const { room, scale } = slot;
+    const lw = room.w / scale;
+    const lh = room.h / scale;
+    const cx = lw / 2;
+    const color = agent.theme?.themeColor || '#0d9488';
+
+    const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id));
+    const rState = getRoomWorkingState(agent, agents, view, events);
+    const actor = view.choreo.actors.get(agent.id);
+    const seated = !actor || actor.phase === 'seated';
+    const works = deskWorks(agent, view);
+
+    ctx.save();
+    ctx.translate(room.x, room.y);
+    ctx.scale(scale, scale);
+
+    drawRoomBox(ctx, 0, 0, lw, lh, getSuiteDisplayName(agent, idx), agent, color, rState, agentEvents, tick);
+    drawDoorway(ctx, cx, lh);
+    if (works) drawDeskLamp(ctx, cx, lw, lh, color);
+    drawChair(ctx, cx, ART.seatY, seated);
+    drawDynamicWorkstation(ctx, agent, cx, ART.deskCenterY, { x: 0, y: 0, w: lw, h: lh }, idx, tick);
+    if (works && seated) drawMonitorLines(ctx, cx, color, view.clock, view.reduced);
+
+    // Recorded token usage at the room's bottom-left, above a handover ribbon (roles with none show nothing)
+    const line = deskTokenLine(view.tokenStats.find((t) => t.agentId === agent.id));
+    if (line) {
+      const lift = rState.isReceivingHandoff && rState.handoffTaskShortTitle ? 58 : 30;
+      drawDeskTokenBadge(ctx, 14, lh - lift, line, cx - 50);
+    }
+    ctx.restore();
+  });
+}
+
+/** Gap in the bottom wall at the seat's x, with a dashed door swing */
+function drawDoorway(ctx: CanvasRenderingContext2D, cx: number, h: number) {
+  const half = 22;
+  ctx.save();
+  ctx.fillStyle = tc('#f1f5f9');
+  ctx.fillRect(cx - half, h - 4, half * 2, 8);
+  ctx.strokeStyle = tc('#94a3b8');
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(cx - half, h - 5);
+  ctx.lineTo(cx - half, h + 1);
+  ctx.moveTo(cx + half, h - 5);
+  ctx.lineTo(cx + half, h + 1);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 4]);
+  ctx.beginPath();
+  ctx.arc(cx - half, h, half * 2, -Math.PI / 2, 0);
+  ctx.globalAlpha = 0.5;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDeskLamp(ctx: CanvasRenderingContext2D, cx: number, w: number, h: number, color: string) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(0, 0, w, h, 14);
+  ctx.clip();
+  const gy = ART.deskCenterY + 30;
+  const g = ctx.createRadialGradient(cx, gy, 4, cx, gy, 130);
+  g.addColorStop(0, hexA(color, 0.28));
+  g.addColorStop(1, hexA(color, 0));
+  ctx.fillStyle = g;
+  ctx.fillRect(cx - 140, gy - 120, 280, 240);
+  ctx.restore();
+}
+
+/** Code lines flickering over the monitors while the agent works at its desk */
+function drawMonitorLines(ctx: CanvasRenderingContext2D, cx: number, color: string, clock: number, reduced: boolean) {
+  const y = ART.deskCenterY;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.85;
+  for (let i = 0; i < 3; i++) {
+    const w = reduced ? 22 : 10 + (Math.sin(clock / 180 + i * 2) + 1) * 13;
+    ctx.fillRect(cx + 9, y - 19 + i * 6, w, 2.5);
+  }
+  ctx.restore();
+}
+
+function drawChair(ctx: CanvasRenderingContext2D, cx: number, seatY: number, occupied: boolean) {
+  ctx.save();
+  ctx.fillStyle = occupied ? tc('#e2e8f0') : tc('#f1f5f9');
+  ctx.strokeStyle = tc('#cbd5e1');
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(cx, seatY + 6, 24, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** rgba() from a #rgb / #rrggbb colour; other formats are returned unchanged */
+function hexA(color: string, alpha: number): string {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
+  if (!m) return color;
+  let hex = m[1];
+  if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('');
+  const n = parseInt(hex, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+/** Text cut with an ellipsis to fit maxWidth in the current font */
+function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (maxWidth <= 0) return '';
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let cut = text;
+  while (cut.length > 1 && ctx.measureText(cut + '…').width > maxWidth) cut = cut.slice(0, -1);
+  return cut.trimEnd() + '…';
+}
+
+/** A role's recorded token usage as a small badge; nothing when it has none. */
+function drawDeskTokenBadge(ctx: CanvasRenderingContext2D, x: number, y: number, text: string | null, maxW = 240) {
+  if (!text) return;
+  ctx.save();
+  ctx.font = 'bold 9.5px JetBrains Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const label = fitText(ctx, `🪙 ${text}`, Math.max(40, maxW - 18));
+  const w = ctx.measureText(label).width + 18;
+  ctx.fillStyle = tc('#f8fafc');
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, 18, 5);
+  ctx.fill();
+  ctx.strokeStyle = tc('#e2e8f0');
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = tc('#334155');
+  ctx.fillText(label, x + 8, y + 13);
+  ctx.restore();
 }
 
 function getSuiteDisplayName(agent: Agent, idx: number): string {
@@ -1117,76 +1181,6 @@ function getSuiteDisplayName(agent: Agent, idx: number): string {
     return `💻 ${agent.name} Engineering Station`;
   }
   return `🏢 ${agent.name} Station`;
-}
-
-function drawOfficeRooms(
-  ctx: CanvasRenderingContext2D,
-  agents: Agent[],
-  activeHandoff: ActiveHandoff | null,
-  events: NormalizedEvent[],
-  tick: number
-) {
-  const totalSlots = Math.max(agents.length, 4);
-  const leftCount = Math.ceil(totalSlots / 2);
-  const rightCount = Math.floor(totalSlots / 2);
-  const maxRows = Math.max(leftCount, rightCount, 2);
-  const rowHeight = maxRows <= 2 ? 290 : 240;
-  const rowGap = maxRows <= 2 ? 30 : 25;
-  const topMargin = 35;
-  const roomW = 420;
-
-  agents.forEach((agent, idx) => {
-    // Dynamic room bounds from theme or computed non-overlapping coordinates
-    const isLeft = idx % 2 === 0;
-    const row = Math.floor(idx / 2);
-    const defaultBounds = {
-      x: isLeft ? 35 : 745,
-      y: topMargin + row * (rowHeight + rowGap),
-      w: roomW,
-      h: rowHeight,
-    };
-    const bounds = agent.theme?.roomBounds || defaultBounds;
-    const deskPos = agent.theme?.deskPosition || {
-      x: bounds.x + bounds.w / 2,
-      y: bounds.y + bounds.h / 2 + (maxRows <= 2 ? 0 : 15),
-    };
-
-    const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id));
-
-    const rState = getRoomWorkingState(
-      { x: bounds.x, y: bounds.y, w: bounds.w, h: bounds.h, assignedAgentId: agent.id },
-      agents,
-      activeHandoff,
-      events
-    );
-
-    const suiteName = getSuiteDisplayName(agent, idx);
-    drawRoomBox(ctx, bounds.x, bounds.y, bounds.w, bounds.h, suiteName, agent, agent.theme.themeColor, rState, agentEvents, tick);
-
-    // Draw appropriate 3D workstation furniture
-    drawDynamicWorkstation(ctx, agent, deskPos.x, deskPos.y, bounds, idx, tick);
-  });
-}
-
-/** A role's recorded token usage as a small badge; nothing when it has none. */
-function drawDeskTokenBadge(ctx: CanvasRenderingContext2D, x: number, y: number, text: string | null) {
-  if (!text) return;
-  const label = `🪙 ${text}`;
-  ctx.save();
-  ctx.font = 'bold 9.5px JetBrains Mono, monospace';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
-  const w = ctx.measureText(label).width + 18;
-  ctx.fillStyle = tc('#f8fafc');
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, 18, 5);
-  ctx.fill();
-  ctx.strokeStyle = tc('#e2e8f0');
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.fillStyle = tc('#334155');
-  ctx.fillText(label, x + 8, y + 13);
-  ctx.restore();
 }
 
 function drawDynamicWorkstation(
@@ -1291,23 +1285,25 @@ function drawRoomBox(
   ctx.roundRect(x, y, 5, h, [14, 0, 0, 14]);
   ctx.fill();
 
-  // 4. CLEAN TWO-TIER ROOM HEADER (TITLE ON ROW 1, STATUS & TIMER ON ROW 2)
-  // Row 1: Role & Suite Title Pill (Full width headroom, never truncated prematurely)
+  // 4. TWO-TIER ROOM HEADER: title + status on row 1, work time on row 2.
+  // The status pill is measured first so the title gets the remaining width (both truncate with an ellipsis).
+  const isReceiving = Boolean(workingState.isWorking && workingState.isReceivingHandoff);
+  const rawStatus = workingState.isWorking
+    ? (isReceiving
+      ? `📥 INCOMING: ${workingState.handoffTaskShortTitle || workingState.label}`
+      : `⚡ LIVE: ${workingState.label}`)
+    : '☕ Standby';
+  ctx.font = workingState.isWorking ? 'bold 10px Inter, sans-serif' : '500 10px Inter, sans-serif';
+  const statusPad = workingState.isWorking ? 24 : 16;
+  const statusText = fitText(ctx, rawStatus, Math.max(40, w * 0.5 - statusPad));
+  const statusW = ctx.measureText(statusText).width + statusPad;
+  const statusX = x + w - statusW - 14;
+
+  // Row 1: Role & Suite Title Pill
   const roleText = `${agent.badgeText || agent.theme?.badge || 'AGT'} • ${agent.role || suiteName}`;
   ctx.font = 'bold 11px Inter, sans-serif';
-
-  const maxTitleW = w - 140;
-  let displayTitle = roleText;
-
-  if (ctx.measureText(displayTitle).width > maxTitleW - 24) {
-    while (displayTitle.length > 3 && ctx.measureText(displayTitle + '...').width > maxTitleW - 24) {
-      displayTitle = displayTitle.slice(0, -1);
-    }
-    displayTitle += '...';
-  }
-
-  const textWidth = ctx.measureText(displayTitle).width;
-  const pillW = textWidth + 24;
+  const displayTitle = fitText(ctx, roleText, statusX - (x + 14) - 8 - 24);
+  const pillW = ctx.measureText(displayTitle).width + 24;
 
   ctx.fillStyle = workingState.isWorking ? `${color}14` : tc('#f1f5f9');
   ctx.beginPath();
@@ -1322,14 +1318,7 @@ function drawRoomBox(
 
   // Status Pill on Row 1 (Right Corner)
   if (workingState.isWorking) {
-    const isReceiving = workingState.isReceivingHandoff;
-    const statusText = isReceiving
-      ? `📥 INCOMING: ${workingState.handoffTaskShortTitle || workingState.label}`
-      : `⚡ LIVE: ${workingState.label}`;
     ctx.font = 'bold 10px Inter, sans-serif';
-    const statusW = ctx.measureText(statusText).width + 24;
-    const statusX = x + w - statusW - 14;
-
     ctx.save();
     ctx.fillStyle = isReceiving ? tc('#fffbeb') : tc('#ffffff');
     ctx.beginPath();
@@ -1341,7 +1330,7 @@ function drawRoomBox(
     ctx.shadowBlur = (isReceiving ? 8 : 6) * pulse;
     ctx.stroke();
 
-    // Pulsing Indicator (Amber for incoming handoff, Green for active work)
+    // Indicator (Amber for incoming handoff, Green for active work)
     ctx.fillStyle = isReceiving ? '#f59e0b' : '#10b981';
     ctx.beginPath();
     ctx.arc(statusX + 9, y + 21, 3.5, 0, Math.PI * 2);
@@ -1351,27 +1340,21 @@ function drawRoomBox(
     ctx.fillText(statusText, statusX + 17, y + 25);
     ctx.restore();
   } else {
-    // Standby pill
-    const standbyText = '☕ Standby';
     ctx.font = '500 10px Inter, sans-serif';
-    const sbW = ctx.measureText(standbyText).width + 16;
-    const sbX = x + w - sbW - 14;
-
     ctx.fillStyle = tc('#f8fafc');
     ctx.beginPath();
-    ctx.roundRect(sbX, y + 10, sbW, 22, 6);
+    ctx.roundRect(statusX, y + 10, statusW, 22, 6);
     ctx.fill();
     ctx.strokeStyle = tc('#e2e8f0');
     ctx.lineWidth = 1;
     ctx.stroke();
 
     ctx.fillStyle = tc('#64748b');
-    ctx.fillText(standbyText, sbX + 8, y + 25);
+    ctx.fillText(statusText, statusX + 8, y + 25);
   }
 
   // Row 2: ALWAYS-VISIBLE WORK TIME & AUDIT LINE FOR ALL TEAM MEMBERS
   // Computes active runtime if working, plus cumulative work time logged across all tasks
-  const hasStarted = Boolean(agent.taskStartedAt);
   const isWorking = workingState.isWorking;
   const currentTaskElapsed = (isWorking && agent.taskStartedAt)
     ? Math.max(0, Math.floor((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000))
@@ -1411,6 +1394,7 @@ function drawRoomBox(
   }
 
   ctx.font = 'bold 9.5px JetBrains Mono, monospace';
+  workTimeText = fitText(ctx, workTimeText, w - 28 - 18);
   const timerW = ctx.measureText(workTimeText).width + 18;
   const timerX = x + 14;
   const timerY = y + 36;
@@ -1436,7 +1420,7 @@ function drawRoomBox(
     ctx.save();
     ctx.fillStyle = tc('#fffbeb');
     ctx.shadowColor = '#f59e0b';
-    ctx.shadowBlur = 8 + 4 * pulse;
+    ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.roundRect(bannerX, bannerY, bannerW, bannerH, 5);
     ctx.fill();
@@ -1444,8 +1428,8 @@ function drawRoomBox(
     ctx.strokeStyle = '#f59e0b';
     ctx.lineWidth = 1.5;
     ctx.stroke();
+    ctx.shadowBlur = 0;
 
-    // Pulsing Amber Indicator Dot
     ctx.fillStyle = '#d97706';
     ctx.beginPath();
     ctx.arc(bannerX + 11, bannerY + bannerH / 2, 3.5, 0, Math.PI * 2);
@@ -1456,7 +1440,11 @@ function drawRoomBox(
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(
-      `📥 HANDOVER FROM ${workingState.handoffPartnerName?.toUpperCase() || 'LEAD'}: "${workingState.handoffTaskShortTitle}"`,
+      fitText(
+        ctx,
+        `📥 HANDOVER FROM ${workingState.handoffPartnerName?.toUpperCase() || 'LEAD'}: "${workingState.handoffTaskShortTitle}"`,
+        bannerW - 28
+      ),
       bannerX + 20,
       bannerY + bannerH / 2
     );
@@ -1714,32 +1702,58 @@ function drawDeskCoffeeMug(ctx: CanvasRenderingContext2D, x: number, y: number, 
 }
 
 /* =========================================================================
-   3D RETINA CHARACTERS & CLEAN NON-OVERLAPPING NAMETAGS
+   3D RETINA CHARACTERS, WALKERS & BUBBLES
    ========================================================================= */
+
+interface CharacterMotion {
+  /** Body offset above the floor point (bob + standing lift), in character units */
+  floorOffset: number;
+  /** Walking bob, in character units (the shadow shrinks with it) */
+  bob: number;
+  /** Standing up, walking or sitting down: no idle breathing or desk props */
+  moving: boolean;
+  reduced: boolean;
+}
+
+const SEATED: CharacterMotion = { floorOffset: 0, bob: 0, moving: false, reduced: false };
+
+interface PendingBubble {
+  x: number;
+  y: number;
+  cs: number;
+  raise: number;
+  text: string;
+  color: string;
+  isIdle: boolean;
+}
 
 function draw3DCharacters(
   ctx: CanvasRenderingContext2D,
+  view: SceneView,
   agents: Agent[],
-  activeHandoff: ActiveHandoff | null,
-  hoveredId: string | null,
-  selectedId: string | null,
-  avatarCanvases: Map<string, HTMLCanvasElement>,
   events: NormalizedEvent[],
   tick: number
 ) {
-  agents.forEach((agent) => {
-    let posX = agent.currentPosition?.x ?? agent.theme?.deskPosition.x;
-    let posY = agent.currentPosition?.y ?? agent.theme?.deskPosition.y;
+  const { layout, choreo } = view;
+  const items = agents
+    .map((agent, idx) => {
+      const slot = layout.slots[idx];
+      if (!slot) return null;
+      const actor = choreo.actors.get(agent.id);
+      return { agent, slot, actor, x: actor ? actor.x : slot.seat.x, y: actor ? actor.y : slot.seat.y };
+    })
+    .filter((it): it is NonNullable<typeof it> => it !== null)
+    .sort((a, b) => a.y - b.y);
 
-    // Smooth physical walking interpolation during handoffs
-    if (activeHandoff && activeHandoff.fromId === agent.id) {
-      const elapsed = Date.now() - activeHandoff.startedAt;
-      const progress = Math.min(1, Math.max(0, elapsed / activeHandoff.durationMs));
-      const midX = (activeHandoff.fromPos.x + activeHandoff.toPos.x) / 2;
-      const midY = (activeHandoff.fromPos.y + activeHandoff.toPos.y) / 2;
-      posX = activeHandoff.fromPos.x + (midX - activeHandoff.fromPos.x) * Math.sin(progress * Math.PI);
-      posY = activeHandoff.fromPos.y + (midY - activeHandoff.fromPos.y) * Math.sin(progress * Math.PI);
-    }
+  const bubbles: PendingBubble[] = [];
+
+  for (const { agent, slot, actor, x, y } of items) {
+    const cs = charScale(slot.scale);
+    const phase = actor?.phase ?? 'seated';
+    const walking = phase === 'walking' || phase === 'returning';
+    const bob = walking && actor && !view.reduced ? Math.abs(Math.sin(actor.walkClock / 110)) * 4 * cs : 0;
+    const lift = actor ? actor.lift * 5 * cs : 0;
+    const drawY = y - bob - lift;
 
     const agentEvents = events.filter((e) => (e.agentId === agent.id || e.payload?.agentId === agent.id));
     let latestAgentEvent: NormalizedEvent | null = null;
@@ -1759,33 +1773,40 @@ function draw3DCharacters(
       latestAgentEvent && ['file_modified', 'command_executing', 'tool_executing', 'tool_started', 'test_result', 'agent_handoff'].includes(latestAgentEvent.type)
     );
 
-    const isHovered = hoveredId === agent.id;
-    const isSelected = selectedId === agent.id;
+    const isHovered = view.hoveredId === agent.id;
+    const isSelected = view.selectedId === agent.id;
+    const receiving = choreo.receiving.get(agent.id);
     const isIdle =
       !hasActiveTelemetry &&
+      !receiving &&
       (agent.status === 'available' ||
       agent.status === 'idle' ||
       agent.status === 'waiting' ||
       (!agent.currentTask && agent.status !== 'working' && agent.status !== 'coding' && agent.status !== 'testing'));
 
-    // 1. Draw 3D Character Avatar (Retina Crisp)
-    drawSingle3DCharacter(ctx, posX, posY, agent, isIdle, isHovered, isSelected, avatarCanvases, tick);
+    // 1. Character and name plate, scaled with the room (never below legibility)
+    ctx.save();
+    ctx.translate(x, drawY);
+    ctx.scale(cs, cs);
+    drawSingle3DCharacter(ctx, 0, 0, agent, isIdle, isHovered, isSelected, view.avatars, tick, {
+      floorOffset: (bob + lift) / cs,
+      bob: bob / cs,
+      moving: phase !== 'seated',
+      reduced: view.reduced,
+    });
+    draw3DCleanNameBadge(ctx, 0, 0, agent, isIdle, { minX: (4 - x) / cs, maxX: (layout.width - 4 - x) / cs });
+    ctx.restore();
+    view.drawn.push({ id: agent.id, x, y: drawY - 24 * cs, r: 30 * cs });
 
-    // 2. Draw Clean Unified Floating Name & Role Badge
-    draw3DCleanNameBadge(ctx, posX, posY, agent, isIdle);
-
-    // 3. Speech Bubble: ONLY display when hovered, receiving handoff, OR actively performing work
-    if (activeHandoff && activeHandoff.toId === agent.id) {
-      let shortTask = activeHandoff.taskTitle || 'Task Handover';
-      if (shortTask.includes(':')) {
-        const parts = shortTask.split(':');
-        if (parts[1] && parts[1].trim().length > 3) shortTask = parts[1].trim();
-      }
-      if (shortTask.length > 25) shortTask = shortTask.slice(0, 23) + '...';
-      draw3DSpeechBubble(ctx, posX, posY - 62, `📥 Receiving: "${shortTask}"`, '#f59e0b', false);
+    // 2. Speech bubble: receiving window first, then telemetry, the walk, the current task, hover
+    let bubbleText = '';
+    let bubbleColor = agent.theme.themeColor;
+    let bubbleIdle = false;
+    if (receiving) {
+      const shortTask = receiving.handoff.shortTask;
+      bubbleText = `📥 Receiving: "${shortTask}"`;
     } else if (hasActiveTelemetry && latestAgentEvent) {
       const p = latestAgentEvent.payload || {};
-      let bubbleText = '';
       if (latestAgentEvent.type === 'file_modified') {
         const rawFile = p.file || p.filePath || agent.currentFile || 'Code';
         const cleanFileName = rawFile.split('/').pop() || rawFile;
@@ -1800,26 +1821,46 @@ function draw3DCharacters(
       } else if (latestAgentEvent.type === 'test_result') {
         bubbleText = (p.testsFailed && p.testsFailed > 0) ? '✗ Tests Failed' : '✓ Tests Passed';
       } else if (latestAgentEvent.type === 'agent_handoff') {
-        let shortTask = p.task || p.taskTitle || 'Task Handover';
-        if (shortTask.includes(':')) {
-          const parts = shortTask.split(':');
-          if (parts[1] && parts[1].trim().length > 3) shortTask = parts[1].trim();
-        }
-        if (shortTask.length > 25) shortTask = shortTask.slice(0, 23) + '...';
-        bubbleText = `📥 Receiving: "${shortTask}"`;
+        const labels = handoffLabels(p.task || p.taskTitle || 'Task Handover', p.key || p.taskKey);
+        const shortTask = labels.shortTask;
+        const isSender = resolveAgent(agents, p.fromAgent || latestAgentEvent.agentId)?.id === agent.id;
+        bubbleText = isSender ? `📤 Handing off: "${shortTask}"` : `📥 Receiving: "${shortTask}"`;
       } else {
         bubbleText = agent.activityMessage || `${agent.role} • ${agent.status.toUpperCase()}`;
       }
-      draw3DSpeechBubble(ctx, posX, posY - 62, bubbleText, agent.theme.themeColor, false);
+    } else if (actor?.current && phase !== 'seated') {
+      bubbleText = `📤 ${actor.current.label} ➔ ${actor.current.toName}`;
+      bubbleColor = actor.current.toColor;
+    } else if (!isIdle && agent.currentTask) {
+      bubbleText = `▶ ${agent.currentTask}`;
     } else if (isHovered || (!isIdle && agent.activityMessage)) {
-      const message = isHovered ? `${agent.role} • ${agent.status.toUpperCase()}` : agent.activityMessage;
-      draw3DSpeechBubble(ctx, posX, posY - 62, message, agent.theme.themeColor, isIdle);
+      bubbleText = isHovered ? `${agent.role} • ${agent.status.toUpperCase()}` : agent.activityMessage;
+      bubbleIdle = isIdle;
     }
-  });
+    if (bubbleText) {
+      const raise = !isIdle && agent.taskStartedAt ? 17 : 0;
+      bubbles.push({ x, y: drawY, cs, raise, text: bubbleText, color: bubbleColor, isIdle: bubbleIdle });
+    }
+  }
+
+  // Bubbles on top of every avatar, kept inside the canvas horizontally
+  for (const b of bubbles) {
+    ctx.save();
+    ctx.font = 'bold 9px Inter, sans-serif';
+    const display = b.text.length > 36 ? b.text.substring(0, 33) + '...' : b.text;
+    const wFloor = (ctx.measureText(display).width + 18) * b.cs;
+    const left = Math.max(4, Math.min(layout.width - wFloor - 4, b.x - wFloor / 2));
+    const shift = (left + wFloor / 2 - b.x) / b.cs;
+    ctx.translate(b.x, b.y);
+    ctx.scale(b.cs, b.cs);
+    draw3DSpeechBubble(ctx, shift, -62 - b.raise, display, b.color, b.isIdle, 0);
+    ctx.restore();
+  }
 }
 
 /**
- * Ultra-Crisp High-DPI Character Model with Pre-Filtered 3D Avatar Image
+ * Ultra-Crisp High-DPI Character Model with Pre-Filtered 3D Avatar Image.
+ * (x, y) is the floor point; the caller translates/scales so this draws in character units.
  */
 function drawSingle3DCharacter(
   ctx: CanvasRenderingContext2D,
@@ -1830,21 +1871,25 @@ function drawSingle3DCharacter(
   isHovered: boolean,
   isSelected: boolean,
   avatarCanvases: Map<string, HTMLCanvasElement>,
-  tick: number
+  tick: number,
+  motion: CharacterMotion = SEATED
 ) {
-  const isCelebrating = agent.status === 'celebrating';
-  const bob = isCelebrating ? -Math.abs(Math.sin(tick * 0.25)) * 12 : Math.sin(tick * 0.08) * 2;
+  const isCelebrating = agent.status === 'celebrating' && !motion.moving;
+  const breathing = motion.moving || motion.reduced ? 0 : Math.sin(tick * 0.08) * 2;
+  const bob = isCelebrating && !motion.reduced ? -Math.abs(Math.sin(tick * 0.25)) * 12 : breathing;
   const avatarUrl = agent.avatarUrl || agent.theme?.avatarUrl;
   const avatarCanvas = avatarUrl ? avatarCanvases.get(avatarUrl) : null;
 
-  // 1. Soft Dynamic 3D Floor Shadow
-  const shadowGrad = ctx.createRadialGradient(x, y + 12, 3, x, y + 12, 28);
+  // 1. Soft floor shadow: stays on the floor while the body lifts, shrinks with the walking bob
+  const shadowY = y + 12 + motion.floorOffset;
+  const shadowRx = Math.max(14, 28 - motion.bob * 3);
+  const shadowGrad = ctx.createRadialGradient(x, shadowY, 3, x, shadowY, shadowRx);
   shadowGrad.addColorStop(0, 'rgba(15, 23, 42, 0.35)');
   shadowGrad.addColorStop(0.5, 'rgba(15, 23, 42, 0.12)');
   shadowGrad.addColorStop(1, 'rgba(15, 23, 42, 0)');
   ctx.fillStyle = shadowGrad;
   ctx.beginPath();
-  ctx.ellipse(x, y + 12, 28, 10, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, shadowY, shadowRx, 10 - motion.bob, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Selection / Hover Aura Ring
@@ -1860,10 +1905,10 @@ function drawSingle3DCharacter(
     ctx.restore();
   }
 
-  // Active Work Pulsing Halo
+  // Active Work Halo (static under reduced motion)
   if (!isIdle) {
     ctx.save();
-    const workPulse = 0.5 + 0.5 * Math.sin(tick * 0.12);
+    const workPulse = motion.reduced ? 0.5 : 0.5 + 0.5 * Math.sin(tick * 0.12);
     ctx.strokeStyle = agent.theme.themeColor;
     ctx.lineWidth = 2.5;
     ctx.shadowColor = agent.theme.themeColor;
@@ -1880,23 +1925,19 @@ function drawSingle3DCharacter(
 
   if (avatarCanvas) {
     ctx.save();
-    // Ambient Shadow behind 3D avatar card
     ctx.shadowColor = 'rgba(15, 23, 42, 0.22)';
     ctx.shadowBlur = 10;
     ctx.shadowOffsetY = 4;
 
-    // Background circle
     ctx.beginPath();
     ctx.arc(x, centerY, avatarRadius + 3, 0, Math.PI * 2);
     ctx.fillStyle = tc('#ffffff');
     ctx.fill();
 
-    // 3D Rim stroke
     ctx.strokeStyle = isSelected ? tc('#6366f1') : agent.theme.themeColor;
     ctx.lineWidth = isSelected ? 3.5 : 2.5;
     ctx.stroke();
 
-    // Clip & Draw 3D High-Res Avatar with bicubic interpolation
     ctx.save();
     ctx.beginPath();
     ctx.arc(x, centerY, avatarRadius, 0, Math.PI * 2);
@@ -1911,7 +1952,7 @@ function drawSingle3DCharacter(
     ctx.restore();
     ctx.restore();
 
-    // Distinct Role Badge Insignia Pill on Avatar (Ensures 10+ roles are uniquely distinguishable)
+    // Role Badge Insignia Pill on Avatar (Ensures 10+ roles are uniquely distinguishable)
     const badgeText = agent.badgeText || agent.theme?.badge || 'AGT';
     ctx.save();
     ctx.font = 'bold 8.5px Inter, sans-serif';
@@ -1958,19 +1999,18 @@ function drawSingle3DCharacter(
     ctx.restore();
   }
 
-  // 3. CELEBRATION WITH PARTY POPPERS & BURST CONFETTI
+  // 3. Celebration, idle coffee or typing hands (none while standing up, walking or sitting down)
+  if (motion.moving) return;
   if (isCelebrating) {
     drawCelebratoryPoppersAndConfetti(ctx, x, centerY, agent, tick);
   } else if (isIdle) {
-    // IDLE COFFEE BREAK SYSTEM
     const sipCycle = Math.sin(tick * 0.05);
-    const isSipping = sipCycle > 0.6;
+    const isSipping = sipCycle > 0.6 && !motion.reduced;
     const armRaise = isSipping ? -6 : 0;
 
     const mugX = x + 24;
     const mugY = y - 12 + bob + armRaise;
 
-    // Ceramic Coffee Mug
     ctx.save();
     ctx.fillStyle = tc('#ffffff');
     ctx.beginPath();
@@ -1980,35 +2020,33 @@ function drawSingle3DCharacter(
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Mug Handle
     ctx.strokeStyle = tc('#ffffff');
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(mugX + 6, mugY, 3.5, -Math.PI / 2, Math.PI / 2);
     ctx.stroke();
 
-    // Hot Dark Roast Coffee inside
     ctx.fillStyle = '#78350f';
     ctx.fillRect(mugX - 4, mugY - 6, 8, 3);
 
-    // Animated Delicate Steam Curls
-    for (let i = 0; i < 3; i++) {
-      const steamAge = ((tick * 1.5 + i * 20) % 45) / 45;
-      const sy = mugY - 8 - steamAge * 20;
-      const sx = mugX + Math.sin(steamAge * Math.PI * 2 + i) * 3;
-      const alpha = Math.sin(steamAge * Math.PI) * 0.6;
+    if (!motion.reduced) {
+      for (let i = 0; i < 3; i++) {
+        const steamAge = ((tick * 1.5 + i * 20) % 45) / 45;
+        const sy = mugY - 8 - steamAge * 20;
+        const sx = mugX + Math.sin(steamAge * Math.PI * 2 + i) * 3;
+        const alpha = Math.sin(steamAge * Math.PI) * 0.6;
 
-      ctx.strokeStyle = `rgba(148, 163, 184, ${alpha})`;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(sx, sy + 4);
-      ctx.quadraticCurveTo(sx + 2, sy + 2, sx, sy);
-      ctx.stroke();
+        ctx.strokeStyle = `rgba(148, 163, 184, ${alpha})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy + 4);
+        ctx.quadraticCurveTo(sx + 2, sy + 2, sx, sy);
+        ctx.stroke();
+      }
     }
     ctx.restore();
   } else {
-    // Active typing / working hands indicator below avatar
-    const handJiggle = Math.sin(tick * 0.2) * 2;
+    const handJiggle = motion.reduced ? 0 : Math.sin(tick * 0.2) * 2;
     ctx.fillStyle = agent.theme.themeColor;
     ctx.beginPath();
     ctx.arc(x - 16, y + handJiggle, 3.5, 0, Math.PI * 2);
@@ -2122,8 +2160,13 @@ function draw3DCleanNameBadge(
   x: number,
   y: number,
   agent: Agent,
-  isIdle: boolean
+  isIdle: boolean,
+  /** Horizontal limits in the caller's units: plates stay inside the canvas (walkers in side corridors) */
+  bounds?: { minX: number; maxX: number }
 ) {
+  const clampLeft = (left: number, w: number) =>
+    bounds ? Math.max(bounds.minX, Math.min(bounds.maxX - w, left)) : left;
+
   // Extract clean short title
   let shortName = agent.name;
   if (shortName.includes('&')) shortName = shortName.split('&')[0].trim();
@@ -2134,7 +2177,7 @@ function draw3DCleanNameBadge(
 
   const badgeW = nameWidth + 28;
   const badgeH = 20;
-  const badgeX = x - badgeW / 2;
+  const badgeX = clampLeft(x - badgeW / 2, badgeW);
   const badgeY = y - 62;
 
   // Floating Shadow
@@ -2173,7 +2216,7 @@ function draw3DCleanNameBadge(
 
     ctx.font = 'bold 8.5px JetBrains Mono, monospace';
     const tw = ctx.measureText(timeText).width + 12;
-    const tx = x - tw / 2;
+    const tx = clampLeft(x - tw / 2, tw);
     const ty = badgeY - 17;
 
     ctx.save();
@@ -2192,7 +2235,7 @@ function draw3DCleanNameBadge(
 
     ctx.font = 'bold 8.5px JetBrains Mono, monospace';
     const tw = ctx.measureText(finText).width + 12;
-    const tx = x - tw / 2;
+    const tx = clampLeft(x - tw / 2, tw);
     const ty = badgeY - 17;
 
     ctx.save();
@@ -2212,14 +2255,18 @@ function draw3DSpeechBubble(
   y: number,
   text: string,
   color: string,
-  isIdle: boolean
+  isIdle: boolean,
+  tailX: number = x
 ) {
   const display = text.length > 36 ? text.substring(0, 33) + '...' : text;
   ctx.font = 'bold 9px Inter, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
   const w = ctx.measureText(display).width + 18;
   const h = 20;
   const bx = x - w / 2;
   const by = y - 20;
+  const tail = Math.max(bx + 8, Math.min(bx + w - 8, tailX));
 
   // Drop shadow
   ctx.fillStyle = 'rgba(15, 23, 42, 0.08)';
@@ -2227,7 +2274,7 @@ function draw3DSpeechBubble(
   ctx.roundRect(bx + 1, by + 2, w, h, 6);
   ctx.fill();
 
-  // White bubble with border
+  // Panel bubble with a theme-colour border
   ctx.fillStyle = isIdle ? tc('#fefce8') : tc('#ffffff');
   ctx.beginPath();
   ctx.roundRect(bx, by, w, h, 6);
@@ -2238,9 +2285,9 @@ function draw3DSpeechBubble(
 
   // Pointer Tail
   ctx.beginPath();
-  ctx.moveTo(x - 3, by + h);
-  ctx.lineTo(x, by + h + 4);
-  ctx.lineTo(x + 3, by + h);
+  ctx.moveTo(tail - 3, by + h);
+  ctx.lineTo(tail, by + h + 4);
+  ctx.lineTo(tail + 3, by + h);
   ctx.fillStyle = isIdle ? tc('#fefce8') : tc('#ffffff');
   ctx.fill();
 
@@ -2250,69 +2297,85 @@ function draw3DSpeechBubble(
 }
 
 /* =========================================================================
-   TASK HANDOFF FLIGHT PATH ARC
+   HANDOFF CARD PACKETS & REDUCED-MOTION CUES
    ========================================================================= */
 
-function drawHandoffAnimation(ctx: CanvasRenderingContext2D, handoff: ActiveHandoff, tick: number) {
-  const elapsed = Date.now() - handoff.startedAt;
-  const progress = Math.min(1, Math.max(0, elapsed / handoff.durationMs));
-
-  const startX = handoff.fromPos.x;
-  const startY = handoff.fromPos.y - 15;
-  const endX = handoff.toPos.x;
-  const endY = handoff.toPos.y - 15;
-
-  const currentX = startX + (endX - startX) * progress;
-  const arcY = -65 * Math.sin(progress * Math.PI);
-  const currentY = startY + (endY - startY) * progress + arcY;
-
+/** A card chip: panel fill, theme-colour border and accent bar, key or short title */
+function drawCardChip(ctx: CanvasRenderingContext2D, label: string, color: string, glow: boolean) {
+  ctx.font = '600 10px JetBrains Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  const w = Math.max(56, ctx.measureText(label).width + 22);
+  const h = 22;
   ctx.save();
-
-  // Golden Flight Path Arc
-  ctx.strokeStyle = 'rgba(217, 119, 6, 0.7)';
-  ctx.lineWidth = 2.5;
-  ctx.setLineDash([5, 5]);
-  ctx.beginPath();
-  ctx.moveTo(startX, startY);
-  ctx.quadraticCurveTo((startX + endX) / 2, Math.min(startY, endY) - 55, endX, endY);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Flying 3D Task Folder
-  ctx.fillStyle = '#f59e0b';
-  ctx.fillRect(currentX - 12, currentY - 10, 24, 20);
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(currentX - 12, currentY - 10, 24, 20);
-
+  if (glow) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 14;
+  }
   ctx.fillStyle = tc('#ffffff');
-  ctx.fillRect(currentX - 8, currentY - 7, 16, 14);
-
-  // Golden Floating Banner Above
-  const fromStr = handoff.fromName
-    ? (handoff.fromRole ? `${handoff.fromRole} ${handoff.fromName}` : handoff.fromName)
-    : 'Agent';
-  const toStr = handoff.toName
-    ? (handoff.toRole ? `${handoff.toRole} ${handoff.toName}` : handoff.toName)
-    : 'Teammate';
-
-  const bannerText = handoff.fromName && handoff.toName
-    ? `📋 ${fromStr} ➔ ${toStr} | ${handoff.taskTitle}`
-    : `📋 HANDOFF: ${handoff.taskTitle}`;
-
-  ctx.font = 'bold 10px JetBrains Mono, monospace';
-  const bw = ctx.measureText(bannerText).width + 20;
-  ctx.fillStyle = tc('#ffffff');
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.roundRect(currentX - bw / 2, currentY - 34, bw, 22, 6);
+  ctx.roundRect(-w / 2, -h / 2, w, h, 4);
   ctx.fill();
-  ctx.strokeStyle = '#f59e0b';
-  ctx.lineWidth = 2;
   ctx.stroke();
-
-  ctx.fillStyle = '#b45309';
-  ctx.fillText(bannerText, currentX - bw / 2 + 10, currentY - 19);
-
   ctx.restore();
+  ctx.fillStyle = color;
+  ctx.fillRect(-w / 2, -h / 2, 3, h);
+  ctx.fillStyle = tc('#334155');
+  ctx.fillText(label, 2, 4);
+  ctx.textAlign = 'left';
 }
 
+function drawPackets(ctx: CanvasRenderingContext2D, view: SceneView) {
+  const scale = view.layout.slots[0]?.scale ?? 1;
+  const cs = charScale(scale);
+  for (const p of view.choreo.packets) {
+    const pos = packetPosition(p, 50 * scale);
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+    ctx.rotate(Math.sin(pos.k * Math.PI) * -0.15);
+    ctx.scale(cs, cs);
+    drawCardChip(ctx, p.handoff.label, p.handoff.toColor, true);
+    ctx.restore();
+  }
+}
+
+/**
+ * Reduced motion: while a handoff's static step lasts, a ring in the receiver's colour marks the sender
+ * and a card chip ("VO-12 from Scrum Master") sits beside the receiver's desk. No pulsing.
+ */
+function drawReducedMotionCues(ctx: CanvasRenderingContext2D, view: SceneView, agents: Agent[]) {
+  const { layout, choreo } = view;
+  for (const actor of choreo.actors.values()) {
+    const h = actor.current;
+    if (actor.phase !== 'handing' || !actor.staticUntil || !h) continue;
+    const fromIdx = agents.findIndex((a) => a.id === h.fromId);
+    const toIdx = agents.findIndex((a) => a.id === h.toId);
+    const fromSlot = layout.slots[fromIdx];
+    const toSlot = layout.slots[toIdx];
+    if (!fromSlot || !toSlot) continue;
+
+    const fcs = charScale(fromSlot.scale);
+    ctx.save();
+    ctx.strokeStyle = h.toColor;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(fromSlot.seat.x, fromSlot.seat.y - 24 * fcs, 40 * fcs, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    const tcs = charScale(toSlot.scale);
+    const spot: Pt = besidePoint(layout, toIdx, fromIdx);
+    const label = `${h.label} from ${h.fromName}`;
+    ctx.save();
+    ctx.font = '600 10px JetBrains Mono, monospace';
+    const halfW = ((Math.max(56, ctx.measureText(label).width + 22)) / 2) * tcs;
+    const room: Rect = toSlot.room;
+    const cx = Math.max(room.x + halfW + 6, Math.min(room.x + room.w - halfW - 6, spot.x));
+    ctx.translate(cx, toSlot.desk.y + toSlot.desk.h + 4 * tcs);
+    ctx.scale(tcs, tcs);
+    drawCardChip(ctx, label, h.toColor, false);
+    ctx.restore();
+  }
+}

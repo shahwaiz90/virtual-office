@@ -111,8 +111,9 @@ test('DEV-317: VirtualOffice.tsx Floor Plan Canvas Render Loop & Speech Bubble C
   const content = fs.readFileSync(officePath, 'utf8');
 
   // 1. Verify events passed to drawOfficeRooms & draw3DCharacters in render loop
+  // VO-3: rooms draw from the client layout + handoff choreography (the scene view); events still reach them
   assert.ok(
-    content.includes('drawOfficeRooms(ctx, agents, activeHandoff, events, tick)'),
+    content.includes('drawOfficeRooms(ctx, view, agents, events, tick)'),
     'events must be passed to drawOfficeRooms'
   );
   assert.ok(
