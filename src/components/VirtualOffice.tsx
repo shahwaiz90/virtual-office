@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
 import { Agent, ActiveHandoff, NormalizedEvent, TokenUsageStat, ReplayRequest, ReplayTimeline } from '../types/office';
-import { deskTokenLine } from '../services/tokenFormat';
+import { deskTokenLine, deskTokenBreakdown } from '../services/tokenFormat';
+import { FloatingTokenBreakdown, type TipAnchor } from './TokenBreakdownTip';
 import { Pencil, Sparkles, Users, Terminal, LayoutGrid, Play, Square } from 'lucide-react';
 import { WorkstationTerminalTile } from './WorkstationTerminalTile';
 import {
@@ -83,6 +84,16 @@ interface SceneView {
   tokenStats: TokenUsageStat[];
   /** Avatars as drawn this frame, in draw order (hit-testing reads the last frame's list) */
   drawn: DrawnAvatar[];
+  /** Token badges as drawn this frame, in floor coordinates (hover shows their breakdown) */
+  badges: DrawnBadge[];
+}
+
+interface DrawnBadge {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 interface DrawnAvatar {
@@ -301,6 +312,8 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   const choreoRef = useRef<Choreo>(createChoreo());
   const reducedRef = useRef<boolean>(false);
   const drawnRef = useRef<DrawnAvatar[]>([]);
+  const badgesRef = useRef<DrawnBadge[]>([]);
+  const [badgeTip, setBadgeTip] = useState<{ id: string; anchor: TipAnchor } | null>(null);
 
   useLayoutEffect(() => {
     agentsRef.current = agents;
@@ -693,6 +706,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         reduced,
         tokenStats: tokenStatsRef.current,
         drawn: [],
+        badges: [],
       };
 
       // 1. Floor, corridors and spare cells (coffee bar decor only)
@@ -723,6 +737,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
       if (overlay) drawReplayOverlay(ctx, layout, overlay);
 
       drawnRef.current = view.drawn;
+      badgesRef.current = view.badges;
       animationId = requestAnimationFrame(render);
     };
 
@@ -778,8 +793,25 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     [hitTest, selectById]
   );
 
+  /** The token badge under the pointer, with its box in viewport coordinates, or null */
+  const badgeAt = useCallback((clientX: number, clientY: number): { id: string; anchor: TipAnchor } | null => {
+    const canvas = canvasRef.current;
+    const currentLayout = layoutRef.current;
+    if (!canvas || !currentLayout) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+    const k = rect.width / currentLayout.width;
+    const x = (clientX - rect.left) / k;
+    const y = (clientY - rect.top) / k;
+    const b = badgesRef.current.find((d) => x >= d.x && x <= d.x + d.w && y >= d.y && y <= d.y + d.h);
+    if (!b) return null;
+    return { id: b.id, anchor: { left: rect.left + b.x * k, top: rect.top + b.y * k, bottom: rect.top + (b.y + b.h) * k } };
+  }, []);
+
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const badge = badgeAt(e.clientX, e.clientY);
+      setBadgeTip((prev) => (prev?.id === badge?.id ? prev : badge));
       const found = hitTest(e.clientX, e.clientY);
       e.currentTarget.style.cursor = found ? 'pointer' : 'default';
       if (hoveredRef.current !== found) {
@@ -787,10 +819,11 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         setHoveredAgentId(found);
       }
     },
-    [hitTest]
+    [hitTest, badgeAt]
   );
 
   const handleMouseLeave = useCallback(() => {
+    setBadgeTip(null);
     hoveredRef.current = null;
     setHoveredAgentId(null);
   }, []);
@@ -920,6 +953,11 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
           role="img"
         />
 
+        {badgeTip && viewMode === 'floor' && (() => {
+          const detail = deskTokenBreakdown(tokenStats.find((t) => t.agentId === badgeTip.id));
+          return detail ? <FloatingTokenBreakdown breakdown={detail} anchor={badgeTip.anchor} /> : null;
+        })()}
+
         {demo && (
           <div
             className="absolute top-3 left-1/2 -translate-x-1/2 z-10 w-[min(560px,calc(100%-24px))] bg-surface/95 border border-brand-200 shadow-lg rounded-xl px-3.5 py-2.5 flex items-start gap-3 backdrop-blur"
@@ -1029,6 +1067,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
                 events={events}
                 onSelectAgent={onSelectAgent}
                 tokenLine={deskTokenLine(tokenStats.find((t) => t.agentId === agent.id))}
+                tokenDetail={deskTokenBreakdown(tokenStats.find((t) => t.agentId === agent.id))}
               />
             ))
           )}
@@ -1321,7 +1360,8 @@ function drawOfficeRooms(
     const line = deskTokenLine(view.tokenStats.find((t) => t.agentId === agent.id));
     if (line) {
       const lift = rState.isReceivingHandoff && rState.handoffTaskShortTitle ? 58 : 30;
-      drawDeskTokenBadge(ctx, 14, lh - lift, line, cx - 50);
+      const bw = drawDeskTokenBadge(ctx, 14, lh - lift, line, cx - 50);
+      view.badges.push({ id: agent.id, x: room.x + 14 * scale, y: room.y + (lh - lift) * scale, w: bw * scale, h: 18 * scale });
     }
     ctx.restore();
   });
@@ -1435,8 +1475,9 @@ function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number):
 }
 
 /** A role's recorded token usage as a small badge; nothing when it has none. */
-function drawDeskTokenBadge(ctx: CanvasRenderingContext2D, x: number, y: number, text: string | null, maxW = 240) {
-  if (!text) return;
+/** Draws the badge and returns its width in local units (0 when nothing is drawn) */
+function drawDeskTokenBadge(ctx: CanvasRenderingContext2D, x: number, y: number, text: string | null, maxW = 240): number {
+  if (!text) return 0;
   ctx.save();
   ctx.font = 'bold 9.5px JetBrains Mono, monospace';
   ctx.textAlign = 'left';
@@ -1453,6 +1494,7 @@ function drawDeskTokenBadge(ctx: CanvasRenderingContext2D, x: number, y: number,
   ctx.fillStyle = tc('#334155');
   ctx.fillText(label, x + 8, y + 13);
   ctx.restore();
+  return w;
 }
 
 function getSuiteDisplayName(agent: Agent, idx: number): string {

@@ -29,7 +29,8 @@ import {
 } from 'lucide-react';
 import { SprintInfo } from '../types/office';
 import { TaskCardDetails } from './TaskCardDetails';
-import { cardTokenLine } from '../services/tokenFormat';
+import { cardTokenLine, cardTokenBreakdown } from '../services/tokenFormat';
+import { TokenBreakdownTip } from './TokenBreakdownTip';
 
 const sanitizeTaskKey = (key?: string) => (key ? String(key).trim().replace(/^[*`#\s]+|[*`#\s]+$/g, '') : '');
 
@@ -497,9 +498,12 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
                           {/* Model tokens recorded while a role worked on this card */}
                           {cardTokenLine(task.tokenUsage) && (
-                            <div className="mb-2 text-[9.5px] font-mono text-sand-500 truncate" title="Model tokens recorded on this card">
+                            <TokenBreakdownTip
+                              breakdown={cardTokenBreakdown(task.tokenUsage)}
+                              className="mb-2 text-[9.5px] font-mono text-sand-500 truncate rounded"
+                            >
                               🪙 {cardTokenLine(task.tokenUsage)}
-                            </div>
+                            </TokenBreakdownTip>
                           )}
 
                           {/* Latest agent message on the card */}
