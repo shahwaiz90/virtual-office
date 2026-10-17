@@ -1724,13 +1724,10 @@ function handleConversationSteps(steps, state) {
 
     if (step.type === 'USER_INPUT' && followUpCard) {
       appendThreadEntry(followUpCard, { id: followUpEntryId, agentId: 'user', kind: 'request', text: step.turn.prompt.slice(0, 2000), at: step.created_at });
-      if (followUpCard.column === 'done') {
-        // New work on a finished request: it is open again until this turn ends
-        followUpCard.column = 'in_progress';
-        followUpCard.progress = 0;
-      }
       persistActiveSprintTasks();
-      state.promptTaskId = followUpCard.id;
+      // A follow-up never reopens a done request: new work reaches the board as new task cards
+      // through the orchestrator. With no open prompt card, the turn end completes nothing again.
+      state.promptTaskId = followUpCard.column === 'done' ? null : followUpCard.id;
     } else if (step.type === 'USER_INPUT') {
       const prompt = step.turn.prompt;
       const firstLine = promptTitle(prompt);
