@@ -51,7 +51,8 @@
         ],
         "reportsTo": "tech-pm",
         "delegationTargets": [
-          "web-dev"
+          "web-dev",
+          "web-tester"
         ],
         "skills": [
           "kanban-handoff",
@@ -64,7 +65,7 @@
           "modern-web-guidance"
         ],
         "inputContract": "Its card: the product brief, acceptance criteria, context and thread.",
-        "outputContract": "Developer cards under its card, each a technical contract of about 40 lines at most; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review. Reviews fast-path cards that name it as reviewer the same way.",
+        "outputContract": "Developer cards under its card, each a technical contract of about 40 lines at most; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review. Reviews fast-path cards that name it as reviewer the same way. Hands a QA card to web-tester when a change needs testing beyond the Developer's own checks.",
         "permissions": [],
         "prohibitedActions": [
           "No direct unreviewed code pushes to main"
@@ -100,6 +101,33 @@
         "permissions": [],
         "prohibitedActions": [
           "No breaking architectural contracts"
+        ]
+      },
+      {
+        "id": "web-tester",
+        "name": "Web QA",
+        "role": "QA Engineer",
+        "primary": false,
+        "tools": [
+          "Read",
+          "Grep",
+          "Glob",
+          "Bash"
+        ],
+        "reportsTo": "web-tech-lead",
+        "delegationTargets": [],
+        "skills": [
+          "kanban-handoff",
+          "codebase-explorer",
+          "automated-testing",
+          "web-design-guidelines",
+          "modern-web-guidance"
+        ],
+        "inputContract": "Its card: what to test, pass/fail criteria, the impact map and the Developer's result.",
+        "outputContract": "A test_report deliverable with pass/fail per acceptance criterion and any defects; the card moves to done, or back to in_progress with the defects.",
+        "permissions": [],
+        "prohibitedActions": [
+          "No modifying production code"
         ]
       }
     ]

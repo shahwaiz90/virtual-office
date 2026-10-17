@@ -39,7 +39,7 @@ VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s 
 - `key`: short prefix plus the next number above the highest key on the board (`curl -s "$VO/api/tasks?format=brief"` lists them). Unique.
 - `type`: `requirement` for the user's request (one per request, owned by the orchestrator), otherwise `task`. The portal usually registers the requirement card when it watches your session: look with `curl -s "$VO/api/tasks?type=requirement&format=brief"` before registering one.
 - `brief` is recorded on the thread as your handoff message. `skill` must be one of the assignee's skills.
-- `reviewer` (optional): who reviews the result when it is not the delegator. A small change goes from the Scrum Master straight to the Developer with `"reviewer":"web-tech-lead"` (see `task-decomposition`); finishing in `review` then hands the card to the reviewer.
+- `reviewer` (optional): who reviews the result when it is not the delegator. A small change goes from the Scrum Master straight to the Developer with `reviewer` set to the Tech Lead's id from the roster (see `task-decomposition`); finishing in `review` then hands the card to the reviewer.
 - `context.files`: the Change and Affected paths from the impact map (`codebase-explorer`), so the receiver starts from the right files.
 
 Delegate with only the card reference:

@@ -88,7 +88,9 @@ This is the instructions body.
   assert.strictEqual(registry.orchestrator, 'tech-pm');
   const agentIds = registry.agents.map((a) => a.id);
   assert.ok(agentIds.includes('tech-pm'));
-  assert.strictEqual(registry.agents.length, 3);
+  // Team Studio decides the roster: one agent per definition listed in registry.yaml
+  const defFiles = fs.readdirSync(path.join(PROJECT_ROOT, '.agents', 'definitions')).filter((f) => f.endsWith('.md'));
+  assert.strictEqual(registry.agents.length, defFiles.length);
 
   const pm = registry.agents.find((a) => a.id === 'tech-pm');
   assert.strictEqual(pm.is_primary, true);
@@ -208,7 +210,7 @@ This is the instructions body.
   const runtimeReg = parseAndRegisterAgents(PROJECT_ROOT);
   assert.strictEqual(runtimeReg.canonical, true, 'Runtime registry should detect and load canonical SSOT');
   assert.strictEqual(runtimeReg.orchestratorAgentId, 'tech-pm');
-  assert.strictEqual(runtimeReg.totalAgents, 3);
+  assert.strictEqual(runtimeReg.totalAgents, registry.agents.length);
   console.log('  ✅ AgentRuntimeRegistry loads canonical registry seamlessly.');
 
   console.log('\n🎉 ALL UNIVERSAL AGENT REGISTRY TESTS PASSED SUCCESSFULLY (100%)!\n');

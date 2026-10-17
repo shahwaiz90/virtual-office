@@ -531,7 +531,15 @@ End of instructions.
   assertTest(fs.existsSync(claudeMdPath), 'CLAUDE.md must exist');
   const claudeMd = fs.readFileSync(claudeMdPath, 'utf8');
   assertTest(claudeMd.includes('Route every software request to `tech-pm`'), 'CLAUDE.md defines primary routing');
-  assertTest(claudeMd.includes('## Team') && claudeMd.includes('| `web-tech-lead` | Tech Lead | `web-dev` |'), 'CLAUDE.md team table shows delegation');
+  // One row per role on the team as saved (Team Studio can add or remove roles), with its delegates
+  const teamRows = loadRegistry(PROJECT_ROOT).agents.map((ag) => {
+    const delegates = ag.delegation_targets.length ? ag.delegation_targets.map((t) => `\`${t}\``).join(', ') : '-';
+    return { ag, row: `| \`${ag.id}\` | `, delegates };
+  });
+  assertTest(
+    claudeMd.includes('## Team') && teamRows.every(({ row, delegates }) => claudeMd.split('\n').some((l) => l.startsWith(row) && l.includes(`| ${delegates} |`))),
+    'CLAUDE.md team table shows delegation'
+  );
   assertTest(claudeMd.includes('## Commands'), 'CLAUDE.md defines project commands');
   assertTest(claudeMd.includes('node bin/agents.js validate'), 'CLAUDE.md documents validate CLI command');
   assertTest(claudeMd.includes('sync'), 'CLAUDE.md documents sync CLI command');

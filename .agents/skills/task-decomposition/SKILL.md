@@ -16,7 +16,7 @@ Use for every requirement (feature, change, bug, idea). Think about that specifi
 
 ## Size first: small or full
 Before splitting, find the impact with the `codebase-explorer` skill and size the request. Post the size and the reason on the requirement thread (`kind: "decision"`), e.g. "Small: one constant in src/components/handoffChoreo.ts and its test".
-- **Small** (1–3 files to change, no change to a shared type, API, event payload or stored data, no new dependency): the Scrum Master registers **one** card straight to the Developer with `"reviewer":"web-tech-lead"`. Its brief carries the impact map, the acceptance criteria and how to verify. No contract card; the Tech Lead only reviews. If the Developer is not in your `delegation_targets`, send the card to the Tech Lead marked small instead; it forwards it to the Developer without writing a contract.
+- **Small** (1–3 files to change, no change to a shared type, API, event payload or stored data, no new dependency): the Scrum Master registers **one** card straight to the Developer, with `reviewer` set to the Tech Lead's id from the roster (for example `web-tech-lead`, `ios-tech-lead` or `android-tech-lead`). Its brief carries the impact map, the acceptance criteria and how to verify. No contract card and no separate QA card; the Tech Lead only reviews. If the Developer is not in your `delegation_targets`, send the card to the Tech Lead marked small instead; it forwards it to the Developer without writing a contract.
 - **Full** (anything else, or unsure): the usual flow, Scrum Master → Tech Lead → Developer.
 A Developer who finds a small card is bigger than it looked says so on the thread and hands it back instead of growing it.
 
@@ -38,6 +38,6 @@ Keep it to about 40 lines. Name what to do and how to check it; don't write the 
 The same contract, impact map included, is your `architecture` deliverable.
 
 ## Example breakdowns (illustrations, not a template)
-- "Fix the typo in the Settings modal title" → small: `WEB-301 Fix typo in Settings modal title` → web-dev, reviewer web-tech-lead.
-- "Make handoff walks faster" → small: `WEB-305 Shorten handoff walk timings` → web-dev, reviewer web-tech-lead (one constants block and one test).
+- "Fix the typo in the Settings modal title" → small: `WEB-301 Fix typo in Settings modal title` → the Developer, reviewer the Tech Lead.
+- "Make handoff walks faster" → small: `WEB-305 Shorten handoff walk timings` → the Developer, reviewer the Tech Lead (one constants block and one test).
 - "Export the board as CSV" → `WEB-310 Define CSV columns` (web-tech-lead), `WEB-311 Add GET /api/tasks/export.csv` (web-dev, dependsOn WEB-310), `WEB-312 Add Export button to Kanban header` (web-dev, dependsOn WEB-311).
