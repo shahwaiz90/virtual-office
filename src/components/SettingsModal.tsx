@@ -30,7 +30,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <Settings className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-sm font-extrabold text-sand-900">Agent Command Center Preferences</h2>
+              <h2 className="text-sm font-extrabold text-sand-900">Agent Virtual Office Preferences</h2>
               <p className="text-[11px] text-sand-400">Project folder and integrations</p>
             </div>
           </div>

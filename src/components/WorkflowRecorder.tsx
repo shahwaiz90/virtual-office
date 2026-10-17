@@ -191,12 +191,12 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
 
   const startCanvasRecording = () => {
     if (!canvasElement) {
-      alert('Agent Command Center canvas is initializing. Please try in a moment.');
+      alert('Agent Virtual Office canvas is initializing. Please try in a moment.');
       return;
     }
 
     try {
-      // 60 FPS smooth capture directly from Agent Command Center canvas
+      // 60 FPS smooth capture directly from Agent Virtual Office canvas
       const canvasStream = (canvasElement as any).captureStream ? (canvasElement as any).captureStream(60) : null;
       if (!canvasStream) {
         alert('Canvas recording is not supported in this browser version.');
@@ -423,7 +423,7 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-bold text-sand-900 group-hover:text-brand-900">
-                        Agent Command Center 2D Canvas (60 FPS)
+                        Agent Virtual Office 2D Canvas (60 FPS)
                       </span>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200 shrink-0">
                         Option A

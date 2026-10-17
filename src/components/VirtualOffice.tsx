@@ -835,7 +835,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
         <div className="flex items-center gap-2.5 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="font-bold text-sand-800 flex items-center gap-1.5">
-              🏢 Agent Command Center
+              🏢 Agent Virtual Office
             </span>
             <span className="text-[11px] text-sand-500 hidden sm:inline">
               • {agents.length} Active Workstations

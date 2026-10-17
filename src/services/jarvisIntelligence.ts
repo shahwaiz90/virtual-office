@@ -27,7 +27,7 @@ export function queryVoiceAssistant(query: string, state: OfficeState | null): A
     failedTasks: 0,
     totalTasks: tasks.length,
   };
-  const workflowTitle = state?.workflow?.title || 'Agent Command Center Workspace';
+  const workflowTitle = state?.workflow?.title || 'Agent Virtual Office Workspace';
   const workflowPhase = state?.workflow?.phase || 'Standby';
 
   // Helper to resolve specific role-based agents from the active configured team

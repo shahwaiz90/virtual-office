@@ -47,14 +47,14 @@ export const App: React.FC = () => {
   const [projectName, setProjectName] = useState<string>('');
   const [projectPort, setProjectPort] = useState<string>('');
 
-  // Distinct Browser Tab Titles: Agent Command Center — [projectName] (:port)
+  // Distinct Browser Tab Titles: Agent Virtual Office — [projectName] (:port)
   useEffect(() => {
     const rawPort = projectPort || window.location.port || (window.location.protocol === 'https:' ? '443' : '3000');
     const nameStr =
       projectName ||
       (projectPath ? projectPath.split(/[/\\]/).filter(Boolean).pop() : '') ||
-      'Agent Command Center';
-    document.title = `Agent Command Center — [${nameStr}] (:${rawPort})`;
+      'Agent Virtual Office';
+    document.title = `Agent Virtual Office — [${nameStr}] (:${rawPort})`;
   }, [projectName, projectPath, projectPort]);
 
   const handleOpenTeamStudio = (agentId?: string | null) => {
