@@ -100,34 +100,6 @@ export const Header: React.FC<HeaderProps> = ({
 
   const agentCount = state?.agents ? state.agents.length : 0;
 
-  // Tokens the team's read-jira / read-confluence skills need but that aren't set yet
-  const [missingTokens, setMissingTokens] = useState<{ name: string; envVar: string; setup: string }[]>([]);
-  useEffect(() => {
-    let cancelled = false;
-    const check = () =>
-      fetch('/api/integrations')
-        .then((r) => r.json())
-        .then((json) => {
-          if (cancelled || !json?.integrations) return;
-          type Status = { configured: boolean; tokenSet: boolean; server: string | null; usedBy: string[]; envVar: string; baseVar: string; setup: string };
-          const missing = Object.entries(json.integrations as Record<string, Status>)
-            .filter(([, v]) => !v.configured && v.usedBy.length > 0)
-            .map(([k, v]) => ({
-              name: k === 'jira' ? 'Jira' : 'Confluence',
-              envVar: [!v.server && v.baseVar, !v.tokenSet && v.envVar].filter(Boolean).join(', '),
-              setup: v.setup,
-            }));
-          setMissingTokens(missing);
-        })
-        .catch(() => {});
-    check();
-    const timer = setInterval(check, 60000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [agentCount]);
-
   return (
     <header className="bg-surface/95 border-b border-sand-200/90 shadow-2xs backdrop-blur-md sticky top-0 z-40 px-4 sm:px-6 py-2.5 transition-all">
       {/* Below md the bar wraps into two rows: branding + menu, then path + main actions */}
@@ -179,16 +151,13 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={() => setMenuOpen((open) => !open)}
-              aria-label={missingTokens.length > 0 ? 'More actions (integration setup needed)' : 'More actions'}
+              aria-label="More actions"
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               aria-controls="header-overflow-menu"
               className="relative w-10 h-10 flex items-center justify-center rounded-xl text-sand-600 hover:text-sand-900 bg-surface hover:bg-sand-100 border border-sand-200/90 shadow-2xs active:scale-95 transition-all cursor-pointer"
             >
               <MoreHorizontal className="w-4 h-4" />
-              {missingTokens.length > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-500 ring-2 ring-surface" aria-hidden="true" />
-              )}
             </button>
             {menuOpen && (
               <div
@@ -207,15 +176,8 @@ export const Header: React.FC<HeaderProps> = ({
                     }}
                     className="w-full min-h-10 flex items-center gap-3 px-3 py-2 rounded-xl text-left text-sm font-semibold text-sand-700 hover:bg-sand-100 hover:text-sand-900 cursor-pointer"
                   >
-                    <KeyRound className={`w-4 h-4 shrink-0 ${missingTokens.length > 0 ? 'text-amber-600' : 'text-sand-500'}`} />
-                    <span className="min-w-0">
-                      <span className="block">Integrations</span>
-                      {missingTokens.length > 0 && (
-                        <span className="block text-[11px] font-medium text-amber-700 break-words">
-                          {missingTokens.map((m) => m.envVar).join(', ')} not set
-                        </span>
-                      )}
-                    </span>
+                    <KeyRound className="w-4 h-4 shrink-0 text-sand-500" />
+                    <span className="min-w-0">Integrations</span>
                   </button>
                 )}
                 <button
@@ -350,34 +312,8 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </button>
 
-          {missingTokens.length > 0 && (
-            <button
-              type="button"
-              onClick={onOpenIntegrations}
-              className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 cursor-pointer"
-              title={missingTokens.map((m) => `${m.name}: ${m.setup}`).join('\n') + '\nClick for setup steps.'}
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              {missingTokens.map((m) => m.envVar).join(', ')} not set
-            </button>
-          )}
-
-          {/* Between md and xl the "not set" chip is hidden; keep a flagged key icon so setup stays reachable */}
-          {onOpenIntegrations && missingTokens.length > 0 && (
-            <button
-              type="button"
-              onClick={onOpenIntegrations}
-              className="hidden md:inline-flex xl:hidden relative p-2 rounded-xl text-amber-700 hover:bg-amber-50 cursor-pointer"
-              title={missingTokens.map((m) => `${m.name}: ${m.setup}`).join('\n') + '\nClick for setup steps.'}
-              aria-label="Integrations (setup needed)"
-            >
-              <KeyRound className="w-4 h-4" />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden="true" />
-            </button>
-          )}
-
           {/* Jira / Confluence integrations: status, setup steps and connection test */}
-          {onOpenIntegrations && missingTokens.length === 0 && (
+          {onOpenIntegrations && (
             <button
               type="button"
               onClick={onOpenIntegrations}
