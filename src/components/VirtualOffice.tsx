@@ -1014,7 +1014,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
               </div>
               <div>
                 <h3 className="text-base sm:text-lg font-extrabold text-sand-900">
-                  No Agents in Workspace
+                  No agents found
                 </h3>
                 <p className="text-xs text-sand-600 leading-relaxed mt-1">
                   This directory does not have an agent team configured. Create custom roles or select a starter team (Android, iOS, Web Fullstack, DevOps) to staff your virtual office!

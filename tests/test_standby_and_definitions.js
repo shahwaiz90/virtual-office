@@ -130,6 +130,40 @@ try {
   fs.rmSync(testDirBlank, { recursive: true, force: true });
 } catch (e) {}
 
+// 6b. A folder holding other projects (each with its own team) has no team itself: 0 agents, nothing written
+const testDirParent = path.join(__dirname, 'fixtures', 'test-parent-of-projects');
+try {
+  fs.rmSync(testDirParent, { recursive: true, force: true });
+} catch (e) {}
+const childJson = path.join(testDirParent, 'child-app', '.agents');
+fs.mkdirSync(childJson, { recursive: true });
+fs.writeFileSync(
+  path.join(childJson, 'agents.json'),
+  JSON.stringify({ agents: [{ id: 'child-pm', name: 'Child PM', role: 'Scrum Master' }] }, null, 2)
+);
+const childFolder = path.join(testDirParent, 'nested', 'other-app', '.agents');
+fs.mkdirSync(childFolder, { recursive: true });
+fs.writeFileSync(path.join(childFolder, 'child-dev.md'), '---\nid: child-dev\nname: Child Dev\nrole: Developer\n---\nBuilds things.\n');
+
+const parentDiscovered = discoverAgents(testDirParent);
+assert.strictEqual(parentDiscovered.length, 0, `Expected 0 agents for a folder whose subfolders hold other teams, got ${parentDiscovered.map((a) => a.id).join(', ')}`);
+const parentDefs = ensureCanonicalDefinitions(testDirParent);
+assert.strictEqual(parentDefs.count, 0, 'Expected no definitions scaffolded from a subproject team');
+assert.ok(!fs.existsSync(path.join(testDirParent, '.agents')), 'Expected no .agents directory written in the parent folder');
+eventBus.resetForProject(testDirParent, parentDiscovered);
+assert.strictEqual(eventBus.agents.size, 0, 'Expected 0 agents in eventBus after switching to the parent folder');
+
+// Switching back to a folder with a team brings it back
+const childDiscovered = discoverAgents(path.join(testDirParent, 'child-app'));
+assert.deepStrictEqual(childDiscovered.map((a) => a.id), ['child-pm'], 'Expected the child project to keep its own team');
+eventBus.resetForProject(path.join(testDirParent, 'child-app'), childDiscovered);
+assert.strictEqual(eventBus.agents.size, 1, 'Expected the team back in eventBus after switching to a folder with agents');
+console.log('  ✅ Step 6b: A folder whose subfolders hold other teams shows 0 agents; switching back restores the team');
+
+try {
+  fs.rmSync(testDirParent, { recursive: true, force: true });
+} catch (e) {}
+
 // 7. ensureCanonicalDefinitions on directory with registry.yaml but missing definitions
 const testDirYaml = path.join(__dirname, 'fixtures', 'test-yaml-only');
 try {
