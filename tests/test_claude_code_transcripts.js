@@ -222,7 +222,7 @@ try {
     [1, 2, 16, 9383, 4379],
     'A message is counted once across its content blocks'
   );
-  assert.strictEqual(toTranscriptSteps(blockEntry('tool_use'), isPathInProject)[0].claude.usage.cache_read_input_tokens, 9383, 'Steps keep message usage');
+  assert.strictEqual(toTranscriptSteps(blockEntry('tool_use'), isPathInProject)[0].turn.usage.cache_read_input_tokens, 9383, 'Steps keep message usage');
   assert.ok(eventBus.getStateSnapshot().tokenUsageAnalytics.some((t) => t.agentId === 'web-dev'));
   console.log('  ✅ Test 6 Passed: Input and cache tokens surfaced per agent.\n');
 

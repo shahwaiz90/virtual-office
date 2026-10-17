@@ -57,7 +57,8 @@ function skillsList(registry) {
  * The prompt a role runs with. `dispatch` says how work reaches another role:
  * - 'handoff-lines': the role cannot start subagents (Claude Code); it ends its reply with HANDOFF lines
  *   for the main session to dispatch.
- * - 'invoke_subagent': the role starts its delegates itself (Antigravity/OpenCode), with only the card key.
+ * - 'invoke_subagent': the role starts its delegates itself (Antigravity), with only the card key.
+ * - 'opencode-subagent': the same with OpenCode's subagent tool (each role is an agent in .opencode/agent/).
  */
 function rolePrompt(agent, registry, { dispatch = 'handoff-lines' } = {}) {
   const agents = registry.agents || [];
@@ -83,8 +84,12 @@ function rolePrompt(agent, registry, { dispatch = 'handoff-lines' } = {}) {
 
   if (targets.length) {
     lines.push(`## Handing work on`, `Only to ${targets.map(nameOf).join(', ')}: register a card written for that role (parentKey = your card), then delegate it by key only.`);
-    if (dispatch === 'invoke_subagent') {
-      lines.push('Start the delegate with `invoke_subagent` and the prompt `Your task: <KEY>. Read it with curl -s "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/<KEY>?format=md" and follow the kanban-handoff skill.` Nothing else goes in the prompt.');
+    if (dispatch === 'invoke_subagent' || dispatch === 'opencode-subagent') {
+      const how = dispatch === 'opencode-subagent' ? 'OpenCode\'s subagent tool (`subagent`, or `task` in OpenCode 1.x) with the role\'s agent id' : '`invoke_subagent`';
+      lines.push(
+        `Start the delegate with ${how} and the prompt ` +
+          '`Your task: <KEY>. Read it with curl -s "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/<KEY>?format=md" and follow the kanban-handoff skill.` Nothing else goes in the prompt.'
+      );
     } else {
       lines.push('You cannot start subagents: end your reply with one `HANDOFF <KEY> -> <agentId>` line per card for the main session to dispatch.');
     }

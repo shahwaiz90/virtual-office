@@ -3,6 +3,8 @@
 
 ALWAYS INVOKE `tech-pm` FIRST: send every software request to Scrum Master, the orchestrator. It registers the request and role cards on the Kanban board, then delegates each card by key. Don't implement a request directly as a single agent.
 
+In OpenCode every role is an agent (`.opencode/agent/<id>.md`): start `tech-pm` with the subagent tool, or switch to it with Tab.
+
 ```mermaid
 flowchart TD
   tech-pm["Scrum Master<br/><i>Tech Scrum Master (orchestrator)</i>"]
