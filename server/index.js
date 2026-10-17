@@ -14,7 +14,7 @@ const { OFFICIAL_SKILLS, TEAM_TEMPLATES, scaffoldSkillsToProject, getAllSkills, 
 const { queryExistingModel } = require('./voiceIntelligence');
 const { AgentRunner } = require('./agentRunner');
 const { autoDiscoverAndRegisterAgents, parseAndRegisterAgents } = require('./agentRuntimeRegistry');
-const { saveRegistry, ensureCanonicalDefinitions, syncAll } = require('./registry/canonicalRegistry');
+const { saveRegistry, loadRegistry, ensureCanonicalDefinitions, syncAll } = require('./registry/canonicalRegistry');
 const {
   registerInstance,
   unregisterInstance,
@@ -203,6 +203,18 @@ app.post('/api/agents/save', async (req, res) => {
       fs.mkdirSync(agentsDir, { recursive: true });
     }
 
+    // Team Studio edits only some fields: a role that already exists keeps its contracts unless the save sets them
+    let existingById = new Map();
+    try {
+      existingById = new Map((loadRegistry(root)?.agents || []).map((ag) => [ag.id, ag]));
+    } catch (e) {}
+    // Skills every role uses, whatever the team looks like
+    const withSharedSkills = (skills) => {
+      const list = [...skills];
+      if (!list.includes('codebase-explorer')) list.splice(list.indexOf('kanban-handoff') + 1, 0, 'codebase-explorer');
+      return list;
+    };
+
     // Prepare clean agents.json payload with explicit Antigravity subagent permission flags
     const agentsConfig = {
       $schema: 'https://raw.githubusercontent.com/google/virtual-office/main/agents-schema.json',
@@ -227,7 +239,7 @@ app.post('/api/agents/save', async (req, res) => {
           badge: a.badge || (isPrimary ? 'PM' : (a.name || 'AGT').slice(0, 3).toUpperCase()),
           avatar_url: a.avatar_url || a.avatarUrl || (isPrimary ? '/assets/projectmanager.png' : '/assets/developer.png'),
           description: a.description || (isPrimary ? 'Primary Orchestrator for project intake and delegation.' : `Subagent responsible for ${a.role || 'engineering tasks'}`),
-          skills: a.skills || a.skillIds || [],
+          skills: withSharedSkills(a.skills || a.skillIds || []),
           allowed_tools: allowed,
           enable_subagent_tools: a.enable_subagent_tools !== undefined ? a.enable_subagent_tools : canSubagent,
           enable_write_tools: a.enable_write_tools !== undefined ? a.enable_write_tools : canWrite,
@@ -238,6 +250,8 @@ app.post('/api/agents/save', async (req, res) => {
           reportsTo: a.reportsTo || (isPrimary ? 'user' : agents[0].id),
           prohibited_actions: a.prohibited_actions || a.prohibitedActions || [],
           delegation_targets: a.delegation_targets || a.delegationTargets || (isPrimary && agents[1] ? [agents[1].id] : []),
+          inputContract: a.inputContract ?? existingById.get(a.id)?.inputContract ?? '',
+          outputContract: a.outputContract ?? existingById.get(a.id)?.outputContract ?? '',
         };
       }),
     };

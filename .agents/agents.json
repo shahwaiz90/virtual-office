@@ -61,7 +61,7 @@
       "goal": "",
       "badge": "LEAD",
       "avatar_url": "/assets/techlead.png",
-      "description": "Tech Lead. Turns a requirement card into short technical contracts for the Developer (files, APIs, data, edge cases, how to verify), then reviews the Developer's cards, including small changes the Scrum Master sent straight to the Developer.",
+      "description": "Tech Lead. Turns a requirement card into short technical contracts for the Developer (files, APIs, data, edge cases, how to verify), hands verification to QA, then reviews the Developer's and QA's cards, including small changes the Scrum Master sent straight to the Developer.",
       "skills": [
         "kanban-handoff",
         "task-decomposition",
@@ -90,17 +90,19 @@
       "enable_write_tools": true,
       "enable_mcp_tools": false,
       "inputContract": "Its card: the product brief, acceptance criteria, context and thread.",
-      "outputContract": "Developer cards under its card, each a technical contract of about 40 lines at most; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review. Reviews fast-path cards that name it as reviewer the same way.",
+      "outputContract": "Developer cards under its card, each a technical contract of about 40 lines at most; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review. Reviews fast-path cards that name it as reviewer the same way. Hands a QA card to web-tester when a change needs testing beyond the Developer's own checks.",
       "permissions": [],
       "prohibited_actions": [
         "No direct unreviewed code pushes to main"
       ],
       "reportsTo": "tech-pm",
       "handoffTo": [
-        "web-dev"
+        "web-dev",
+        "web-tester"
       ],
       "delegation_targets": [
-        "web-dev"
+        "web-dev",
+        "web-tester"
       ]
     },
     {
@@ -142,6 +144,45 @@
       "permissions": [],
       "prohibited_actions": [
         "No breaking architectural contracts"
+      ],
+      "reportsTo": "web-tech-lead",
+      "handoffTo": [],
+      "delegation_targets": []
+    },
+    {
+      "id": "web-tester",
+      "name": "Web QA",
+      "role": "QA Engineer",
+      "persona": "",
+      "goal": "",
+      "badge": "QA",
+      "avatar_url": "/assets/qa.png",
+      "description": "QA. Tests the cards the Tech Lead hands over with Vitest and Playwright suites and an accessibility/UX check, records pass/fail per acceptance criterion, and moves each card to done or back to in_progress with the defects.",
+      "skills": [
+        "kanban-handoff",
+        "codebase-explorer",
+        "automated-testing",
+        "web-design-guidelines",
+        "modern-web-guidance"
+      ],
+      "tools": [
+        "run_command",
+        "view_file",
+        "git_diff"
+      ],
+      "allowed_tools": [
+        "run_command",
+        "view_file",
+        "git_diff"
+      ],
+      "enable_subagent_tools": false,
+      "enable_write_tools": true,
+      "enable_mcp_tools": false,
+      "inputContract": "Its card: what to test, pass/fail criteria, the impact map and the Developer's result.",
+      "outputContract": "A test_report deliverable with pass/fail per acceptance criterion and any defects; the card moves to done, or back to in_progress with the defects.",
+      "permissions": [],
+      "prohibited_actions": [
+        "No modifying production code"
       ],
       "reportsTo": "web-tech-lead",
       "handoffTo": [],

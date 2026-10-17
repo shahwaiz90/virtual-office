@@ -7,8 +7,9 @@ Route every software request to `tech-pm` (Scrum Master), the orchestrator. It r
 | Agent | Role | Hands work to | Reports to | Never |
 | :--- | :--- | :--- | :--- | :--- |
 | `tech-pm` | Tech Scrum Master (orchestrator) | `web-tech-lead`, `web-dev` | user | No direct application code modifications |
-| `web-tech-lead` | Tech Lead | `web-dev` | `tech-pm` | No direct unreviewed code pushes to main |
+| `web-tech-lead` | Tech Lead | `web-dev`, `web-tester` | `tech-pm` | No direct unreviewed code pushes to main |
 | `web-dev` | Developer | - | `web-tech-lead` | No breaking architectural contracts |
+| `web-tester` | QA Engineer | - | `web-tech-lead` | No modifying production code |
 
 ## Delegation
 Hand work on only along "Hands work to". A delegation prompt carries only the card reference: `Your task: <KEY>. Start it with curl -s -X POST "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/<KEY>/start" (prints the card), then follow your role prompt.` Everything else (brief, criteria, context, thread, result) is on the card; see `.agents/skills/kanban-handoff/SKILL.md`.
@@ -17,3 +18,4 @@ Hand work on only along "Hands work to". A delegation prompt carries only the ca
 - `tech-pm`: [kanban-handoff](.agents/skills/kanban-handoff/SKILL.md), [task-decomposition](.agents/skills/task-decomposition/SKILL.md), [codebase-explorer](.agents/skills/codebase-explorer/SKILL.md), [requirement-analysis](.agents/skills/requirement-analysis/SKILL.md), [sprint-planning](.agents/skills/sprint-planning/SKILL.md), [read-jira](.agents/skills/read-jira/SKILL.md), [read-confluence](.agents/skills/read-confluence/SKILL.md), [writing-guidelines](.agents/skills/writing-guidelines/SKILL.md)
 - `web-tech-lead`: [kanban-handoff](.agents/skills/kanban-handoff/SKILL.md), [task-decomposition](.agents/skills/task-decomposition/SKILL.md), [codebase-explorer](.agents/skills/codebase-explorer/SKILL.md), [react-best-practices](.agents/skills/react-best-practices/SKILL.md), [composition-patterns](.agents/skills/composition-patterns/SKILL.md), [web-design-guidelines](.agents/skills/web-design-guidelines/SKILL.md), [vercel-optimize](.agents/skills/vercel-optimize/SKILL.md), [modern-web-guidance](.agents/skills/modern-web-guidance/SKILL.md)
 - `web-dev`: [kanban-handoff](.agents/skills/kanban-handoff/SKILL.md), [feature-implementation](.agents/skills/feature-implementation/SKILL.md), [codebase-explorer](.agents/skills/codebase-explorer/SKILL.md), [react-best-practices](.agents/skills/react-best-practices/SKILL.md), [composition-patterns](.agents/skills/composition-patterns/SKILL.md), [react-view-transitions](.agents/skills/react-view-transitions/SKILL.md), [modern-web-guidance](.agents/skills/modern-web-guidance/SKILL.md), [deploy-to-vercel](.agents/skills/deploy-to-vercel/SKILL.md)
+- `web-tester`: [kanban-handoff](.agents/skills/kanban-handoff/SKILL.md), [codebase-explorer](.agents/skills/codebase-explorer/SKILL.md), [automated-testing](.agents/skills/automated-testing/SKILL.md), [web-design-guidelines](.agents/skills/web-design-guidelines/SKILL.md), [modern-web-guidance](.agents/skills/modern-web-guidance/SKILL.md)

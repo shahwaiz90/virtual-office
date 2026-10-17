@@ -150,6 +150,24 @@ async function deliverables(port) {
     assert.strictEqual(dev.deliveredTo, 'web-tech-lead', 'The deliverable goes to the reviewer');
     console.log('  ✅ Test 5 Passed: Fast-path cards are reviewed by their reviewer.\n');
 
+    // Test 6: saving the team from Team Studio keeps each role's contracts and gives every role codebase-explorer
+    console.log('▶ Test 6: Team Studio saves keep role contracts and add the shared skill...');
+    const team = (withContracts) => [
+      { id: 'ios-pm', name: 'Scrum Master', role: 'Tech Scrum Master', skills: ['kanban-handoff'], delegation_targets: ['ios-lead'],
+        ...(withContracts ? { inputContract: 'The request card.', outputContract: 'Task cards.' } : {}) },
+      { id: 'ios-lead', name: 'iOS Lead', role: 'Tech Lead', skills: ['kanban-handoff', 'task-decomposition'], delegation_targets: [], reportsTo: 'ios-pm',
+        ...(withContracts ? { inputContract: 'Its card.', outputContract: 'Contracts with an impact map.' } : {}) },
+    ];
+    const first = await request(port, 'POST', '/api/agents/save', { agents: team(true), scaffoldSkills: false });
+    assert.strictEqual(first.body.success, true);
+    await request(port, 'POST', '/api/agents/save', { agents: team(false), scaffoldSkills: false });
+    const { loadRegistry } = require('../server/registry/canonicalRegistry');
+    const saved = loadRegistry(testRoot).agents;
+    const savedLead = saved.find((a) => a.id === 'ios-lead');
+    assert.strictEqual(savedLead.outputContract, 'Contracts with an impact map.', 'A save without contracts keeps the existing ones');
+    assert.ok(saved.every((a) => a.skills.includes('codebase-explorer')), 'Every role gets codebase-explorer, whatever its id');
+    console.log('  ✅ Test 6 Passed: Saving the team keeps contracts; every role can map impact.\n');
+
     console.log('🎉 ALL CARD DELIVERABLES TESTS PASSED!');
   } finally {
     server.close();
