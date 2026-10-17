@@ -849,6 +849,31 @@ function discoverAgentsFromFolders(customRoot) {
   return discoveredAgents;
 }
 
+/** The `team` list in <root>/.agents/registry.yaml, or null */
+function readRegistryTeam(root) {
+  const yamlPath = path.join(root, '.agents', 'registry.yaml');
+  if (!fs.existsSync(yamlPath)) return null;
+  try {
+    const { parseYaml } = require('./registry/frontmatterParser');
+    const team = parseYaml(fs.readFileSync(yamlPath, 'utf8')).team;
+    return Array.isArray(team) ? team : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * The saved team's ids in saved order, limited to agents in the catalog.
+ * No saved list (older agents.json), or one that names no known agent: the whole catalog.
+ */
+function resolveTeamIds(team, catalog) {
+  const known = new Set(catalog.map((a) => a.id));
+  const ids = Array.isArray(team)
+    ? [...new Set(team.map((t) => (typeof t === 'string' ? t : t && t.id)).filter((id) => known.has(id)))]
+    : [];
+  return ids.length ? ids : catalog.map((a) => a.id);
+}
+
 /**
  * Discovers and formats all configured agents dynamically from all found agents.json configs
  * or individual agent files defined in .agents/ or agents/ folders.
@@ -860,6 +885,8 @@ function discoverAgents(customProjectDir, explicitConfigPath) {
   let rawAgents = [];
   const seenAgentIds = new Set();
   const configSummaries = [];
+  // The team saved in Team Studio: `team` in agents.json, else in .agents/registry.yaml
+  let savedTeam = null;
 
   // 1. Discover agents from single/monorepo agents.json configs
   if (configPaths.length > 0) {
@@ -868,6 +895,7 @@ function discoverAgents(customProjectDir, explicitConfigPath) {
         const rawData = fs.readFileSync(configPath, 'utf8');
         const parsed = JSON.parse(rawData);
         const agentsInFile = parsed.agents || [];
+        if (!savedTeam && Array.isArray(parsed.team)) savedTeam = parsed.team;
         const relPath = path.relative(root, configPath) || path.basename(configPath);
         let addedCount = 0;
 
@@ -923,6 +951,10 @@ function discoverAgents(customProjectDir, explicitConfigPath) {
     return [];
   }
 
+  // Every discovered agent is the catalog (routing, board); the saved team is who gets a desk
+  const teamIds = resolveTeamIds(savedTeam || readRegistryTeam(root), rawAgents);
+  const teamIndexOf = new Map(teamIds.map((id, i) => [id, i]));
+
   // Generate dynamic, non-overlapping office slots for this exact team size
   const slots = generateOfficeSlots(rawAgents.length);
 
@@ -977,6 +1009,8 @@ function discoverAgents(customProjectDir, explicitConfigPath) {
       delegation_targets: agent.delegation_targets || agent.delegationTargets || [],
       isPrimary,
       is_primary: isPrimary,
+      inTeam: teamIndexOf.has(agent.id),
+      teamIndex: teamIndexOf.has(agent.id) ? teamIndexOf.get(agent.id) : null,
       isSubagent: !isPrimary,
       is_subagent: !isPrimary,
       theme: { ...theme, isPrimary },
@@ -1011,5 +1045,6 @@ module.exports = {
   setProjectRoot,
   PROJECT_ROOT,
   generateOfficeSlots,
+  resolveTeamIds,
   CURATED_PALETTES,
 };

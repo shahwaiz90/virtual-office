@@ -626,13 +626,21 @@ function registerRealAgentTask(taskData, options = {}) {
       (a.name && a.name.toLowerCase() === assignRaw) ||
       (a.role && a.role.toLowerCase().includes(assignRaw))
   );
+  // Platform teams (web / android / ios): a mobile card stays with its own platform's roles
+  const { OrchestrationRules: Rules } = require('./orchestrationRules');
+  const { teams } = Rules.resolveTeamRoles(agentList);
   if (!assigned) {
-    if (assignRaw.includes('lead') || assignRaw.includes('architect')) assigned = leadAgent;
-    else if (assignRaw.includes('dev') || assignRaw.includes('developer') || assignRaw.includes('code')) assigned = devAgent;
-    else if (assignRaw.includes('test') || assignRaw.includes('qa')) assigned = testerAgent;
+    const mobile = ['android', 'ios'].find((p) => new RegExp(`\\b${p}\\b`).test(assignRaw) && teams[p]);
+    const team = mobile ? teams[mobile] : null;
+    const teamLead = (team && team.lead) || leadAgent;
+    const teamDev = (team && team.dev) || devAgent;
+    const teamTester = (team && team.tester) || testerAgent;
+    if (assignRaw.includes('lead') || assignRaw.includes('architect')) assigned = teamLead;
+    else if (assignRaw.includes('dev') || assignRaw.includes('developer') || assignRaw.includes('code')) assigned = teamDev;
+    else if (assignRaw.includes('test') || assignRaw.includes('qa')) assigned = teamTester;
     else if (assignRaw.includes('pm') || assignRaw.includes('scrum')) assigned = pmAgent;
     else if (!assignRaw) assigned = pmAgent; // unassigned work goes to the orchestrator to delegate
-    else assigned = devAgent;
+    else assigned = teamDev;
   }
 
   // Resolve delegator agent (who gave this task to assigned)
@@ -644,7 +652,13 @@ function registerRealAgentTask(taskData, options = {}) {
     );
     if (matched) delegator = matched;
   } else {
-    if (assigned.id === leadAgent.id) delegator = pmAgent;
+    // A dev or tester of a platform team is delegated by that team's own lead
+    const ownTeam = teams[Rules.platformOf(assigned.id)];
+    const isTeamWorker =
+      ownTeam && ownTeam.lead &&
+      ((ownTeam.dev && ownTeam.dev.id === assigned.id) || (ownTeam.tester && ownTeam.tester.id === assigned.id));
+    if (isTeamWorker) delegator = ownTeam.lead;
+    else if (assigned.id === leadAgent.id) delegator = pmAgent;
     else if (assigned.id === devAgent.id || assigned.id === testerAgent.id) delegator = leadAgent;
     else delegator = pmAgent;
   }

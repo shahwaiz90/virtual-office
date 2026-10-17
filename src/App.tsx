@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { OfficeState, Agent, NormalizedEvent, ReplayRequest } from './types/office';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { OfficeState, Agent, NormalizedEvent, ReplayRequest, teamAgentsOf } from './types/office';
 import { Header } from './components/Header';
 import { VirtualOffice } from './components/VirtualOffice';
 import { KanbanBoard } from './components/KanbanBoard';
@@ -310,6 +310,8 @@ export const App: React.FC = () => {
   };
 
   const agents = state ? state.agents : [];
+  // The office draws a desk only for the saved team; the board and analytics keep the whole catalog
+  const officeAgents = useMemo(() => teamAgentsOf(agents), [agents]);
   const hasAgents = Boolean(state && agents.length > 0);
   const tasks = hasAgents && state ? state.tasks : [];
   const eventsToDisplay = hasAgents ? events : [];
@@ -347,7 +349,7 @@ export const App: React.FC = () => {
         {/* Top Section: 2D Animated Virtual Office (Retina High-DPI Vector Canvas) */}
         <section>
           <VirtualOffice
-            agents={agents}
+            agents={officeAgents}
             activeHandoff={activeHandoff}
             selectedAgentId={selectedAgent?.id || null}
             onSelectAgent={(agent) => setSelectedAgent(agent)}

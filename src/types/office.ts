@@ -43,6 +43,10 @@ export interface Agent {
   role: string;
   isPrimary?: boolean;
   isSubagent?: boolean;
+  /** In the team saved in Team Studio (has a desk in the office); false = catalog only */
+  inTeam?: boolean;
+  /** Position in the saved team, null when not in it */
+  teamIndex?: number | null;
   avatarUrl?: string;
   avatar_url?: string;
   aliases: string[];
@@ -406,4 +410,16 @@ export interface ReplayRequest {
   key: string;
   record: boolean;
   nonce: number;
+}
+
+/**
+ * The agents of the saved team, in saved order: the office's desks. Agents without the
+ * inTeam flag (an older server) all count as the team, as before.
+ */
+export function teamAgentsOf(agents: Agent[]): Agent[] {
+  return agents
+    .filter((a) => a.inTeam !== false)
+    .map((a, i) => ({ a, order: typeof a.teamIndex === 'number' ? a.teamIndex : Number.MAX_SAFE_INTEGER, i }))
+    .sort((x, y) => x.order - y.order || x.i - y.i)
+    .map(({ a }) => a);
 }

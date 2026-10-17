@@ -92,6 +92,8 @@ app.get('/api/agents/current-config', (req, res) => {
     totalConfigs: configFiles.length,
     agentCount: currentAgents.length,
     agents: currentAgents,
+    // The saved team (Team Studio, the office's desks) in saved order; `agents` is the whole catalog
+    team: currentAgents.filter((a) => a.inTeam !== false).sort((a, b) => (a.teamIndex ?? 0) - (b.teamIndex ?? 0)).map((a) => a.id),
     templates: TEAM_TEMPLATES,
     availableSkills: Object.values(skills),
     projectName: eventBus.projectName,
@@ -204,10 +206,12 @@ app.post('/api/agents/save', async (req, res) => {
     }
 
     // Team Studio edits only some fields: a role that already exists keeps its contracts unless the save sets them
-    let existingById = new Map();
+    // The modal saves the team (the office's desks); every other role stays in the catalog untouched
+    let existingCatalog = [];
     try {
-      existingById = new Map((loadRegistry(root)?.agents || []).map((ag) => [ag.id, ag]));
+      existingCatalog = loadRegistry(root)?.agents || [];
     } catch (e) {}
+    const existingById = new Map(existingCatalog.map((ag) => [ag.id, ag]));
     // Skills every role uses, whatever the team looks like
     const withSharedSkills = (skills) => {
       const list = [...skills];
@@ -246,8 +250,9 @@ app.post('/api/agents/save', async (req, res) => {
           enable_mcp_tools: a.enable_mcp_tools !== undefined ? a.enable_mcp_tools : false,
           is_primary: isPrimary,
           is_subagent: !isPrimary,
-          parent_agent: isPrimary ? null : (a.reportsTo || agents[0].id || 'primary-orchestrator'),
-          reportsTo: a.reportsTo || (isPrimary ? 'user' : agents[0].id),
+          parent_agent: isPrimary ? null : (a.reportsTo || existingById.get(a.id)?.reportsTo || agents[0].id || 'primary-orchestrator'),
+          // The modal does not edit reportsTo: an existing role keeps its own
+          reportsTo: a.reportsTo || (isPrimary ? 'user' : existingById.get(a.id)?.reportsTo || agents[0].id),
           prohibited_actions: a.prohibited_actions || a.prohibitedActions || [],
           delegation_targets: a.delegation_targets || a.delegationTargets || (isPrimary && agents[1] ? [agents[1].id] : []),
           inputContract: a.inputContract ?? existingById.get(a.id)?.inputContract ?? '',
@@ -256,19 +261,41 @@ app.post('/api/agents/save', async (req, res) => {
       }),
     };
 
+    // Catalog = the existing roles in their order (saved ones updated) plus new roles; team = the saved ids
+    const teamAgents = agentsConfig.agents;
+    const team = [...new Set(teamAgents.map((ag) => ag.id))];
+    const teamById = new Map(teamAgents.map((ag) => [ag.id, ag]));
+    const asCatalogEntry = (ag) => {
+      const { skillDetails, skillIds, instructions, ...rest } = ag;
+      return { ...rest, skills: skillIds || rest.skills || [], is_primary: false, is_subagent: true };
+    };
+    const catalogAgents = [
+      ...existingCatalog.map((ag) => teamById.get(ag.id) || asCatalogEntry(ag)),
+      ...teamAgents.filter((ag) => !existingById.has(ag.id)),
+    ];
+    agentsConfig.agents = catalogAgents;
+    agentsConfig.team = team;
+
     const agentsJsonPath = path.join(agentsDir, 'agents.json');
     fs.writeFileSync(agentsJsonPath, JSON.stringify(agentsConfig, null, 2), 'utf8');
 
     // Synchronize canonical registry (.agents/definitions/*.md and .agents/registry.yaml)
+    let canonicalSynced = false;
     try {
       const canonicalObj = {
         version: '2.0.0',
         name: path.basename(root),
-        orchestrator: agentsConfig.agents[0].id,
-        agents: agentsConfig.agents,
+        orchestrator: team[0],
+        // Definitions keep their prompt body unless the save sets one
+        agents: catalogAgents.map((ag) => {
+          const instructions = teamById.has(ag.id) ? (ag.instructions ?? existingById.get(ag.id)?.instructions) : existingById.get(ag.id)?.instructions;
+          return instructions ? { ...ag, instructions } : ag;
+        }),
+        team,
       };
       saveRegistry(canonicalObj, root);
       await syncAll(root);
+      canonicalSynced = true;
     } catch (e) {
       console.warn('[save] Could not update canonical registry:', e.message);
     }
@@ -294,7 +321,8 @@ When resolving software requests in this repository:
    - Set \`enable_write_tools: true\` for implementation and QA specialists.
 3. Break each user requirement into the specific tasks it needs (no fixed template or task count), register them on the Kanban board, then delegate them (see the \`task-decomposition\` skill).
 `;
-    fs.writeFileSync(orchestrationRulePath, orchestrationRuleContent, 'utf8');
+    // The adapters generate the team rule and AGENTS.md from the whole catalog; these are the fallback
+    if (!canonicalSynced) fs.writeFileSync(orchestrationRulePath, orchestrationRuleContent, 'utf8');
 
     const agentsMdPath = path.join(root, 'AGENTS.md');
     const agentsMdContent = `# Multi-Agent Team for ${path.basename(root)}
@@ -313,7 +341,7 @@ ${agentsConfig.agents.map(ag => `- **\`${ag.id}\`** (${ag.name} - *${ag.role}*):
   - Set \`enable_write_tools: true\` for implementers and testers that write files or run commands.
 - Follow the skills in \`.agents/skills/\`.
 `;
-    fs.writeFileSync(agentsMdPath, agentsMdContent, 'utf8');
+    if (!canonicalSynced) fs.writeFileSync(agentsMdPath, agentsMdContent, 'utf8');
 
     // Automatically scaffold official skills to disk if requested
     let scaffoldedSkills = [];
@@ -360,7 +388,7 @@ ${agentsConfig.agents.map(ag => `- **\`${ag.id}\`** (${ag.name} - *${ag.role}*):
     }
     eventBus.workflowTitle = 'Standby (Awaiting agent task)';
     eventBus.currentPhase = 'Standby & Ready';
-    eventBus.latestMilestone = `👉 Team staffed with ${discovered.length} agents. Standing by for sprint requests.`;
+    eventBus.latestMilestone = `👉 Team staffed with ${team.length} agents. Standing by for sprint requests.`;
     eventBus.initStandbyRoleAnalytics();
     resetWatchersOffsets();
 
@@ -372,9 +400,11 @@ ${agentsConfig.agents.map(ag => `- **\`${ag.id}\`** (${ag.name} - *${ag.role}*):
 
     res.json({
       success: true,
-      message: `Successfully saved and applied ${discovered.length} agents to .agents/agents.json!`,
+      message: `Successfully saved and applied ${team.length} agents to .agents/agents.json!`,
       path: '.agents/agents.json',
-      agentCount: discovered.length,
+      agentCount: team.length,
+      catalogCount: discovered.length,
+      team,
       scaffoldedSkills,
     });
   } catch (err) {

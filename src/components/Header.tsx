@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { OfficeState } from '../types/office';
+import { OfficeState, teamAgentsOf } from '../types/office';
 import { Users, Wifi, Mic, Settings, Folder, Pencil, Volume2, VolumeX, RotateCcw, Sun, Moon, KeyRound, MoreHorizontal } from 'lucide-react';
 import { voiceService } from '../services/voiceService';
 import { getTheme, setTheme, Theme } from '../services/theme';
@@ -98,7 +98,8 @@ export const Header: React.FC<HeaderProps> = ({
     return `.../${parts.slice(-2).join('/')}`;
   };
 
-  const agentCount = state?.agents ? state.agents.length : 0;
+  // The saved team (Team Studio), not the whole role catalog
+  const agentCount = state?.agents ? teamAgentsOf(state.agents).length : 0;
 
   return (
     <header className="bg-surface/95 border-b border-sand-200/90 shadow-2xs backdrop-blur-md sticky top-0 z-40 px-4 sm:px-6 py-2.5 transition-all">

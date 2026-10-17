@@ -197,6 +197,8 @@ always_on: true
           delegation_targets: handoff,
         };
       }),
+      // The saved team (the office's desks); `agents` above stays the full catalog
+      ...(Array.isArray(registry.team) && registry.team.length ? { team: registry.team.filter((id) => agents.some((ag) => ag.id === id)) } : {}),
     };
 
     // The server's startup registration passes keepAgentsJson: agents.json is user/Team Studio input there

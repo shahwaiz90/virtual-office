@@ -399,7 +399,8 @@ function stringifyFrontmatter(data, body = '') {
   if (!yamlStr) {
     return trimmedBody;
   }
-  return `---\n${yamlStr}\n---\n\n${trimmedBody}\n`;
+  // Frontmatter-only definitions end at the closing fence, as written by hand
+  return trimmedBody ? `---\n${yamlStr}\n---\n\n${trimmedBody}\n` : `---\n${yamlStr}\n---\n`;
 }
 
 module.exports = {

@@ -244,6 +244,14 @@ function validateRegistry(registry, projectRoot = process.cwd(), options = {}) {
     }
   }
 
+  // 6. The saved team (office desks) may only name roles in the catalog
+  if (Array.isArray(registry.team)) {
+    const unknown = registry.team.filter((id) => !agentIdSet.has(id));
+    if (unknown.length > 0) {
+      warnings.push(`Saved team lists roles with no definition (ignored): ${unknown.join(', ')}`);
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,

@@ -1,7 +1,7 @@
 # 🏢 AI Agent Virtual Office (`agent-virtual-office`)
 
 > **Talk to one routine. The team finishes the work.**  
-> You describe what you want to the Scrum Master. It sizes the request and puts it on a Kanban board as cards; the Tech Lead, Developer and QA pick those cards up and finish them, and you watch it happen in an animated 2D office.
+> You describe what you want to the Scrum Master. It sizes the request, picks the platform team (Web, Android or iOS), and puts it on a Kanban board as cards; that team's Tech Lead, Developer and QA pick those cards up and finish them, and you watch it happen in an animated 2D office.
 
 [![npm version](https://img.shields.io/npm/v/agent-virtual-office.svg?style=flat-square)](https://www.npmjs.com/package/agent-virtual-office)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
@@ -11,26 +11,31 @@
 
 ## 💡 What is Virtual Office? (In Simple Terms)
 
-One conversation in, finished work out. You talk to a single routine, the **Scrum Master** (`tech-pm`). It takes a quick look, decides whether the request is small or full, and registers it on the board: a small change goes straight to the Developer with the Tech Lead as reviewer; a bigger one goes to the Tech Lead, who writes technical contracts for the Developer and hands testing to QA. Every instruction, decision and result lives on the cards, so each agent reads its card instead of a pasted prompt, and you see the work move from **Backlog ➔ In Progress ➔ Review ➔ Done**.
+One conversation in, finished work out. You talk to a single routine, the **Scrum Master** (`tech-pm`). It takes a quick look, decides whether the request is small or full and which platform team owns it (Web, Android or iOS; Web when unclear), and registers it on the board: a small change goes straight to that team's Developer (`<platform>-dev`) with its Tech Lead (`<platform>-tech-lead`) as reviewer; a bigger one goes to the Tech Lead, who writes technical contracts for the Developer and hands testing to QA. Every instruction, decision and result lives on the cards, so each agent reads its card instead of a pasted prompt, and you see the work move from **Backlog ➔ In Progress ➔ Review ➔ Done**.
 
-**Virtual Office makes that teamwork visible:** each agent (Scrum Master, Tech Lead, Developer, QA) has its own desk, role, permissions and skills, and you can follow every handoff live.
+**Virtual Office makes that teamwork visible:** each agent (the Scrum Master, plus a Tech Lead, Developer and QA for each platform team) has its own role, permissions and skills, and you can follow every handoff live. The office shows the team you saved in the **Agent Command Center Setup** modal, with a desk for each of its agents.
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        AI AGENT VIRTUAL OFFICE                         │
-│                                                                        │
-│   👑 Scrum Master (Tech PM)                                            │
-│      └── Decomposes user goal into a 4-stage sprint                    │
-│                                                                        │
-│   🧩 Technical Lead (Architect)                                        │
-│      ├── Plans technical contracts & reviews code                      │
-│      │                                                                 │
-│      ├──► 💻 Core Developer (Android / iOS / Web / Backend)            │
-│      │    └── Implements features using official domain skills         │
-│      │                                                                 │
-│      └──► 🧪 Mobile QA / Tester                                        │
-│           └── Runs test suites & validates acceptance criteria         │
-└────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                              AI AGENT VIRTUAL OFFICE                           │
+│                                                                                │
+│  Scrum Master (tech-pm)                                                        │
+│    └── Sizes the request, picks the platform team, writes the cards            │
+│         │                                                                      │
+│         ├──► Web team                                                          │
+│         │     Web Lead (web-tech-lead) ──► Web Dev (web-dev)                   │
+│         │                              └─► Web QA (web-tester)                 │
+│         │                                                                      │
+│         ├──► Android team                                                      │
+│         │     Android Lead (android-tech-lead) ──► Android Dev (android-dev)   │
+│         │                                      └─► Android QA (android-tester) │
+│         │                                                                      │
+│         └──► iOS team                                                          │
+│               iOS Lead (ios-tech-lead) ──► iOS Dev (ios-dev)                   │
+│                                        └─► iOS QA (ios-tester)                 │
+│                                                                                │
+│  Each Lead writes contracts and reviews; Dev builds; QA tests.                 │
+└────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Whatever custom LLM model or AI platform you use (**Claude**, **OpenAI / Codex**, **Gemini / Antigravity**, **Cursor**, **OpenCode**), Virtual Office watches your agents in real time and visually illustrates:
@@ -43,28 +48,34 @@ Whatever custom LLM model or AI platform you use (**Claude**, **OpenAI / Codex**
 
 ## 🔁 Agentic workflow
 
-You talk to one routine. The **main session** (your Claude Code chat) only dispatches: it sends your request to the Scrum Master, then starts each subagent named in the `HANDOFF <KEY> -> <agentId>` lines it gets back, until the requirement card is done. It never edits project files. Each role below is a Claude Code subagent in `.claude/agents/`, generated from `.agents/definitions/<id>.md` by `node bin/agents.js sync`.
+You talk to one routine. The **main session** (your Claude Code chat) only dispatches: it sends your request to the Scrum Master, then starts each subagent named in the `HANDOFF <KEY> -> <agentId>` lines it gets back, until the requirement card is done. It never edits project files. Each role below is a Claude Code subagent in `.claude/agents/`, generated from `.agents/definitions/<id>.md` by `node bin/agents.js sync`. The roster has ten agents: the Scrum Master and three platform teams (Web, Android, iOS), each with a Tech Lead, a Developer and QA. Web is the default team. Fast path: a small change goes to `<platform>-dev` with reviewer `<platform>-tech-lead`; a full change goes to `<platform>-tech-lead`. The office shows only the team saved in the Agent Command Center Setup modal; this table lists every definition in the repository.
 
 | Role | What it is | Skills | Tools | Hands work to | Reports to | Routine (every card) | Context it reads | Delivers | Never | Token in | Token out |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | Main session (dispatcher) | Your Claude Code chat, not a subagent | Follows `CLAUDE.md` | The session's own tools | `tech-pm`, then whoever a HANDOFF line names | You | Sends the request to `tech-pm`; starts each HANDOFF subagent with only the card key | `CLAUDE.md` and HANDOFF lines | Nothing on the board | Editing project files or writing code | not recorded separately² | not recorded separately² |
-| [Scrum Master](.agents/definitions/tech-pm.md) (`tech-pm`) | Subagent, orchestrator | kanban-handoff, task-decomposition, codebase-explorer, requirement-analysis, sprint-planning, read-jira, read-confluence, writing-guidelines | view_file, run_command, invoke_subagent, send_message (Claude Code: Read, Grep, Glob, Bash) | `web-tech-lead`, `web-dev` | You | Sizes the request (small or full); registers the requirement and task cards; emits HANDOFF lines; posts a summary when the cards are done | The requirement card (your request) | `prd` | Modifying application code | ~0.9M–1.3M (n=2)¹ | ~0.5k–4.4k (n=2)¹ |
-| [Tech Lead](.agents/definitions/web-tech-lead.md) (`web-tech-lead`) | Subagent | kanban-handoff, task-decomposition, codebase-explorer, react-best-practices, composition-patterns, web-design-guidelines, vercel-optimize, modern-web-guidance | view_file, run_command, git_diff, invoke_subagent, send_message (Claude Code: Read, Grep, Glob, Bash) | `web-dev`, `web-tester` | `tech-pm` | Writes short technical contracts with the impact map as Developer cards; hands QA a card when needed; reviews Developer and QA cards | Its card: brief, criteria, context files, decisions, thread | `architecture` (plan) or `code_review` | Pushing unreviewed code to main | typical ~200k–600k³ | typical ~3k–10k³ |
-| [Developer](.agents/definitions/web-dev.md) (`web-dev`) | Subagent | kanban-handoff, feature-implementation, codebase-explorer, react-best-practices, composition-patterns, react-view-transitions, modern-web-guidance, deploy-to-vercel | view_file, write_to_file, replace_file_content, run_command (Claude Code: Read, Grep, Glob, Bash, Write, Edit) | — | `web-tech-lead` | Maps the impact on a fast-path card; builds the change; checks each criterion; records the result and moves the card to review | Its card: contract or brief, criteria, context files, decisions, thread | `source_code` (code + PR) | Breaking architectural contracts | typical ~200k–1M³ | typical ~2k–10k³ |
-| [QA](.agents/definitions/web-tester.md) (`web-tester`) | Subagent | kanban-handoff, codebase-explorer, automated-testing, web-design-guidelines, modern-web-guidance | run_command, view_file, git_diff (Claude Code: Read, Grep, Glob, Bash) | — | `web-tech-lead` | Runs Vitest/Playwright and an accessibility/UX check; records pass/fail per criterion; moves the card to done or back with defects | Its card: what to test, criteria, impact map, the Developer's result | `test_report` | Modifying production code | typical ~100k–400k³ | typical ~1k–5k³ |
+| [Scrum Master](.agents/definitions/tech-pm.md) (`tech-pm`) | Subagent, orchestrator | kanban-handoff, task-decomposition, codebase-explorer, requirement-analysis, sprint-planning, read-jira, read-confluence, writing-guidelines | view_file, run_command, invoke_subagent, send_message (Claude Code: Read, Grep, Glob, Bash) | `web-tech-lead`, `web-dev`, `android-tech-lead`, `android-dev`, `ios-tech-lead`, `ios-dev` | You | Sizes the request (small or full) and picks the platform team (web when unclear); registers the requirement and task cards; emits HANDOFF lines; posts a summary when the cards are done | The requirement card (your request) | `prd` | Modifying application code | ~0.9M–1.3M (n=2)¹ | ~0.5k–4.4k (n=2)¹ |
+| [Web Lead](.agents/definitions/web-tech-lead.md) (`web-tech-lead`) | Subagent, Web team (default) | kanban-handoff, task-decomposition, codebase-explorer, react-best-practices, composition-patterns, web-design-guidelines, vercel-optimize, modern-web-guidance | view_file, run_command, git_diff, invoke_subagent, send_message (Claude Code: Read, Grep, Glob, Bash) | `web-dev`, `web-tester` | `tech-pm` | Writes short technical contracts with the impact map as Developer cards; hands QA a card when needed; reviews Developer and QA cards | Its card: brief, criteria, context files, decisions, thread | `architecture` (plan) or `code_review` | Pushing unreviewed code to main | typical ~200k–600k³ | typical ~3k–10k³ |
+| [Web Dev](.agents/definitions/web-dev.md) (`web-dev`) | Subagent, Web team (default) | kanban-handoff, feature-implementation, codebase-explorer, react-best-practices, composition-patterns, react-view-transitions, modern-web-guidance, deploy-to-vercel | view_file, write_to_file, replace_file_content, run_command (Claude Code: Read, Grep, Glob, Bash, Write, Edit) | — | `web-tech-lead` | Maps the impact on a fast-path card; builds the change; checks each criterion; records the result and moves the card to review | Its card: contract or brief, criteria, context files, decisions, thread | `source_code` (code + PR) | Breaking architectural contracts | typical ~200k–1M³ | typical ~2k–10k³ |
+| [Web QA](.agents/definitions/web-tester.md) (`web-tester`) | Subagent, Web team (default) | kanban-handoff, codebase-explorer, automated-testing, web-design-guidelines, modern-web-guidance | run_command, view_file, git_diff (Claude Code: Read, Grep, Glob, Bash) | — | `web-tech-lead` | Runs Vitest/Playwright and an accessibility/UX check; records pass/fail per criterion; moves the card to done or back with defects | Its card: what to test, criteria, impact map, the Developer's result | `test_report` | Modifying production code | typical ~100k–400k³ | typical ~1k–5k³ |
+| [Android Lead](.agents/definitions/android-tech-lead.md) (`android-tech-lead`) | Subagent, Android team | kanban-handoff, task-decomposition, codebase-explorer, android-architecture, android-cli, r8-analyzer, agp-9-upgrade, android-permissions-security, android-intent-security | view_file, run_command, git_diff, invoke_subagent, send_message (Claude Code: Read, Grep, Glob, Bash) | `android-dev`, `android-tester` | `tech-pm` | Writes short technical contracts with the impact map as Developer cards; hands QA a card when needed; reviews Developer and QA cards | Its card: brief, criteria, context files, decisions, thread | `architecture` (plan) or `code_review` | Pushing unreviewed code to main | not measured yet³ | not measured yet³ |
+| [Android Dev](.agents/definitions/android-dev.md) (`android-dev`) | Subagent, Android team | kanban-handoff, feature-implementation, codebase-explorer, android-cli, android-architecture, gradle-build, jetpack-compose-performance, edge-to-edge, adaptive, navigation-3, migrate-xml-views-to-jetpack-compose | view_file, write_to_file, replace_file_content, run_command (Claude Code: Read, Grep, Glob, Bash, Write, Edit) | — | `android-tech-lead` | Maps the impact on a fast-path card; builds the change; checks each criterion; records the result and moves the card to review | Its card: contract or brief, criteria, context files, decisions, thread | `source_code` (code + PR) | Breaking architectural contracts | not measured yet³ | not measured yet³ |
+| [Android QA](.agents/definitions/android-tester.md) (`android-tester`) | Subagent, Android team | kanban-handoff, codebase-explorer, android-testing, testing-setup, android-profiler, android-cli, gradle-build | run_command, view_file, git_diff (Claude Code: Read, Grep, Glob, Bash) | — | `android-tech-lead` | Runs JUnit, Compose UI and instrumented tests through Gradle, plus a profiling and accessibility check; records pass/fail per criterion; moves the card to done or back with defects | Its card: what to test, criteria, impact map, the Developer's result | `test_report` | Modifying production code | not measured yet³ | not measured yet³ |
+| [iOS Lead](.agents/definitions/ios-tech-lead.md) (`ios-tech-lead`) | Subagent, iOS team | kanban-handoff, task-decomposition, codebase-explorer, swiftui-specialist, uikit-app-modernization, audit-xcode-security-settings, xcode-project-setup, c-bounds-safety | view_file, run_command, git_diff, invoke_subagent, send_message (Claude Code: Read, Grep, Glob, Bash) | `ios-dev`, `ios-tester` | `tech-pm` | Writes short technical contracts with the impact map as Developer cards; hands QA a card when needed; reviews Developer and QA cards | Its card: brief, criteria, context files, decisions, thread | `architecture` (plan) or `code_review` | Pushing unreviewed code to main | not measured yet³ | not measured yet³ |
+| [iOS Dev](.agents/definitions/ios-dev.md) (`ios-dev`) | Subagent, iOS team | kanban-handoff, feature-implementation, codebase-explorer, swiftui-specialist, swiftui-whats-new-27, uikit-app-modernization, xcode-project-setup, device-interaction | view_file, write_to_file, replace_file_content, run_command (Claude Code: Read, Grep, Glob, Bash, Write, Edit) | — | `ios-tech-lead` | Maps the impact on a fast-path card; builds the change; checks each criterion; records the result and moves the card to review | Its card: contract or brief, criteria, context files, decisions, thread | `source_code` (code + PR) | Breaking architectural contracts | not measured yet³ | not measured yet³ |
+| [iOS QA](.agents/definitions/ios-tester.md) (`ios-tester`) | Subagent, iOS team | kanban-handoff, codebase-explorer, test-modernizer, device-interaction, xcode-project-setup, audit-xcode-security-settings | run_command, view_file, git_diff (Claude Code: Read, Grep, Glob, Bash) | — | `ios-tech-lead` | Runs XCTest, Swift Testing and XCUITest suites on simulators or devices, plus an accessibility check; records pass/fail per criterion; moves the card to done or back with defects | Its card: what to test, criteria, impact map, the Developer's result | `test_report` | Modifying production code | not measured yet³ | not measured yet³ |
 
 No agent gets a pasted prompt: instructions, decisions and results all live on the card, and every agent starts by reading it.
 
 ¹ Measured from the portal's recorded card usage (`tokenUsage` on each card, the same data behind `tokenUsageAnalytics` in `GET /api/state`) on 2026-10-17. Token in = input + cache read + cache write tokens; token out = output tokens. Range over the done cards that have recorded usage. Only two done cards had usage, both Scrum Master requirement cards opened from chat, so the figures also include the dispatching turns on that conversation.  
 ² The main session's usage is counted on the requirement card it opened, not on its own row.  
-³ Typical: no done card for this role had recorded usage yet, so this is an estimate, not a measurement. Run `npm run bench` (below) to measure it for your own model.
+³ Typical: no done card for this role had recorded usage yet, so this is an estimate, not a measurement. "Not measured yet" means no estimate has been made either; expect figures close to the matching web role. Run `npm run bench` (below) to measure it for your own model.
 
 ---
 
 ## 🏛️ The 4 Core Pillars
 
 ### 1. 👥 Specialized Agent & Subagent Orchestration
-- **Hierarchy & Clear Roles**: Staff dedicated agents such as **Scrum Master (`tech-pm`)**, **Architect (`tech-lead`)**, **Developers**, and **QA Engineers**.
+- **Hierarchy & Clear Roles**: Staff dedicated agents such as **Scrum Master (`tech-pm`)**, a **Tech Lead**, **Developer** and **QA Engineer** for each platform team (Web, Android, iOS).
 - **Top-Level Orchestration**: The Primary Orchestrator receives stakeholder goals and breaks them down into sequenced sprint tasks.
 - **Subagent Delegation with Guardrails**: Agents only communicate along permitted delegation channels with enforced input/output contracts, permissions, and prohibited actions (e.g. preventing Scrum Masters or Testers from writing unauthorized production code).
 
@@ -178,9 +189,9 @@ your-project/
 │   ├── registry.yaml          # Universal Single Source of Truth for your team
 │   ├── definitions/           # 1 Markdown file per agent profile
 │   │   ├── tech-pm.md         # Scrum Master / Primary Orchestrator
-│   │   ├── tech-lead.md       # Technical Architect
-│   │   ├── developer.md       # Core Developer
-│   │   └── tester.md          # QA Engineer
+│   │   ├── web-*.md           # Web team: web-tech-lead, web-dev, web-tester
+│   │   ├── android-*.md       # Android team: android-tech-lead, -dev, -tester
+│   │   └── ios-*.md           # iOS team: ios-tech-lead, ios-dev, ios-tester
 │   ├── skills/                # Domain skills (Android, iOS, Web, Custom)
 │   │   ├── task-decomposition/
 │   │   ├── android-architecture/
