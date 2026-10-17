@@ -313,19 +313,6 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </button>
 
-          {/* Jira / Confluence integrations: status, setup steps and connection test */}
-          {onOpenIntegrations && (
-            <button
-              type="button"
-              onClick={onOpenIntegrations}
-              className="hidden md:inline-flex p-2 rounded-xl text-sand-500 hover:text-brand-700 hover:bg-brand-50 cursor-pointer"
-              title="Integrations (Jira, Confluence)"
-              aria-label="Integrations"
-            >
-              <KeyRound className="w-4 h-4" />
-            </button>
-          )}
-
           {/* Workflow Recorder */}
           {recorderSlot}
 
