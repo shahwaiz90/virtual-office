@@ -10,6 +10,7 @@ const LIVE_AGENT_FIELDS = [
 const path = require('path');
 const { discoverAgents, getProjectRoot } = require('./agentDiscovery');
 const { OrchestrationRules } = require('./orchestrationRules');
+const { normaliseToolName } = require('./toolNames');
 
 class EventBus extends EventEmitter {
   constructor() {
@@ -359,8 +360,9 @@ class EventBus extends EventEmitter {
 
   /** Durations are only added when measured; callers that don't know one pass nothing. */
   recordToolUsage(agentId, toolName, durationSec = null) {
-    if (!toolName) return;
-    const cleanTool = toolName.trim();
+    // One canonical row per tool, whichever adapter reported it (shell -> Bash, MCP per server)
+    const cleanTool = normaliseToolName(toolName);
+    if (!cleanTool) return;
     const key = `${agentId}::${cleanTool}`;
     const agent = this.agents.get(agentId);
 
@@ -937,10 +939,8 @@ class EventBus extends EventEmitter {
           agent.status = payload.command && payload.command.includes('test') ? 'testing' : 'coding';
           agent.activityMessage = `Executing: ${payload.command ? payload.command.substring(0, 45) : 'Terminal command'}`;
           this.recordRoleInvocation(agentId);
-          {
-            const cmdName = payload.command ? payload.command.split(' ')[0] : 'terminal_command';
-            this.recordToolUsage(agentId, cmdName);
-          }
+          // Every shell command is one tool (Bash), not a row per command word or line
+          this.recordToolUsage(agentId, 'Bash');
 
           // Auto-revert back to available standby state
           this.setAgentBusyTimer(agentId, () => {

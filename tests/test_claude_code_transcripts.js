@@ -201,7 +201,7 @@ try {
   }
   fresh.recordToolUsage('web-dev', 'run_command');
   fresh.recordToolUsage('web-dev', 'run_command', 4);
-  const toolStat = fresh.toolUsageMap.get('web-dev::run_command');
+  const toolStat = fresh.toolUsageMap.get('web-dev::Bash'); // run_command is normalised to Bash;
   assert.deepStrictEqual([toolStat.count, toolStat.measuredCount, toolStat.totalDurationSec], [2, 1, 4]);
   fresh.recordSkillUsage('kanban-handoff', 'web-dev');
   assert.deepStrictEqual([fresh.skillUsageMap.get('kanban-handoff').measuredCount, fresh.skillUsageMap.get('kanban-handoff').totalDurationSec], [0, 0]);
