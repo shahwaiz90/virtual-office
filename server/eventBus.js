@@ -605,6 +605,13 @@ class EventBus extends EventEmitter {
     };
 
     // Normalize Jira / Confluence items
+    // A repeat of an ongoing state (e.g. still thinking): update the agent, but don't add another log entry
+    if (rawEvent.transient) {
+      this.applyEventSideEffects(normalized);
+      this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+      return normalized;
+    }
+
     if (
       type === 'jira_confluence_lookup' ||
       (payload && (payload.sourceType === 'jira' || payload.sourceType === 'confluence' || payload.ticketKey || payload.pageId))
@@ -789,6 +796,14 @@ class EventBus extends EventEmitter {
     if (agent) {
       if (payload.task) {
         if (!agent.currentTask || agent.currentTask !== payload.task) {
+          // Bank the time already worked before the clock restarts for the new task
+          if (agent.taskStartedAt && ['working', 'coding', 'testing', 'planning'].includes(agent.status)) {
+            const elapsed = Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000);
+            if (elapsed > 0) {
+              agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
+              this.recordRoleInvocation(agentId, elapsed);
+            }
+          }
           agent.taskStartedAt = new Date().toISOString();
           agent.taskCompletedAt = null;
           agent.taskDurationSec = null;
@@ -799,7 +814,7 @@ class EventBus extends EventEmitter {
       if (payload.tool) agent.lastTool = payload.tool;
 
       // Auto initialize taskStartedAt if working starts without explicit task change
-      if (!agent.taskStartedAt && (type === 'tool_executing' || type === 'command_executing' || type === 'file_modified' || type === 'planning_started')) {
+      if (!agent.taskStartedAt && (type === 'tool_executing' || type === 'command_executing' || type === 'file_modified' || type === 'planning_started' || type === 'agent_thinking')) {
         agent.taskStartedAt = new Date().toISOString();
       }
 
@@ -899,6 +914,29 @@ class EventBus extends EventEmitter {
             }
           }, 4000);
           break;
+
+        // The model is working on a step that has not finished yet (e.g. OpenCode "thinking").
+        // Readers repeat it every few seconds while the step runs; when they stop, the time is logged.
+        case 'agent_thinking': {
+          const wasActive = ['working', 'coding', 'testing', 'planning'].includes(agent.status);
+          agent.status = 'working';
+          agent.activityMessage = payload.details || 'Thinking…';
+          if (!wasActive) this.recordRoleInvocation(agentId);
+          this.setAgentBusyTimer(agentId, () => {
+            if (agent.status !== 'working') return;
+            if (agent.taskStartedAt) {
+              const elapsed = Math.max(1, Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000));
+              agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
+              agent.taskCompletedAt = new Date().toISOString();
+              agent.taskStartedAt = null;
+              this.recordRoleInvocation(agentId, elapsed);
+            }
+            agent.status = 'available';
+            agent.activityMessage = 'Ready at workstation';
+            this.broadcast({ type: 'STATE_UPDATE', state: this.getStateSnapshot() });
+          }, 8000);
+          break;
+        }
 
         case 'planning_started':
           agent.status = 'planning';

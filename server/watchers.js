@@ -7,6 +7,7 @@ const { eventBus } = require('./eventBus');
 const { getProjectRoot, discoverAgents } = require('./agentDiscovery');
 const { autoDiscoverAndRegisterAgents } = require('./agentRuntimeRegistry');
 const { listClaudeTranscripts, toTranscriptSteps, usageFromEntry } = require('./claudeTranscripts');
+const opencode = require('./opencodeSessions');
 const { appendThreadEntry, effectiveColumn, rosterHasTester, cleanUpBoard } = require('./taskBoard');
 
 /**
@@ -1024,33 +1025,11 @@ function resolveTranscriptPath() {
   return null;
 }
 
-/**
- * Resolves OpenCode log path universally across macOS, Linux, and Windows
- */
-function resolveOpenCodeLogPath() {
-  const homeDir = os.homedir();
-  const root = getProjectRoot();
-  const candidates = [
-    // Standard Linux & macOS path
-    path.join(homeDir, '.local/share/opencode/log/opencode.log'),
-    // macOS Library Application Support
-    path.join(homeDir, 'Library/Application Support/opencode/log/opencode.log'),
-    // Windows LOCALAPPDATA / APPDATA
-    process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'opencode/log/opencode.log') : null,
-    process.env.APPDATA ? path.join(process.env.APPDATA, 'opencode/log/opencode.log') : null,
-    // Project-level opencode log
-    path.join(root, '.opencode/opencode.log'),
-    path.join(root, '.opencode/logs/opencode.log'),
-  ].filter(Boolean);
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-
-  return null;
-}
 const activeTranscriptWatchers = new Map();
-let opencodeByteOffset = 0;
+// OpenCode sessions read from its database, by session id
+const activeOpenCodeSessions = new Map();
+let openCodePollInterval = null;
+let openCodeDbStamp = '';
 const debouncedFiles = new Map();
 
 let activeWorkspaceWatcher = null;
@@ -1074,6 +1053,8 @@ function closeAllWatchers() {
     try { fs.unwatchFile(filePath); } catch (e) {}
   }
   activeTranscriptWatchers.clear();
+  activeOpenCodeSessions.clear();
+  openCodeDbStamp = '';
   debouncedFiles.clear();
   conversationProjectMatch.clear();
 }
@@ -1083,12 +1064,7 @@ function closeAllWatchers() {
  * Called when the user clicks Reset/Clear State so historical lines are not re-read.
  */
 function resetWatchersOffsets() {
-  const opencodeLogPath = resolveOpenCodeLogPath();
-  if (opencodeLogPath && fs.existsSync(opencodeLogPath)) {
-    try {
-      opencodeByteOffset = fs.statSync(opencodeLogPath).size;
-    } catch (e) {}
-  }
+  for (const state of activeOpenCodeSessions.values()) state.cursor = Date.now();
   for (const [filePath, state] of activeTranscriptWatchers.entries()) {
     try {
       if (fs.existsSync(filePath)) {
@@ -1104,8 +1080,8 @@ function resetWatchersOffsets() {
  * Initializes all monitors:
  * 1. Universal Workspace File Monitor (watches active code changes across the project)
  * 2. Git Activity Monitor (watches commits & staging)
- * 3. OpenCode Log Monitor (watches OpenCode tool invocations)
- * 4. Antigravity / Agent Transcript Tailer
+ * 3. Scratch task folder
+ * 4. Agent session readers: Antigravity and Claude Code transcripts, OpenCode's session database
  */
 function setupWatchers(newRoot) {
   closeAllWatchers();
@@ -1114,32 +1090,19 @@ function setupWatchers(newRoot) {
   console.log('[Watchers] Initializing real-time file, git, and agent monitors...');
   console.log(`[Watchers] Target Project Root: ${currentRoot}`);
 
-  // When switching directory, advance OpenCode log offset to current end
-  // so historical commands from the old project are not replayed!
-  const opencodeLogPath = resolveOpenCodeLogPath();
-  if (opencodeLogPath && fs.existsSync(opencodeLogPath)) {
-    try {
-      const stats = fs.statSync(opencodeLogPath);
-      opencodeByteOffset = stats.size;
-    } catch (e) {}
-  }
-
   // 1. Universal Workspace Watcher
   activeWorkspaceWatcher = setupWorkspaceWatcher();
 
   // 2. Git Activity Watcher
   activeGitWatcher = setupGitWatcher();
 
-  // 3. OpenCode Log Tailer
-  setupOpenCodeLogTailer();
-
-  // 4. Scratch Task Watcher
+  // 3. Scratch Task Watcher
   activeScratchWatcher = setupScratchWatcher();
 
-  // 5. Transcript Tailer
+  // 4. Transcript Tailer (also reads OpenCode sessions)
   setupTranscriptTailer();
 
-  // 6. Sync Real Agent Tasks from workspace and artifacts
+  // 5. Sync Real Agent Tasks from workspace and artifacts
   try {
     syncRealTasksFromFiles();
   } catch (e) {
@@ -1443,136 +1406,6 @@ function setupGitWatcher() {
 }
 
 /**
- * OpenCode Log Tailer:
- * Monitors ~/.local/share/opencode/log/opencode.log for active tool calls and commands
- */
-function setupOpenCodeLogTailer() {
-  const opencodeLogPath = resolveOpenCodeLogPath();
-  if (!opencodeLogPath || !fs.existsSync(opencodeLogPath)) {
-    // Poll periodically for opencode log creation
-    const opencodePoll = setInterval(() => {
-      const candidate = resolveOpenCodeLogPath();
-      if (candidate && fs.existsSync(candidate)) {
-        clearInterval(opencodePoll);
-        startOpenCodeTail(candidate);
-      }
-    }, 5000);
-    return;
-  }
-
-  startOpenCodeTail(opencodeLogPath);
-}
-
-function startOpenCodeTail(logPath) {
-  try {
-    const stats = fs.statSync(logPath);
-    opencodeByteOffset = Math.max(0, stats.size - 20000); // Read last 20KB to catch recent turns
-
-    readNewOpenCodeLines(logPath);
-
-    fs.watchFile(logPath, { interval: 400 }, (curr, prev) => {
-      if (curr.size > prev.size) {
-        readNewOpenCodeLines(logPath);
-      }
-    });
-    console.log(`[Watchers] OpenCode live log monitor active on ${logPath}`);
-  } catch (err) {
-    console.warn('[Watchers] Could not start OpenCode log tail:', err.message);
-  }
-}
-
-function readNewOpenCodeLines(logPath) {
-  if (!fs.existsSync(logPath)) return;
-  try {
-    const fd = fs.openSync(logPath, 'r');
-    const stats = fs.fstatSync(fd);
-    if (stats.size <= opencodeByteOffset) {
-      fs.closeSync(fd);
-      return;
-    }
-
-    const bufferSize = stats.size - opencodeByteOffset;
-    const buffer = Buffer.alloc(bufferSize);
-    fs.readSync(fd, buffer, 0, bufferSize, opencodeByteOffset);
-    opencodeByteOffset = stats.size;
-    fs.closeSync(fd);
-
-    const chunk = buffer.toString('utf8');
-    const lines = chunk.split('\n');
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      parseOpenCodeLogLine(line);
-    }
-  } catch (err) {
-    // read error
-  }
-}
-
-function parseOpenCodeLogLine(line) {
-  const tsMatch = line.match(/timestamp=([^\s]+)/);
-  const lineTimestamp = tsMatch ? tsMatch[1] : null;
-  if (lineTimestamp && eventBus.isBeforeReset(lineTimestamp)) {
-    return; // Dropped: line occurred before last office reset
-  }
-
-  const cwdMatch = line.match(/cwd=([^\s]+)/);
-  const activeCwd = cwdMatch ? cwdMatch[1].replace(/["']/g, '') : null;
-  if (activeCwd && !isPathInProject(activeCwd)) {
-    return; // Command belongs to a different project on this computer
-  }
-
-  // Credit the agent the log line names; otherwise the activity is OpenCode's, not a guessed role
-  const agentMatch = line.match(/\bagent=["']?([a-zA-Z0-9_\-]+)/);
-  const actorId = agentMatch && eventBus.agents.has(agentMatch[1]) ? agentMatch[1] : 'opencode';
-
-  // 1. Tool execution (e.g., tool call / tool execution)
-  const toolMatch = line.match(/tool=([a-zA-Z0-9_\-]+)/i) || line.match(/message="tool call"[\s\S]*name=([a-zA-Z0-9_\-]+)/i);
-  if (toolMatch) {
-    const toolName = toolMatch[1];
-    eventBus.emitEvent({
-      agentId: actorId,
-      type: 'tool_executing',
-      timestamp: lineTimestamp || new Date().toISOString(),
-      payload: { tool: toolName, details: `OpenCode invoking tool: ${toolName}` },
-    });
-    return;
-  }
-
-  // 2. Spawning bash / process command
-  const cmdMatch = line.match(/command=([a-zA-Z0-9_\-\.\/]+)[\s\S]*args="?(\[[^\]]+\])?"?/);
-  if (cmdMatch) {
-    const baseCmd = cmdMatch[1];
-    let fullCmd = baseCmd;
-    if (cmdMatch[2]) {
-      try {
-        const parsedArgs = JSON.parse(cmdMatch[2].replace(/\\"/g, '"'));
-        fullCmd = `${baseCmd} ${parsedArgs.join(' ')}`;
-      } catch {
-        fullCmd = `${baseCmd} ${cmdMatch[2]}`;
-      }
-    }
-
-    // Filter out internal snapshot/git query polling
-    if (fullCmd.includes('diff-files') || fullCmd.includes('ls-files') || fullCmd.includes('check-ignore') || fullCmd.includes('git status --porcelain')) {
-      return;
-    }
-
-    // A command is activity, not a card move: no column, progress or test verdict is inferred from it
-    eventBus.emitEvent({
-      agentId: actorId,
-      type: 'command_executing',
-      timestamp: lineTimestamp || new Date().toISOString(),
-      payload: {
-        tool: 'run_command',
-        command: fullCmd.substring(0, 100),
-        details: `Running: ${fullCmd.substring(0, 80)}`,
-      },
-    });
-  }
-}
-
-/**
  * Scratch Task Watcher
  */
 function setupScratchWatcher() {
@@ -1620,6 +1453,11 @@ function setupTranscriptTailer() {
     transcriptPollInterval = setInterval(() => {
       scanAndWatchTranscripts(brainDir);
     }, 4000);
+  }
+  // OpenCode writes each step to its database as it finishes; check for new rows every second
+  if (!openCodePollInterval) {
+    openCodePollInterval = setInterval(() => readOpenCodeActivity(), 1000);
+    if (openCodePollInterval.unref) openCodePollInterval.unref();
   }
 }
 
@@ -1683,6 +1521,9 @@ function scanAndWatchTranscripts(brainDir) {
   for (const { filePath, sessionId, agentType } of listClaudeTranscripts(root)) {
     attachTranscriptTail(filePath, { format: 'claude', convId: `claude-${sessionId}`, agentType });
   }
+
+  // OpenCode sessions (TUI or `opencode run`) in this project
+  attachOpenCodeSessions(root);
 
   // Sprint-plan discovery only runs while the sprint has no tasks.json. Once it does, the in-memory
   // board is authoritative: reloading the file on this 4s poll would revert API writes not yet persisted.
@@ -1814,7 +1655,14 @@ function readTranscriptChunk(state) {
  */
 function handleClaudeEntry(entry, state) {
   recordClaudeTokenUsage(entry, state);
-  const steps = toTranscriptSteps(entry, isPathInProject);
+  handleConversationSteps(toTranscriptSteps(entry, isPathInProject), state);
+}
+
+/**
+ * Shared by Claude Code and OpenCode sessions: one requirement card per conversation, created by the
+ * first prompt, reopened by follow-ups and closed when a turn ends with no open sub-tasks.
+ */
+function handleConversationSteps(steps, state) {
   for (const step of steps) {
     if (step.created_at && eventBus.isBeforeReset(step.created_at)) continue;
 
@@ -1828,9 +1676,9 @@ function handleClaudeEntry(entry, state) {
 
     let promptCardId = null;
     let followUpCard = null;
-    const followUpEntryId = step.type === 'USER_INPUT' ? `msg_prompt_${step.claude.uuid}` : null;
+    const followUpEntryId = step.type === 'USER_INPUT' ? `msg_prompt_${step.turn.uuid}` : null;
     if (step.type === 'USER_INPUT') {
-      promptCardId = `TASK-CC-${hashString(`${state.convId}:${step.claude.uuid}`)}`;
+      promptCardId = `${state.cardPrefix || 'TASK-CC'}-${hashString(`${state.convId}:${step.turn.uuid}`)}`;
       // One card per conversation on the active board: a later prompt is a follow-up on that card
       followUpCard = eventBus.tasks.has(promptCardId) ? null : conversationCard(state.convId);
       const seen = eventBus.tasks.get(promptCardId);
@@ -1853,7 +1701,7 @@ function handleClaudeEntry(entry, state) {
     parseTranscriptStep(step, state.convId);
 
     if (step.type === 'USER_INPUT' && followUpCard) {
-      appendThreadEntry(followUpCard, { id: followUpEntryId, agentId: 'user', kind: 'request', text: step.claude.prompt.slice(0, 2000), at: step.created_at });
+      appendThreadEntry(followUpCard, { id: followUpEntryId, agentId: 'user', kind: 'request', text: step.turn.prompt.slice(0, 2000), at: step.created_at });
       if (followUpCard.column === 'done') {
         // New work on a finished request: it is open again until this turn ends
         followUpCard.column = 'in_progress';
@@ -1862,7 +1710,7 @@ function handleClaudeEntry(entry, state) {
       persistActiveSprintTasks();
       state.promptTaskId = followUpCard.id;
     } else if (step.type === 'USER_INPUT') {
-      const prompt = step.claude.prompt;
+      const prompt = step.turn.prompt;
       const firstLine = prompt.split('\n').map((l) => l.trim()).filter(Boolean)[0] || prompt;
       const task = registerRealAgentTask({
         id: promptCardId,
@@ -1878,11 +1726,131 @@ function handleClaudeEntry(entry, state) {
         createdAt: step.created_at,
       });
       state.promptTaskId = task ? task.id : null;
-    } else if (step.claude && step.claude.turnEnded && state.promptTaskId) {
+    } else if (step.turn && step.turn.turnEnded && state.promptTaskId) {
       completeClaudePromptCard(state.promptTaskId, step);
       state.promptTaskId = null;
     }
   }
+}
+
+/** Starts reading each OpenCode session of this project that is not read yet. */
+function attachOpenCodeSessions(root) {
+  let sessions = [];
+  try {
+    sessions = opencode.listOpenCodeSessions(root);
+  } catch (e) {
+    return; // No OpenCode database, or no way to read SQLite on this machine
+  }
+  for (const s of sessions) {
+    if (activeOpenCodeSessions.has(s.id)) continue;
+    // A subagent session: credit its work to the role it was started as, when that role is on the team
+    const role = s.parentId && s.agent && eventBus.agents.has(s.agent) ? s.agent : null;
+    activeOpenCodeSessions.set(s.id, {
+      ...s,
+      convId: `opencode-${s.id}`,
+      cardPrefix: 'TASK-OC',
+      agentType: role,
+      isChild: Boolean(s.parentId),
+      // From the last reset (server start or Clear), at most 30 minutes back. Not "now": a new session is
+      // attached a few seconds after its first prompt, which must still become its card.
+      cursor: Math.max(eventBus.clearedAt || 0, Date.now() - 30 * 60 * 1000),
+      seen: new Set(),
+      promptTaskId: null,
+    });
+    conversationProjectMatch.set(`opencode-${s.id}`, true);
+    console.log(`[Watchers] Reading OpenCode session: ${s.id}`);
+  }
+  readOpenCodeActivity(true);
+}
+
+/** Feeds new, finished OpenCode messages into the board. Skips the query when the database has not changed. */
+function readOpenCodeActivity(force = false) {
+  if (!activeOpenCodeSessions.size) return;
+  emitOpenCodeThinking();
+  const dbPath = opencode.resolveOpenCodeDb();
+  if (!dbPath) return;
+  let stamp = '';
+  for (const f of [dbPath, `${dbPath}-wal`]) {
+    try {
+      const st = fs.statSync(f);
+      stamp += `${st.size}:${st.mtimeMs};`;
+    } catch (e) {}
+  }
+  if (!force && stamp === openCodeDbStamp) return;
+  openCodeDbStamp = stamp;
+
+  const sessions = Array.from(activeOpenCodeSessions.values());
+  let messages = [];
+  try {
+    messages = opencode.readOpenCodeMessages(dbPath, sessions, Math.min(...sessions.map((s) => s.cursor)));
+  } catch (e) {
+    return;
+  }
+  const pending = new Map(); // session id -> createdAt of its oldest unfinished message
+  const latest = new Map(); // session id -> its newest message (the cursor keeps it in every read)
+  for (const message of messages) {
+    const state = activeOpenCodeSessions.get(message.sessionId);
+    if (!state || message.createdAt < state.cursor) continue;
+    if (message.role !== 'agent-switched') latest.set(state.id, message);
+    if (state.seen.has(message.id)) continue;
+    if (!message.completed) {
+      if (!pending.has(state.id)) pending.set(state.id, message.createdAt);
+      continue;
+    }
+    state.seen.add(message.id);
+    if (message.role === 'agent-switched' || message.role === 'idle') continue;
+    handleOpenCodeMessage(message, state);
+  }
+  for (const [id, message] of latest) {
+    const state = activeOpenCodeSessions.get(id);
+    // Busy from the prompt until the turn ends: waiting for the model, running tools, between steps
+    const busy =
+      message.role === 'user' || (message.role === 'assistant' && (!message.completed || message.finish === 'tool-calls'));
+    if (!busy) state.busy = null;
+    else if (!state.busy) state.busy = { agentId: openCodeActor(message.role === 'user' ? { agent: state.agent } : message, state), since: Date.now(), lastEmit: 0 };
+    else if (message.role === 'assistant') state.busy.agentId = openCodeActor(message, state);
+  }
+  emitOpenCodeThinking();
+  for (const state of sessions) {
+    const newest = messages.filter((m) => m.sessionId === state.id).reduce((t, m) => Math.max(t, m.createdAt), state.cursor);
+    state.cursor = pending.has(state.id) ? pending.get(state.id) : newest;
+    if (state.seen.size > 2000) state.seen = new Set(Array.from(state.seen).slice(-500));
+  }
+}
+
+/** The role a message belongs to: a team role OpenCode ran as, the subagent's role, or else the orchestrator. */
+function openCodeActor(message, state) {
+  if (message.agent && eventBus.agents.has(message.agent)) return message.agent;
+  return state.agentType || getResolvedAgent('pm', 0).id;
+}
+
+/** Keeps roles of busy OpenCode sessions shown as working (every 3s; a session busy for 30 min is dropped). */
+function emitOpenCodeThinking() {
+  const now = Date.now();
+  for (const state of activeOpenCodeSessions.values()) {
+    const t = state.busy;
+    if (!t) continue;
+    if (now - t.since > 30 * 60 * 1000) {
+      state.busy = null;
+      continue;
+    }
+    if (now - t.lastEmit < 3000) continue;
+    const transient = t.lastEmit > 0; // only the first one of a turn goes in the activity log
+    t.lastEmit = now;
+    eventBus.emitEvent({ agentId: t.agentId, type: 'agent_thinking', transient, timestamp: new Date(now).toISOString(), payload: { details: 'Thinking…', source: 'opencode' } });
+  }
+}
+
+function handleOpenCodeMessage(message, state) {
+  const createdAt = new Date(message.createdAt).toISOString();
+  if (eventBus.isBeforeReset(createdAt)) return;
+  const usage = opencode.usageOf(message);
+  if (usage) eventBus.recordTokenUsage(openCodeActor(message, state), usage);
+  const steps = opencode.toOpenCodeSteps(message, { directory: state.directory, isChild: state.isChild, isInProject: isPathInProject });
+  if (message.agent && eventBus.agents.has(message.agent)) {
+    for (const step of steps) step.actorAgentId = message.agent;
+  }
+  handleConversationSteps(steps, state);
 }
 
 /** The requirement card a Claude Code conversation started on the active board (its latest one). */
@@ -2592,6 +2560,8 @@ module.exports = {
   handleWorkspaceFileChange,
   parseTranscriptStep,
   handleClaudeEntry,
+  attachOpenCodeSessions,
+  readOpenCodeActivity,
   getResolvedAgent,
   resolveConversationProject,
   conversationProjectMatch,

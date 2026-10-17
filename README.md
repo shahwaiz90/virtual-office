@@ -100,6 +100,18 @@ That's it! The visualizer will:
 >
 > Agents find the running portal through `.agents/portal-url` (written at startup and gitignored), so several projects can run on different ports at once.
 
+### Where the activity comes from
+
+Nothing to install in your agent tool: the portal reads each tool's own session history for this project folder.
+
+| Tool | Read from |
+| :--- | :--- |
+| Claude Code | `~/.claude/projects/<project>/*.jsonl` (including subagents and worktrees) |
+| OpenCode (TUI or `opencode run`, 1.x and 2.x) | `~/.local/share/opencode/opencode.db`. Needs Node 22.13+ or the `sqlite3` command |
+| Antigravity / Gemini | `~/.gemini/antigravity/brain/*` |
+
+Board updates themselves (cards, handoffs, deliverables) come from the agents calling the board API, as described in the `kanban-handoff` skill.
+
 > [!TIP]
 > **Zero Global Installation Required:** You do **not** need to install anything globally, run `npm init`, or pollute your codebase with extra configuration files.
 

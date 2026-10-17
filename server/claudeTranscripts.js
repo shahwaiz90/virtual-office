@@ -218,7 +218,7 @@ function toTranscriptSteps(entry, isInProject) {
     if (!isHumanPrompt(entry)) return [];
     const text = stripInjectedMarkup(textFromContent(entry.message && entry.message.content));
     if (!text) return [];
-    return [{ type: 'USER_INPUT', source: 'USER_EXPLICIT', content: text, created_at, claude: { prompt: text, uuid: entry.uuid || created_at } }];
+    return [{ type: 'USER_INPUT', source: 'USER_EXPLICIT', content: text, created_at, turn: { prompt: text, uuid: entry.uuid || created_at } }];
   }
 
   if (entry.type === 'assistant' && entry.message && Array.isArray(entry.message.content)) {
@@ -241,7 +241,7 @@ function toTranscriptSteps(entry, isInProject) {
         content: text,
         tool_calls: toolCalls,
         created_at,
-        claude: { turnEnded, isSidechain: Boolean(entry.isSidechain), ...(usageFromEntry(entry) || {}) },
+        turn: { turnEnded, isSidechain: Boolean(entry.isSidechain), ...(usageFromEntry(entry) || {}) },
       },
     ];
   }

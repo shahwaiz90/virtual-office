@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.1
+
+### Fixed
+- **OpenCode activity now shows in the portal.** Sessions are read from OpenCode's own database (`opencode.db`), for both OpenCode 2 (`session_v2` / `session_message`) and 1.x (`session` / `message` / `part`), from the TUI or `opencode run`. Each conversation gets one card, with tool calls, commands, file edits and token usage on the activity log; subagent work is credited to its role. Needs Node 22.13+ (built-in SQLite) or the `sqlite3` command.
+
+### Removed
+- The bundled OpenCode plugin. Nothing installed it, and OpenCode 2 rejects plugins in its format (and gives plugins no tool events).
+- Tailing `opencode.log`, which only contains OpenCode's internal `git` calls.
+
 ## 1.2.0
 
 ### Security
