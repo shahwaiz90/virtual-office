@@ -704,9 +704,12 @@ function registerRealAgentTask(taskData, options = {}) {
 
   eventBus.tasks.set(taskId, taskObj);
 
-  // A brief written for the assignee is the handoff message itself: record it on the card's thread
+  // A brief written for the assignee is the handoff message itself: record it on the card's thread.
+  // appendThreadEntry stores text trimmed, so compare against the trimmed brief or every re-sync
+  // of a brief with surrounding whitespace appends another handoff.
+  const briefText = String(taskObj.brief || '').trim();
   const handoffRecorded = taskObj.thread.some(
-    (m) => m.kind === 'handoff' && m.text === taskObj.brief && (m.to || taskObj.assignedTo) === taskObj.assignedTo
+    (m) => m.kind === 'handoff' && m.text === briefText && (m.to || taskObj.assignedTo) === taskObj.assignedTo
   );
   if (taskObj.brief && !handoffRecorded) {
     appendThreadEntry(taskObj, { agentId: taskObj.delegatedBy, to: taskObj.assignedTo, kind: 'handoff', text: taskObj.brief });

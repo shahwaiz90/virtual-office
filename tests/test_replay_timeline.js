@@ -197,6 +197,40 @@ const snapshot = () => ({
     assert.strictEqual(eventBus.tasks.get('T1').column, 'review');
     console.log('  ✅ Test 5 Passed: the replay is read-only.\n');
 
+    // Test 6 (VO-12): repeated identical handoffs on one card give one handoff step; stored thread untouched
+    const dupThread = [
+      entry('tech-pm', 'handoff', 'Do the thing', 1, { to: 'web-dev' }),
+      entry('tech-pm', 'handoff', 'Do the thing', 2, { to: 'web-dev' }),
+      entry('tech-pm', 'handoff', 'Do the thing', 3, { to: 'web-dev' }),
+      entry('tech-pm', 'handoff', 'Do the thing', 4), // no `to`: resolves to the assignee, still a repeat
+      entry('tech-pm', 'handoff', 'Do the other thing', 5, { to: 'web-dev' }), // different text: kept
+      entry('tech-pm', 'handoff', 'Do the thing', 6, { to: 'web-tech-lead' }), // different target: kept
+    ];
+    const dupCards = [{ key: 'D', title: 'Dup card', assignedTo: 'web-dev', thread: dupThread }];
+    const dupBefore = JSON.stringify(dupCards);
+    const dt = buildReplayTimeline('D', { tasks: dupCards, deliverables: [], agents: eventBus.agents });
+    assert.deepStrictEqual(dt.steps.map((x) => `${x.at.slice(14, 16)} ${x.type} ${x.to}`), [
+      '01 handoff web-dev',
+      '05 handoff web-dev',
+      '06 handoff web-tech-lead',
+    ]);
+    assert.strictEqual(JSON.stringify(dupCards), dupBefore, 'Stored thread entries are neither removed nor modified');
+    console.log('  ✅ Test 6 Passed: repeated identical handoffs collapse to one step on read.\n');
+
+    // Test 7 (VO-12): a brief with surrounding whitespace re-synced records exactly one handoff
+    const { registerRealAgentTask } = require('../server/watchers');
+    const brief = '  Build the widget.\n\n';
+    const payload = { key: 'WS-1', title: 'Whitespace brief', assignedTo: 'web-dev', delegatedBy: 'web-tech-lead', brief, statusRaw: 'in progress' };
+    registerRealAgentTask({ ...payload }, { skipPersist: true });
+    registerRealAgentTask({ ...payload }, { skipPersist: true });
+    registerRealAgentTask({ ...payload }, { skipPersist: true });
+    const ws = Array.from(eventBus.tasks.values()).find((t) => t.key === 'WS-1');
+    const wsHandoffs = ws.thread.filter((m) => m.kind === 'handoff');
+    assert.strictEqual(wsHandoffs.length, 1, 'One handoff across repeated syncs');
+    assert.strictEqual(wsHandoffs[0].text, 'Build the widget.');
+    assert.strictEqual(wsHandoffs[0].to, 'web-dev');
+    console.log('  ✅ Test 7 Passed: a whitespace-padded brief records one handoff across re-syncs.\n');
+
     console.log('🎉 ALL REPLAY TIMELINE TESTS PASSED!');
   } finally {
     server.close();

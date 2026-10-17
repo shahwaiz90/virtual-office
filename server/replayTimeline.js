@@ -120,8 +120,16 @@ function buildReplayTimeline(rootKey, { tasks, deliverables, agents } = {}) {
 
   for (const card of cards) {
     const thread = Array.isArray(card.thread) ? card.thread : [];
+    // Older boards hold repeated identical handoffs (re-synced briefs); show only the first one.
+    // Read-side only: the stored thread stays untouched.
+    const seenHandoffs = new Set();
     for (const entry of thread) {
       if (!entry || !Number.isFinite(Date.parse(entry.at))) continue;
+      if (entry.kind === 'handoff') {
+        const sig = `${entry.to || card.assignedTo || ''}\u0000${String(entry.text || '').trim()}`;
+        if (seenHandoffs.has(sig)) continue;
+        seenHandoffs.add(sig);
+      }
       for (const partial of stepsFromEntry(card, entry)) push(card, entry.at, entry.agentId, partial);
     }
   }
