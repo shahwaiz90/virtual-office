@@ -46,7 +46,10 @@ export interface FloorLayout {
 }
 
 export const MIN_WIDTH = 320;
+/** Widest room grid: past this the grid stays this wide and is centred, the margins take the rest */
 export const MAX_WIDTH = 1400;
+/** Widest canvas: the floor (tiles and corridors) fills the container up to this width (VO-39) */
+export const MAX_CANVAS_WIDTH = 3840;
 /** Top margin and side margins when the layout has gutters to walk in */
 export const MARGIN = 24;
 /** Corridor band height and gutter width */
@@ -96,24 +99,29 @@ export function colsThatFit(width: number): number {
 }
 
 export function computeFloorLayout(agentCount: number, containerWidth: number): FloorLayout {
-  const width = Math.round(clamp(Number.isFinite(containerWidth) ? containerWidth : MAX_WIDTH, MIN_WIDTH, MAX_WIDTH));
+  const width = Math.round(clamp(Number.isFinite(containerWidth) ? containerWidth : MAX_WIDTH, MIN_WIDTH, MAX_CANVAS_WIDTH));
+  // Rooms are laid out in at most MAX_WIDTH; a wider canvas centres that grid and widens the
+  // side margin corridors, so the floor fills the container without stretching any room.
+  const content = Math.min(width, MAX_WIDTH);
+  const inset = Math.floor((width - content) / 2);
   const n = Math.max(0, Math.floor(agentCount || 0));
   if (n === 0) {
     return { width, height: EMPTY_HEIGHT, cols: 0, rows: 0, slots: [], hCorridors: [], vCorridors: [], spare: [] };
   }
 
-  const cols = Math.min(colsForCount(n), colsThatFit(width));
+  const cols = Math.min(colsForCount(n), colsThatFit(content));
   const rows = Math.ceil(n / cols);
   // One column has no gutter, so walkers use the side margins: make them a full corridor wide
   // (as far as the width allows) so a passing avatar is not clipped by the canvas edge.
-  const side = cols === 1 ? Math.round(clamp((width - MIN_ROOM_W) / 2, MARGIN, CORRIDOR)) : MARGIN;
-  const roomW = Math.floor((width - 2 * side - (cols - 1) * CORRIDOR) / cols);
+  const side = cols === 1 ? Math.round(clamp((content - MIN_ROOM_W) / 2, MARGIN, CORRIDOR)) : MARGIN;
+  const roomW = Math.floor((content - 2 * side - (cols - 1) * CORRIDOR) / cols);
   const scale = Math.min(1, roomW / REF_ROOM_W);
   const roomH = Math.round(Math.max(MIN_ROOM_H, REF_ROOM_H * scale));
   const top = MARGIN;
   const height = top + rows * (roomH + CORRIDOR) + BOTTOM_MARGIN;
 
-  const cellX = (c: number) => side + c * (roomW + CORRIDOR);
+  const left = inset + side;
+  const cellX = (c: number) => left + c * (roomW + CORRIDOR);
   const cellY = (r: number) => top + r * (roomH + CORRIDOR);
 
   const slots: DeskSlot[] = [];
@@ -139,7 +147,7 @@ export function computeFloorLayout(agentCount: number, containerWidth: number): 
   }
 
   const rightEdge = cellX(cols - 1) + roomW;
-  const vCorridors: Rect[] = [{ x: 0, y: 0, w: side, h: height }];
+  const vCorridors: Rect[] = [{ x: 0, y: 0, w: left, h: height }];
   for (let c = 0; c < cols - 1; c++) {
     vCorridors.push({ x: cellX(c) + roomW, y: 0, w: CORRIDOR, h: height });
   }
