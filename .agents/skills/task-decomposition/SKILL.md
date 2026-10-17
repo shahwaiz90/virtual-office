@@ -15,15 +15,15 @@ Use for every requirement (feature, change, bug, idea). Think about that specifi
 6. **Backlog first.** New requirements go to `backlog`. Don't interrupt cards in `assigned`, `in_progress`, `review` or `testing`; pull the next backlog item (FIFO) when active work is `done`.
 
 ## Size first: small or full
-Before splitting, find the impact with the `codebase-explorer` skill and size the request. Post the size and the reason on the requirement thread (`kind: "decision"`), e.g. "Small: one constant in src/components/handoffChoreo.ts and its test".
-- **Small** (1–3 files to change, no change to a shared type, API, event payload or stored data, no new dependency): the Scrum Master registers **one** card straight to the Developer, with `reviewer` set to the Tech Lead's id from the roster (for example `web-tech-lead`, `ios-tech-lead` or `android-tech-lead`). Its brief carries the impact map, the acceptance criteria and how to verify. No contract card and no separate QA card; the Tech Lead only reviews. If the Developer is not in your `delegation_targets`, send the card to the Tech Lead marked small instead; it forwards it to the Developer without writing a contract.
-- **Full** (anything else, or unsure): the usual flow, Scrum Master → Tech Lead → Developer.
-A Developer who finds a small card is bigger than it looked says so on the thread and hands it back instead of growing it.
+Before splitting, size the request with a quick look: a few searches at most (`codebase-explorer` pass 1, entry points), not a full impact map. Post the size and the reason on the requirement thread (`kind: "decision"`), e.g. "Small: one constant in src/components/handoffChoreo.ts and its test".
+- **Small** (1–3 files to change, no change to a shared type, API, event payload or stored data, no new dependency): the Scrum Master registers **one** card straight to the Developer, with `reviewer` set to the Tech Lead's id from the roster (for example `web-tech-lead`, `ios-tech-lead` or `android-tech-lead`). Its brief carries the scope (what to change and where you expect it), the acceptance criteria and how to verify; the Developer maps the impact. No contract card and no separate QA card; the Tech Lead only reviews. If the Developer is not in your `delegation_targets`, send the card to the Tech Lead marked small instead; it forwards it to the Developer without writing a contract.
+- **Full** (anything else, or unsure): the usual flow, Scrum Master → Tech Lead → Developer. The Tech Lead maps the impact and puts it in the contract.
+On a small card the Developer maps the impact first (`codebase-explorer`) and posts it on the thread. A Developer who finds it bigger than small says so there and hands the card back instead of growing it.
 
 ## Steps
 1. Use the request's requirement card as the parent of every task (kanban-handoff §2).
 2. Restate the requirement in one sentence and list what "done" means for the user.
-3. Find what actually has to change with `codebase-explorer`, and size the request (above).
+3. Size the request with a quick look (above). The full impact map is the Tech Lead's (in the contract) or, on a small card, the Developer's.
 4. Split into independent, verifiable tasks, each small enough for one specialist; record order in `dependsOn`.
 5. Assign each task, and write each `brief` for the role receiving it: the Tech Lead gets product intent and constraints, the Developer gets the technical contract.
 6. Register all cards, then delegate each by card key. Follow progress on the board, not in replies. The requirement closes itself when every sub-task is `done`; post a summary on its thread.
@@ -31,7 +31,7 @@ A Developer who finds a small card is bigger than it looked says so on the threa
 ## Technical contract (Tech Lead → Developer)
 Keep it to about 40 lines. Name what to do and how to check it; don't write the code.
 1. **Goal**: one sentence.
-2. **Impact map** from `codebase-explorer`: Change, Affected, Unchanged and Risk lines. Put the Change and Affected paths in the card's `context.files` too.
+2. **Impact map**, which the Tech Lead finds with `codebase-explorer` (the Scrum Master only sized the request): Change, Affected, Unchanged and Risk lines. Put the Change and Affected paths in the card's `context.files` too.
 3. **Interfaces**: new or changed signatures, props, API shapes, payloads. Only the ones that change.
 4. **Edge cases**: the few that matter.
 5. **Verify**: how each acceptance criterion is checked (test name, command, what to look at).

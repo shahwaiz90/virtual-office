@@ -32,7 +32,7 @@
           "writing-guidelines"
         ],
         "inputContract": "The user's request, as the requirement card the portal registered (or register it first).",
-        "outputContract": "The size (small or full) and why, on the requirement thread. Task cards under the requirement (parentKey), each with a brief written for its assignee, acceptance criteria and context, delegated by key; a small change is one web-dev card with reviewer web-tech-lead. The requirement closes by itself when its tasks are done; post a summary on its thread.",
+        "outputContract": "The size (small or full) and why, from a quick look, on the requirement thread. Task cards under the requirement (parentKey), each with a brief written for its assignee, acceptance criteria and context, delegated by key; a small change is one web-dev card with reviewer web-tech-lead whose brief gives scope, acceptance criteria and how to verify (web-dev maps the impact). The requirement closes by itself when its tasks are done; post a summary on its thread.",
         "permissions": [],
         "prohibitedActions": [
           "No direct application code modifications"
@@ -65,7 +65,7 @@
           "modern-web-guidance"
         ],
         "inputContract": "Its card: the product brief, acceptance criteria, context and thread.",
-        "outputContract": "Developer cards under its card, each a technical contract of about 40 lines at most; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review. Reviews fast-path cards that name it as reviewer the same way. Hands a QA card to web-tester when a change needs testing beyond the Developer's own checks.",
+        "outputContract": "Developer cards under its card, each a technical contract of about 40 lines at most with the impact map; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review. Reviews fast-path cards that name it as reviewer the same way. Hands a QA card to web-tester when a change needs testing beyond the Developer's own checks.",
         "permissions": [],
         "prohibitedActions": [
           "No direct unreviewed code pushes to main"
@@ -97,7 +97,7 @@
           "deploy-to-vercel"
         ],
         "inputContract": "Its card: the technical contract (or, on a fast-path card, the Scrum Master's brief), acceptance criteria, context files and thread. Asks on the thread when anything is unclear.",
-        "outputContract": "The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met. Hands the card back to its reviewer (or its delegator when no reviewer is set).",
+        "outputContract": "On a fast-path card, the impact map on the thread before building. The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met. Hands the card back to its reviewer (or its delegator when no reviewer is set).",
         "permissions": [],
         "prohibitedActions": [
           "No breaking architectural contracts"

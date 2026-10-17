@@ -8,7 +8,7 @@
 
 const path = require('path');
 const BaseAdapter = require('./baseAdapter');
-const { rolePrompt, rosterTable, skillsList, orchestratorOf } = require('./rolePrompt');
+const { rolePrompt, dispatcherRules, rosterTable, skillsList, orchestratorOf } = require('./rolePrompt');
 
 class CodexAdapter extends BaseAdapter {
   constructor() {
@@ -38,6 +38,8 @@ class CodexAdapter extends BaseAdapter {
       `# ${projectName}: Codex workspace instructions`,
       ``,
       `Start every request as \`${orchestrator.id}\` (${orchestrator.name}), the orchestrator: register it on the Kanban board and break it into role cards before any code changes. Each role's prompt is in \`.codex/system-prompts.md\`; the board protocol is in \`.agents/skills/kanban-handoff/SKILL.md\`.`,
+      ``,
+      dispatcherRules(orchestrator, { subject: 'Until a card assigns you a role, this session' }).join(' '),
       ``,
       `## Team`,
       rosterTable(reg),
