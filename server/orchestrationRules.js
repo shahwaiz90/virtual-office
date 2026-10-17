@@ -239,16 +239,37 @@ class OrchestrationRules {
   }
 
   /**
+   * Next card key for a prefix: `EPIC` for requirement cards, `TASK` for every other card (VO-40).
+   * Only keys shaped exactly `<PREFIX>-<digits>` count, so legacy keys (VO-37, WEB-101, CC-<hash>)
+   * and ids like TASK-CC-123 never move the counter. Each prefix starts at 1.
+   */
+  static nextKey(existingTasks, prefix = 'TASK') {
+    const p = String(prefix || 'TASK').toUpperCase();
+    const list = Array.isArray(existingTasks)
+      ? existingTasks
+      : Array.from(existingTasks ? existingTasks.values() : []);
+    const escaped = p.replace(/[.*+?^$|()[\]{}\\]/g, '\\$&');
+    const re = new RegExp(`^${escaped}-(\\d+)$`, 'i');
+    let max = 0;
+    for (const t of list) {
+      const key = typeof t === 'string' ? t : String((t && t.key) || '');
+      const m = key.trim().match(re);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    return `${p}-${max + 1}`;
+  }
+
+  /**
    * Normalizes a task list produced by the AI / orchestrating agent so it can be placed on the board.
    * - Any number of tasks (no fixed count, no fixed stages).
    * - Titles, descriptions, skills and order are preserved exactly as the AI wrote them.
    * - Assignees must exist in the roster; unknown assignees fall back to the orchestrator's first
    *   delegation target (or the orchestrator itself) instead of a guessed "stage" role.
-   * - Missing keys are generated as <PREFIX>-<next number>.
+   * - Missing keys are generated as TASK-<next number> (or options.keyPrefix-<n>).
    */
   static normalizeAITasks(aiTasks, agentsMapOrList, options = {}) {
     if (!Array.isArray(aiTasks)) return [];
-    const { pm, platformBadge, list } = this.resolveTeamRoles(agentsMapOrList);
+    const { pm, list } = this.resolveTeamRoles(agentsMapOrList);
     const byId = new Map(list.map((a) => [String(a.id).toLowerCase(), a]));
     const findAgent = (ref) => {
       if (!ref) return null;
@@ -258,8 +279,8 @@ class OrchestrationRules {
     const pmTargets = pm.delegation_targets || pm.handoffTo || pm.delegationTargets || [];
     const defaultAssignee = findAgent(pmTargets[0]) || pm;
 
-    const prefix = options.keyPrefix || platformBadge;
-    let next = this.highestKeyNumber(options.existingTasks) + 1;
+    const prefix = String(options.keyPrefix || 'TASK').toUpperCase();
+    let next = parseInt(this.nextKey(options.existingTasks, prefix).slice(prefix.length + 1), 10);
     const now = new Date().toISOString();
     const stamp = Date.now();
     const validColumns = ['backlog', 'assigned', 'in_progress', 'review', 'testing', 'done'];
@@ -304,13 +325,14 @@ class OrchestrationRules {
   static decomposeSprintGoal(goal, agentsMapOrList, options = {}) {
     const cleanGoal = (goal || '').trim();
     if (!cleanGoal) return [];
-    const { pm, platformBadge } = this.resolveTeamRoles(agentsMapOrList);
-    const key = `${options.keyPrefix || platformBadge}-${this.highestKeyNumber(options.existingTasks) + 1}`;
+    const { pm } = this.resolveTeamRoles(agentsMapOrList);
+    const key = this.nextKey(options.existingTasks, options.keyPrefix || 'EPIC');
     const now = new Date().toISOString();
     return [
       {
         id: `TASK-${key}`,
         key,
+        type: 'requirement',
         title: this.distillShortTopic(cleanGoal),
         description: cleanGoal,
         assignedTo: pm.id,

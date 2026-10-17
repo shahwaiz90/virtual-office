@@ -270,6 +270,9 @@ test('choreo: reduced motion shows a static step, then the receiving state, with
 test('choreo: card labels use the key when known', () => {
   assert.deepEqual(C.handoffLabels('VO-12: Add export', undefined), { key: 'VO-12', label: 'VO-12', shortTask: 'VO-12 Add export' });
   assert.deepEqual(C.handoffLabels('Add export', 'WEB-3'), { key: 'WEB-3', label: 'WEB-3', shortTask: 'WEB-3 Add export' });
+  // VO-40: EPIC-n and TASK-n card keys parse like any other key
+  assert.deepEqual(C.handoffLabels('EPIC-1: Export board', undefined), { key: 'EPIC-1', label: 'EPIC-1', shortTask: 'EPIC-1 Export board' });
+  assert.equal(C.cardKeyOf('TASK-12 Add export button'), 'TASK-12');
   const plain = C.handoffLabels('Implement the corridor floor plan for every team size', undefined);
   assert.equal(plain.key, undefined);
   assert.ok(plain.label.length <= 22 && plain.label.endsWith('...'));

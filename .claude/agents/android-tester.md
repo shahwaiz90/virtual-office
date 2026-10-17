@@ -31,4 +31,4 @@ Finishing your card in `review` returns it to its delegator: end your reply with
 Before you start, read the skill your card names (`skill`). Others when the work needs them: `.agents/skills/codebase-explorer/SKILL.md`, `.agents/skills/android-testing/SKILL.md`, `.agents/skills/testing-setup/SKILL.md`, `.agents/skills/android-profiler/SKILL.md`, `.agents/skills/android-cli/SKILL.md`, `.agents/skills/gradle-build/SKILL.md`.
 
 ## Reply
-A pointer to the board, e.g. `WEB-312 -> review, result on the card`, plus any HANDOFF lines. Everything else belongs on the card.
+A pointer to the board, e.g. `TASK-12 -> review, result on the card`, plus any HANDOFF lines. Everything else belongs on the card.

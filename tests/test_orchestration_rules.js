@@ -45,6 +45,34 @@ test('OrchestrationRules: no hardcoded breakdown — raw requirement becomes ONE
   assert.ok(!/^(Plan|Build|Review|Test):/.test(tasks[0].title), 'No template prefixes');
 });
 
+test('OrchestrationRules: nextKey counts only <PREFIX>-<n> keys, per prefix, from 1 (VO-40)', () => {
+  assert.equal(OrchestrationRules.nextKey([], 'TASK'), 'TASK-1');
+  assert.equal(OrchestrationRules.nextKey(new Map(), 'EPIC'), 'EPIC-1');
+  assert.equal(OrchestrationRules.nextKey(undefined, 'TASK'), 'TASK-1');
+  const board = [{ key: 'TASK-2' }, { key: 'VO-40' }, { key: 'EPIC-5' }, { key: 'CC-99' }, { key: 'TASK-CC-123' }, { key: 'WEB-101' }];
+  assert.equal(OrchestrationRules.nextKey(board, 'TASK'), 'TASK-3');
+  assert.equal(OrchestrationRules.nextKey(board, 'EPIC'), 'EPIC-6');
+  assert.equal(OrchestrationRules.nextKey(new Map(board.map((t) => [`TASK-${t.key}`, t])), 'TASK'), 'TASK-3', 'Map of cards works too');
+  assert.equal(OrchestrationRules.nextKey([{ key: 'VO-37' }, { key: 'WEB-101' }], 'TASK'), 'TASK-1', 'Only legacy keys: start at 1');
+  assert.equal(OrchestrationRules.nextKey([{ key: 'task-9' }], 'TASK'), 'TASK-10', 'Case-insensitive');
+
+  const roster = [{ id: 'tech-pm', is_primary: true, delegation_targets: ['web-dev'] }, { id: 'web-dev' }];
+  const two = OrchestrationRules.normalizeAITasks(
+    [{ title: 'First keyless task' }, { title: 'Second keyless task' }, { title: 'Agent keyed', key: 'WEB-9' }],
+    roster,
+    { existingTasks: [{ key: 'TASK-4' }, { key: 'EPIC-7' }] }
+  );
+  assert.deepEqual(two.map((t) => t.key), ['TASK-5', 'TASK-6', 'WEB-9'], 'Keyless tasks get TASK-n, given keys are kept');
+  assert.equal(two[0].id, 'TASK-TASK-5');
+
+  const epic = OrchestrationRules.decomposeSprintGoal('Export the board as CSV', roster, { existingTasks: [{ key: 'VO-40' }, { key: 'TASK-3' }] });
+  assert.equal(epic[0].key, 'EPIC-1');
+  assert.equal(epic[0].type, 'requirement');
+  const epic2 = OrchestrationRules.decomposeSprintGoal('Another goal', roster, { existingTasks: [{ key: 'EPIC-1' }] });
+  assert.equal(epic2[0].key, 'EPIC-2');
+  assert.equal(OrchestrationRules.decomposeSprintGoal('Goal', roster, { keyPrefix: 'web' })[0].key, 'WEB-1', 'keyPrefix still overrides');
+});
+
 test('OrchestrationRules: normalizeAITasks keeps the AI breakdown exactly (any count, titles, assignees)', () => {
   const roster = [
     { id: 'tech-pm', is_primary: true, delegation_targets: ['web-tech-lead'] },
@@ -64,7 +92,7 @@ test('OrchestrationRules: normalizeAITasks keeps the AI breakdown exactly (any c
   assert.equal(tasks[1].assignedTo, 'web-dev');
   assert.deepEqual(tasks[1].dependsOn, ['Define CSV columns for task export']);
   assert.equal(tasks[4].assignedTo, 'web-tech-lead', 'Unknown agent falls back to orchestrator delegation target');
-  assert.equal(tasks[0].key, 'WEB-213', 'Keys continue after the highest existing key');
+  assert.equal(tasks[0].key, 'TASK-1', 'Legacy WEB- keys do not move the TASK counter (VO-40)');
   assert.equal(new Set(tasks.map((t) => t.key)).size, 5, 'Keys are unique');
 
   const single = OrchestrationRules.normalizeAITasks([{ title: 'Fix typo in Settings title', assignedTo: 'web-dev' }], roster);
@@ -259,7 +287,7 @@ test('OrchestrationRules: normalizeAITasks on the ten-agent roster keeps mobile 
   );
   assert.equal(out[0].assignedTo, 'android-dev');
   assert.equal(out[0].delegatedBy, 'android-tech-lead');
-  assert.ok(out[0].key.startsWith('WEB-'));
+  assert.deepEqual(out.map((t) => t.key), ['TASK-1', 'TASK-2', 'TASK-3']);
   assert.equal(out[1].assignedTo, 'ios-tester');
   assert.equal(out[2].assignedTo, 'web-tech-lead', 'unknown assignee goes to the pm first target');
 });

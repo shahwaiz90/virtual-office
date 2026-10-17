@@ -100,7 +100,7 @@ function boardQuickReference(agent, { isOrchestrator, delegates, agents = [] }) 
       .filter(Boolean)
       .join('; ');
     lines.push(
-      `- Hand on: list keys with \`curl -s "$VO/api/tasks?format=brief"\` and use the next number, then \`curl -s -X POST "$VO/api/tasks/register?format=brief" -d '{"tasks":[{"key":"<PREFIX-N>","parentKey":"<your KEY>","title":"...","brief":"<written for the assignee>","acceptanceCriteria":["..."],"context":{"files":["..."],"decisions":["..."]},"dependsOn":[],"assignedTo":"${delegates[0]}","delegatedBy":"${id}","skill":"<one of its skills>","column":"assigned"}]}'\`.${skillHint ? ` Skills to choose from: ${skillHint}.` : ''}`
+      `- Hand on: list keys with \`curl -s "$VO/api/tasks?format=brief"\` and use the next unused TASK number, then \`curl -s -X POST "$VO/api/tasks/register?format=brief" -d '{"tasks":[{"key":"TASK-<n>","parentKey":"<your KEY>","title":"...","brief":"<written for the assignee>","acceptanceCriteria":["..."],"context":{"files":["..."],"decisions":["..."]},"dependsOn":[],"assignedTo":"${delegates[0]}","delegatedBy":"${id}","skill":"<one of its skills>","column":"assigned"}]}'\`.${skillHint ? ` Skills to choose from: ${skillHint}.` : ''}`
     );
   }
   lines.push(
@@ -174,7 +174,7 @@ function rolePrompt(agent, registry, { dispatch = 'handoff-lines' } = {}) {
     const others = agent.skillIds.filter((s) => s !== 'kanban-handoff');
     lines.push('## Skills', `Before you start, read the skill your card names (\`skill\`). Others when the work needs them: ${others.map((s) => `\`${skillPath(s)}\``).join(', ') || '-'}.`, '');
   }
-  lines.push('## Reply', 'A pointer to the board, e.g. `WEB-312 -> review, result on the card`, plus any HANDOFF lines. Everything else belongs on the card.');
+  lines.push('## Reply', 'A pointer to the board, e.g. `TASK-12 -> review, result on the card`, plus any HANDOFF lines. Everything else belongs on the card.');
   return lines.join('\n');
 }
 
