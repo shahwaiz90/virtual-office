@@ -74,70 +74,9 @@ function getProjectRoot() {
 
 const PROJECT_ROOT = getProjectRoot();
 
-const IGNORED_SCAN_DIRS = new Set([
-  'node_modules',
-  '.git',
-  'dist',
-  'build',
-  '.next',
-  '.idea',
-  '.vscode',
-  'Pods',
-  'vendor',
-  '.gradle',
-  'target',
-  'out',
-  'coverage',
-  '.turbo',
-]);
-
-/**
- * Recursively scans a directory tree looking for ALL agents.json files (breadth-first, max depth 5).
- * Accurately finds configurations across monorepos and multiple subfolders.
- */
-function scanForAllAgentsConfigs(baseDir, maxDepth = 5) {
-  if (!baseDir || !fs.existsSync(baseDir)) return [];
-
-  const found = [];
-  const queue = [[baseDir, 0]];
-
-  while (queue.length > 0) {
-    const [dir, depth] = queue.shift();
-
-    try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-
-      // First check all files in current directory level
-      for (const entry of entries) {
-        if (entry.isFile()) {
-          const lower = entry.name.toLowerCase();
-          if (lower === 'agents.json' || lower === 'agents_config.json' || lower === 'opencode_agents.json') {
-            found.push(path.join(dir, entry.name));
-          }
-        }
-      }
-
-      // If within maxDepth, enqueue child directories
-      if (depth < maxDepth) {
-        for (const entry of entries) {
-          if (entry.isDirectory()) {
-            if (!IGNORED_SCAN_DIRS.has(entry.name) && !entry.name.startsWith('.git')) {
-              queue.push([path.join(dir, entry.name), depth + 1]);
-            }
-          }
-        }
-      }
-    } catch (e) {
-      // Ignore unreadable/permission-denied folders
-    }
-  }
-
-  return found;
-}
-
 /**
  * Dynamically resolves ALL agent configuration files in the project.
- * Supports explicit single-config via CLI/env or multi-config discovery.
+ * Supports an explicit single config via CLI/env, else every config at the root itself (subfolders are not scanned).
  */
 function findAllAgentsConfigFiles(customRoot, explicitConfigPath) {
   // If user explicitly provided a single config via --config flag or AGENTS_CONFIG
@@ -174,21 +113,7 @@ function findAllAgentsConfigFiles(customRoot, explicitConfigPath) {
     }
   }
 
-  // If direct config files exist in target root, return them immediately
-  if (fileSet.size > 0) {
-    return Array.from(fileSet);
-  }
-
-  // 2. Deep recursive scan of all folders in root directory
-  const scanned = scanForAllAgentsConfigs(root);
-  for (const file of scanned) {
-    fileSet.add(path.resolve(file));
-  }
-
-  if (fileSet.size > 0) {
-    return Array.from(fileSet);
-  }
-
+  // Only the folder's own configs count: a parent folder holding other projects has no team of its own
   return Array.from(fileSet);
 }
 
@@ -730,27 +655,6 @@ function discoverAgentsFromFolders(customRoot) {
     if (fs.existsSync(full) && fs.statSync(full).isDirectory()) {
       candidateDirs.add(full);
     }
-  }
-
-  // Search for any nested directory named "agents" or ".agents" (maxDepth 3)
-  const queue = [[root, 0]];
-  while (queue.length > 0) {
-    const [dir, depth] = queue.shift();
-    if (depth >= 3) continue;
-    try {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (entry.isDirectory() && !IGNORED_SCAN_DIRS.has(entry.name) && !entry.name.startsWith('.git')) {
-          const lower = entry.name.toLowerCase();
-          const fullPath = path.join(dir, entry.name);
-          if (lower === 'agents' || lower === '.agents') {
-            candidateDirs.add(fullPath);
-          } else {
-            queue.push([fullPath, depth + 1]);
-          }
-        }
-      }
-    } catch (e) {}
   }
 
   const discoveredAgents = [];
