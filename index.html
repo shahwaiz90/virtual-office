@@ -511,7 +511,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
       <div class="trust-item">
         <svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 18l7 7L28 9"/></svg>
         <h3>No made-up numbers</h3>
-        <p>There is no mock data. Every card, handoff and token count comes from a real session, and 32 test suites guard it in CI. The Watch demo is labelled as a simulation and never touches your board.</p>
+        <p>There is no mock data. Every card, handoff and token count comes from a real session, and 33 test suites guard it in CI. The Watch demo is labelled as a simulation and never touches your board.</p>
       </div>
       <div class="trust-item">
         <svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="7" width="24" height="18" rx="3"/><path d="M11 30h12M17 25v5M11 13l12 7M23 13l-12 7"/></svg>
@@ -533,7 +533,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
       <div class="num-cell"><b data-n="99">99</b><span>commits</span></div>
       <div class="num-cell"><b data-n="23">23</b><span>pull requests merged</span></div>
       <div class="num-cell"><b data-n="60">60</b><span>skills in the catalog</span></div>
-      <div class="num-cell"><b data-n="32">32</b><span>test suites in CI</span></div>
+      <div class="num-cell"><b data-n="33">33</b><span>test suites in CI</span></div>
       <div class="num-cell"><b data-n="4">4</b><span>AI tools supported</span></div>
     </div>
     <div class="build">
@@ -815,7 +815,7 @@ function log(who, text, cls = '') {
 addCard('VO-38', 'Mobile-friendly portal header', 'web-dev', false, 'done');
 addCard('VO-39', 'Contract: header breakpoints', 'web-tech-lead', false, 'done');
 addCard('VO-40', 'Fix clipped column label', 'web-dev', false, 'review');
-log('web-dev', 'run   npm test  32 suites passed', 'ok');
+log('web-dev', 'run   npm test  33 suites passed', 'ok');
 log('web-tech-lead', 'review VO-40  in progress');
 
 /* ---------- the replay ---------- */
@@ -840,7 +840,7 @@ async function build(req, B) {
   if (req.fast) { await sleep(1100); log(dev, `impact ${B}: 1 file, nothing shared`); agents[dev].status = 'building'; }
   for (const [f, a, d] of req.files) { await sleep(1300); log(dev, `edit  ${f.split('/').pop()}  +${a} −${d}`); }
   await sleep(1000); agents[dev].status = 'running tests';
-  await sleep(1300); log(dev, 'run   npm test  32 suites passed', 'ok');
+  await sleep(1300); log(dev, 'run   npm test  33 suites passed', 'ok');
   move(B, 'review'); agents[dev].working = false; agents[dev].status = null;
 }
 async function review(B) {
@@ -924,7 +924,7 @@ const RAW = [
   '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"web-dev","prompt":"Your task: VO-43"}}]}}',
   '{"type":"user","message":{"content":[{"type":"tool_result","content":"HANDOFF VO-44 -> web-tester"}]}}',
   '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}',
-  '{"type":"user","message":{"content":[{"type":"tool_result","content":"ok 32 suites"}]}}',
+  '{"type":"user","message":{"content":[{"type":"tool_result","content":"ok 33 suites"}]}}',
   '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Grep","input":{"pattern":"toCsv","path":"server"}}]}}',
   '{"type":"assistant","message":{"content":[{"type":"text","text":"Finishing VO-43 in review with the result and deliverable"}]}}',
 ];
@@ -940,7 +940,7 @@ const STEPS = [
   { t: 'Contract', who: 'web-tech-lead', w: 'Tech Lead', body: 'The Tech Lead writes a short contract for the Developer, about 40 lines at most. It starts with an impact map: the files to change, the files affected, the files checked and left alone, and the risks. When a change needs real testing, it also opens a card for QA.',
     code: `<span class="c">## VO-43 contract</span>\nChange   KanbanBoard.tsx, taskBoard.js\nAffects  GET /api/tasks (new ?format=csv)\nLeft     TaskCardDetails.tsx\nRisk     commas and quotes in titles\nVerify   empty board exports headers\n\n<span class="h">HANDOFF VO-43 -> web-dev</span>` },
   { t: 'Build', who: 'web-dev', w: 'Developer', body: 'The Developer implements one card at a time, checks every acceptance criterion, writes the result and deliverable on the card and moves it to review.',
-    code: `edit  KanbanBoard.tsx        <span class="g">+42</span> −3\nedit  taskBoard.js           <span class="g">+31</span> −2\nrun   npm test               <span class="g">32 suites passed</span>\n\n✓ quotes escaped\n✓ empty board: headers only\nfinish VO-43 → review` },
+    code: `edit  KanbanBoard.tsx        <span class="g">+42</span> −3\nedit  taskBoard.js           <span class="g">+31</span> −2\nrun   npm test               <span class="g">33 suites passed</span>\n\n✓ quotes escaped\n✓ empty board: headers only\nfinish VO-43 → review` },
   { t: 'Test and review', who: 'web-tech-lead', w: 'QA · Tech Lead', body: 'QA tests the change against the criteria and records pass or fail for each one. The Tech Lead reviews against the contract. When every task is done, the requirement closes itself and a summary goes on its thread.',
     code: `<span class="h">HANDOFF VO-44 -> web-tester</span>\ntest   VO-44  <span class="g">3/3 criteria pass</span>\nreview VO-43  <span class="g">approved</span>\n\nVO-41  <span class="g">done</span>\n  4 cards · 3 handoffs\n  time and tokens per role` },
 ];
@@ -978,7 +978,7 @@ new IntersectionObserver(([e]) => { if (!auto) return; if (e.isIntersecting) sho
 const CHAT = [
   ['tech-pm', 'Scrum Master → Tech Lead', 'Sized as full: it adds an API route. Please write the contract for <span class="hk">VO-42</span>. Titles with commas must survive the export.', false],
   ['web-tech-lead', 'Tech Lead → Developer', 'Impact map and contract are on <span class="hk">VO-43</span>: two files, three checks. QA tests it after you.', true],
-  ['web-dev', 'Developer → Tech Lead', 'Done. All 32 suites pass and every criterion is checked on the card. Moved to review.', false],
+  ['web-dev', 'Developer → Tech Lead', 'Done. All 33 suites pass and every criterion is checked on the card. Moved to review.', false],
 ];
 const chat = $('#chat');
 CHAT.forEach(([id, h, t, r]) => { const m = document.createElement('div'); m.className = 'msg' + (r ? ' r' : ''); m.innerHTML = `<img alt="" src="${IMG[id]}"><div class="b"><small>${h}</small>${t}</div>`; chat.appendChild(m); });
@@ -1027,7 +1027,7 @@ if (!reduce) setInterval(() => { tick++; renderMeters(); }, 1000);
 const RP = [
   ['tech-pm', 'handoff · Scrum Master → Tech Lead', 'VO-42 Contract for CSV export'],
   ['web-tech-lead', 'decision', 'Escape quotes on the server, not in the browser'],
-  ['web-dev', 'result', 'VO-43 built, 32 suites pass'],
+  ['web-dev', 'result', 'VO-43 built, 33 suites pass'],
   ['web-tester', 'review · QA', 'VO-44 3/3 criteria pass'],
   ['web-tech-lead', 'review · Tech Lead', 'VO-43 approved, VO-41 done'],
 ];
