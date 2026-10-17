@@ -336,15 +336,11 @@ ${agentsConfig.agents.map(ag => `- **\`${ag.id}\`** (${ag.name} - *${ag.role}*):
     // Refresh agent discovery and runtime auto-registration on backend
     autoDiscoverAndRegisterAgents(root);
     const discovered = discoverAgents(root);
-    eventBus.agents.clear();
-    const activeIds = new Set(discovered.map((a) => a.id));
-    for (const a of discovered) {
-      eventBus.agents.set(a.id, a);
-    }
-    // Purge events/tasks referencing removed agents
-    eventBus.events = eventBus.events.filter((e) => activeIds.has(e.agentId));
+    // Remaining roles keep their live state; only removed roles are purged
+    const removed = new Set(eventBus.replaceAgents(discovered));
+    eventBus.events = eventBus.events.filter((e) => !removed.has(e.agentId));
     for (const [tId, t] of eventBus.tasks.entries()) {
-      if (t.assignedTo && !activeIds.has(t.assignedTo)) {
+      if (t.assignedTo && removed.has(t.assignedTo)) {
         eventBus.tasks.delete(tId);
       }
     }
@@ -431,11 +427,7 @@ app.post('/api/agents/:id/delegation-targets', (req, res) => {
     fs.writeFileSync(configPath, JSON.stringify(parsed, null, 2), 'utf8');
 
     // Refresh discovery
-    const discovered = discoverAgents(root);
-    eventBus.agents.clear();
-    for (const a of discovered) {
-      eventBus.agents.set(a.id, a);
-    }
+    eventBus.replaceAgents(discoverAgents(root));
 
     eventBus.broadcast({
       type: 'SYNC_STATE',

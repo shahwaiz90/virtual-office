@@ -53,6 +53,8 @@ test('DEV-317: telemetry events record invocations but add no invented work time
   assert.equal(roleMetricsTool.invocations, 3, 'Invocations count should increment to 3');
 
   // 4. Test result event: elapsed time is measured from taskStartedAt when known
+  // (read before the event: once time is banked the clock is cleared)
+  const startedAt = bus.agents.get('web-dev').taskStartedAt;
   bus.emitEvent({
     agentId: 'web-dev',
     type: 'test_result',
@@ -60,7 +62,6 @@ test('DEV-317: telemetry events record invocations but add no invented work time
   });
 
   const agentAfterTest = bus.agents.get('web-dev');
-  const startedAt = agentAfterTest.taskStartedAt;
   assert.ok(startedAt ? agentAfterTest.totalWorkTimeSec >= 1 : agentAfterTest.totalWorkTimeSec === 0, 'Only measured test time is added');
 
   bus.clearAllAgentBusyTimers();
