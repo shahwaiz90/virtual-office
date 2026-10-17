@@ -6,7 +6,7 @@ import layoutModule from './load_floor_layout.mjs';
 const { computeFloorLayout, routeBetween, routeBack, besidePoint, routeLength, colsForCount } = layoutModule;
 
 const COUNTS = [1, 2, 3, 5, 8, 12, 20];
-const WIDTHS = [375, 768, 1200];
+const WIDTHS = [375, 768, 1200, 1920];
 const EPS = 1e-6;
 
 // Strict overlap: rectangles that only share an edge do not intersect
@@ -118,8 +118,37 @@ test('empty team and width clamping', () => {
   assert.equal(empty.slots.length, 0);
   assert.ok(empty.height >= 400, 'empty layout keeps room for the empty state');
   assert.equal(computeFloorLayout(3, 100).width, 320);
-  assert.equal(computeFloorLayout(3, 5000).width, 1400);
+  assert.equal(computeFloorLayout(3, 5000).width, 3840);
 });
+
+// VO-39: a container wider than the room grid is filled by the floor, the rooms keep their size
+for (const width of [1550, 1920]) {
+  test(`wide container ${width}px: canvas fills it, rooms as at 1400px, centred`, () => {
+    for (const n of [1, 3, 4, 8, 10]) {
+      const L = computeFloorLayout(n, width);
+      const ref = computeFloorLayout(n, 1400);
+      assert.equal(L.width, width, 'canvas as wide as the container');
+      assert.equal(L.height, ref.height);
+      assert.equal(L.cols, ref.cols);
+      const dx = L.slots[0].room.x - ref.slots[0].room.x;
+      assert.equal(dx, Math.floor((width - 1400) / 2), 'grid centred');
+      L.slots.forEach((s, i) => {
+        const r = ref.slots[i];
+        assert.deepEqual({ w: s.room.w, h: s.room.h, y: s.room.y }, { w: r.room.w, h: r.room.h, y: r.room.y });
+        assert.equal(s.room.x, r.room.x + dx);
+        assert.equal(s.seat.x, r.seat.x + dx);
+        assert.equal(s.seat.y, r.seat.y);
+      });
+      for (const h of L.hCorridors) assert.deepEqual({ x: h.x, w: h.w }, { x: 0, w: width }, 'bands span the canvas');
+      const v = L.vCorridors;
+      assert.equal(v[0].x, 0);
+      assert.equal(v[v.length - 1].x + v[v.length - 1].w, width, 'right margin reaches the edge');
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+        if (i !== j) assert.ok(routeBetween(L, L.slots[i].seat, i, j).length > 0);
+      }
+    }
+  });
+}
 
 // ---------------------------------------------------------------------------------------------
 // Handoff choreography (src/components/handoffChoreo.ts) driven with the real layout
