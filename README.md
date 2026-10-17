@@ -1,7 +1,7 @@
 # 🏢 AI Agent Virtual Office (`agent-virtual-office`)
 
-> **The Live Visual Command Center for Autonomous Multi-Agent Software Teams.**  
-> Turn complex multi-agent workflows into an animated 2D virtual office, live Kanban sprint board, inter-agent communication stream, and real-time delivery intelligence dashboard.
+> **Talk to one routine. The team finishes the work.**  
+> You describe what you want to the Scrum Master. It sizes the request and puts it on a Kanban board as cards; the Tech Lead, Developer and QA pick those cards up and finish them, and you watch it happen in an animated 2D office.
 
 [![npm version](https://img.shields.io/npm/v/agent-virtual-office.svg?style=flat-square)](https://www.npmjs.com/package/agent-virtual-office)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
@@ -11,11 +11,9 @@
 
 ## 💡 What is Virtual Office? (In Simple Terms)
 
-If you have ever used an AI coding assistant, you know how hard it is to track what is happening behind the scenes when multiple AI agents work together. 
+One conversation in, finished work out. You talk to a single routine, the **Scrum Master** (`tech-pm`). It takes a quick look, decides whether the request is small or full, and registers it on the board: a small change goes straight to the Developer with the Tech Lead as reviewer; a bigger one goes to the Tech Lead, who writes technical contracts for the Developer and hands testing to QA. Every instruction, decision and result lives on the cards, so each agent reads its card instead of a pasted prompt, and you see the work move from **Backlog ➔ In Progress ➔ Review ➔ Done**.
 
-**Virtual Office turns invisible AI teamwork into a visible, physical office:**
-
-Instead of a single AI chatbot answering inside a text box, you staff an **entire software engineering team of AI agents and specialized subagents** (e.g. Scrum Master, Tech Lead, Senior Developer, QA Tester). Each agent has their own desk, role, clear permissions, and assigned skills.
+**Virtual Office makes that teamwork visible:** each agent (Scrum Master, Tech Lead, Developer, QA) has its own desk, role, permissions and skills, and you can follow every handoff live.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -40,6 +38,26 @@ Whatever custom LLM model or AI platform you use (**Claude**, **OpenAI / Codex**
 2. **Live Kanban Board**: Raw AI prompts and subagent handoffs are translated into real-time sprint cards (**Backlog ➔ In Progress ➔ Review ➔ Done**) with creation timestamps.
 3. **Inter-Agent Communications**: See exactly what agents are discussing, why a task was delegated, and the prompt instructions exchanged.
 4. **Skills & Tools Intelligence**: Real-time analytics showing the most used skills, tool calls (file edits, terminal commands, web search), and code changes.
+
+---
+
+## 🔁 Agentic workflow
+
+You talk to one routine. The **main session** (your Claude Code chat) only dispatches: it sends your request to the Scrum Master, then starts each subagent named in the `HANDOFF <KEY> -> <agentId>` lines it gets back, until the requirement card is done. It never edits project files. Each role below is a Claude Code subagent in `.claude/agents/`, generated from `.agents/definitions/<id>.md` by `node bin/agents.js sync`.
+
+| Role | What it is | Skills | Tools | Hands work to | Reports to | Routine (every card) | Context it reads | Delivers | Never | Token in | Token out |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| Main session (dispatcher) | Your Claude Code chat, not a subagent | Follows `CLAUDE.md` | The session's own tools | `tech-pm`, then whoever a HANDOFF line names | You | Sends the request to `tech-pm`; starts each HANDOFF subagent with only the card key | `CLAUDE.md` and HANDOFF lines | Nothing on the board | Editing project files or writing code | not recorded separately² | not recorded separately² |
+| [Scrum Master](.agents/definitions/tech-pm.md) (`tech-pm`) | Subagent, orchestrator | kanban-handoff, task-decomposition, codebase-explorer, requirement-analysis, sprint-planning, read-jira, read-confluence, writing-guidelines | view_file, run_command, invoke_subagent, send_message (Claude Code: Read, Grep, Glob, Bash) | `web-tech-lead`, `web-dev` | You | Sizes the request (small or full); registers the requirement and task cards; emits HANDOFF lines; posts a summary when the cards are done | The requirement card (your request) | `prd` | Modifying application code | ~0.9M–1.3M (n=2)¹ | ~0.5k–4.4k (n=2)¹ |
+| [Tech Lead](.agents/definitions/web-tech-lead.md) (`web-tech-lead`) | Subagent | kanban-handoff, task-decomposition, codebase-explorer, react-best-practices, composition-patterns, web-design-guidelines, vercel-optimize, modern-web-guidance | view_file, run_command, git_diff, invoke_subagent, send_message (Claude Code: Read, Grep, Glob, Bash) | `web-dev`, `web-tester` | `tech-pm` | Writes short technical contracts with the impact map as Developer cards; hands QA a card when needed; reviews Developer and QA cards | Its card: brief, criteria, context files, decisions, thread | `architecture` (plan) or `code_review` | Pushing unreviewed code to main | typical ~200k–600k³ | typical ~3k–10k³ |
+| [Developer](.agents/definitions/web-dev.md) (`web-dev`) | Subagent | kanban-handoff, feature-implementation, codebase-explorer, react-best-practices, composition-patterns, react-view-transitions, modern-web-guidance, deploy-to-vercel | view_file, write_to_file, replace_file_content, run_command (Claude Code: Read, Grep, Glob, Bash, Write, Edit) | — | `web-tech-lead` | Maps the impact on a fast-path card; builds the change; checks each criterion; records the result and moves the card to review | Its card: contract or brief, criteria, context files, decisions, thread | `source_code` (code + PR) | Breaking architectural contracts | typical ~200k–1M³ | typical ~2k–10k³ |
+| [QA](.agents/definitions/web-tester.md) (`web-tester`) | Subagent | kanban-handoff, codebase-explorer, automated-testing, web-design-guidelines, modern-web-guidance | run_command, view_file, git_diff (Claude Code: Read, Grep, Glob, Bash) | — | `web-tech-lead` | Runs Vitest/Playwright and an accessibility/UX check; records pass/fail per criterion; moves the card to done or back with defects | Its card: what to test, criteria, impact map, the Developer's result | `test_report` | Modifying production code | typical ~100k–400k³ | typical ~1k–5k³ |
+
+No agent gets a pasted prompt: instructions, decisions and results all live on the card, and every agent starts by reading it.
+
+¹ Measured from the portal's recorded card usage (`tokenUsage` on each card, the same data behind `tokenUsageAnalytics` in `GET /api/state`) on 2026-10-17. Token in = input + cache read + cache write tokens; token out = output tokens. Range over the done cards that have recorded usage. Only two done cards had usage, both Scrum Master requirement cards opened from chat, so the figures also include the dispatching turns on that conversation.  
+² The main session's usage is counted on the requirement card it opened, not on its own row.  
+³ Typical: no done card for this role had recorded usage yet, so this is an estimate, not a measurement. Run `npm run bench` (below) to measure it for your own model.
 
 ---
 
