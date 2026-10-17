@@ -418,7 +418,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
     <div class="problem-copy">
       <div class="eyebrow">Why</div>
       <p class="big">You should not have to run a team of agents by hand. <em>Talk to one routine and the team finishes the task.</em></p>
-      <p class="lede">Your session hands the request to the Scrum Master and only dispatches from there. A small change goes straight to the Developer with the Tech Lead reviewing; a bigger one goes to the Tech Lead, who writes the contract and brings in QA. Instructions, decisions and results live on the cards, so no one works from a pasted prompt.</p>
+      <p class="lede">Your session hands the request to the Scrum Master and only dispatches from there. It picks the platform team (Web, Android or iOS). A small change goes straight to that team's Developer with its Tech Lead reviewing; a bigger one goes to the Tech Lead, who writes the contract and brings in QA. Instructions, decisions and results live on the cards, so no one works from a pasted prompt.</p>
       <p class="lede">Usually all of that is a scrolling terminal. Virtual Office reads the sessions your tools already record and shows who is working, on which card, what they handed off and why.</p>
     </div>
   </div>
@@ -435,7 +435,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
     <div class="fast">
       <div class="fast-copy">
         <div class="eyebrow">Small change? Fast path.</div>
-        <p>When the Scrum Master sizes a request as small (one to three files, no change to a shared type, API, payload or stored data), it skips the contract. One card goes straight to the Developer, who maps the impact first, and the Tech Lead reviews it.</p>
+        <p>When the Scrum Master sizes a request as small (one to three files, no change to a shared type, API, payload or stored data), it skips the contract. One card goes straight to the platform's Developer (<code>web-dev</code>, <code>android-dev</code> or <code>ios-dev</code>), who maps the impact first, and that platform's Tech Lead reviews it.</p>
       </div>
       <div class="fast-route" aria-label="Fast path: you, Scrum Master, Developer, then Tech Lead review">
         <span class="hop"><span class="you">you</span>You</span><span class="arr" aria-hidden="true">→</span>
@@ -451,12 +451,12 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
   <div class="wrap">
     <div class="sec-head">
       <div class="eyebrow">Agentic workflow</div>
-      <h2>One routine in front, four roles behind it.</h2>
-      <p class="lede">The main session only dispatches: it sends your request to the Scrum Master, then starts each subagent named in the <code>HANDOFF &lt;KEY&gt; -&gt; &lt;agentId&gt;</code> lines it gets back, until the requirement card is done. Each role is a Claude Code subagent in <code>.claude/agents/</code>, generated from <code>.agents/definitions/&lt;id&gt;.md</code> by <code>node bin/agents.js sync</code>.</p>
+      <h2>One routine in front, three platform teams behind it.</h2>
+      <p class="lede">The main session only dispatches: it sends your request to the Scrum Master, then starts each subagent named in the <code>HANDOFF &lt;KEY&gt; -&gt; &lt;agentId&gt;</code> lines it gets back, until the requirement card is done. The Scrum Master routes each card by platform: Web (the default), Android or iOS, each team with its own Tech Lead, Developer and QA. Each role is a Claude Code subagent in <code>.claude/agents/</code>, generated from <code>.agents/definitions/&lt;id&gt;.md</code> by <code>node bin/agents.js sync</code>.</p>
     </div>
     <div class="wf-scroll" role="region" aria-labelledby="wfCap" tabindex="0">
       <table class="wf">
-        <caption id="wfCap">Agentic workflow: the default Web team</caption>
+        <caption id="wfCap">Agentic workflow: the Scrum Master and three platform teams (Web, the default, Android and iOS)</caption>
         <thead><tr>
           <th scope="col">Role</th><th scope="col">What it is</th><th scope="col">Skills</th><th scope="col">Tools</th><th scope="col">Hands work to</th><th scope="col">Reports to</th><th scope="col">Routine (every card)</th><th scope="col">Context it reads</th><th scope="col">Delivers</th><th scope="col">Never</th><th scope="col">Token in</th><th scope="col">Token out</th>
         </tr></thead>
@@ -480,9 +480,9 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
             <td>Subagent, orchestrator</td>
             <td class="sk">kanban-handoff, task-decomposition, codebase-explorer, requirement-analysis, sprint-planning, read-jira, read-confluence, writing-guidelines</td>
             <td>view_file, run_command, invoke_subagent, send_message <small>(Claude Code: Read, Grep, Glob, Bash)</small></td>
-            <td><code>web-tech-lead</code>, <code>web-dev</code></td>
+            <td><code>web-tech-lead</code>, <code>web-dev</code>, <code>android-tech-lead</code>, <code>android-dev</code>, <code>ios-tech-lead</code>, <code>ios-dev</code> <small>(by platform; Web is the default)</small></td>
             <td>You</td>
-            <td class="rt">Sizes the request (small or full); registers the requirement and task cards; emits HANDOFF lines; posts a summary when the cards are done</td>
+            <td class="rt">Picks the platform team (Web, Android or iOS); sizes the request (small or full); registers the requirement and task cards; emits HANDOFF lines; posts a summary when the cards are done</td>
             <td>The requirement card (your request)</td>
             <td><code>prd</code></td>
             <td>Modifying application code</td>
@@ -490,13 +490,13 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
             <td class="tok">~0.5k–4.4k<small>measured, n=2<sup>1</sup></small></td>
           </tr>
           <tr>
-            <th scope="row"><span class="who"><img alt="" src="img/techlead.png"><a href="https://github.com/shahwaiz90/virtual-office/blob/main/.agents/definitions/web-tech-lead.md">Tech Lead</a></span><code>web-tech-lead</code></th>
+            <th scope="row"><span class="who"><img alt="" src="img/techlead.png"><a href="https://github.com/shahwaiz90/virtual-office/blob/main/.agents/definitions/web-tech-lead.md">Web Tech Lead</a></span><code>web-tech-lead</code></th>
             <td>Subagent</td>
             <td class="sk">kanban-handoff, task-decomposition, codebase-explorer, react-best-practices, composition-patterns, web-design-guidelines, vercel-optimize, modern-web-guidance</td>
             <td>view_file, run_command, git_diff, invoke_subagent, send_message <small>(Claude Code: Read, Grep, Glob, Bash)</small></td>
             <td><code>web-dev</code>, <code>web-tester</code></td>
             <td><code>tech-pm</code></td>
-            <td class="rt">Writes short technical contracts with the impact map as Developer cards; hands QA a card when needed; reviews Developer and QA cards</td>
+            <td class="rt">Writes short technical contracts with the impact map as Web Developer cards; hands Web QA a card when needed; reviews Web Developer and QA cards</td>
             <td>Its card: brief, criteria, context files, decisions, thread</td>
             <td><code>architecture</code> (plan) or <code>code_review</code></td>
             <td>Pushing unreviewed code to main</td>
@@ -504,7 +504,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
             <td class="tok">~3k–10k<small>typical<sup>3</sup></small></td>
           </tr>
           <tr>
-            <th scope="row"><span class="who"><img alt="" src="img/developer.png"><a href="https://github.com/shahwaiz90/virtual-office/blob/main/.agents/definitions/web-dev.md">Developer</a></span><code>web-dev</code></th>
+            <th scope="row"><span class="who"><img alt="" src="img/developer.png"><a href="https://github.com/shahwaiz90/virtual-office/blob/main/.agents/definitions/web-dev.md">Web Developer</a></span><code>web-dev</code></th>
             <td>Subagent</td>
             <td class="sk">kanban-handoff, feature-implementation, codebase-explorer, react-best-practices, composition-patterns, react-view-transitions, modern-web-guidance, deploy-to-vercel</td>
             <td>view_file, write_to_file, replace_file_content, run_command <small>(Claude Code: Read, Grep, Glob, Bash, Write, Edit)</small></td>
@@ -518,13 +518,97 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
             <td class="tok">~2k–10k<small>typical<sup>3</sup></small></td>
           </tr>
           <tr>
-            <th scope="row"><span class="who"><img alt="" src="img/qa.png"><a href="https://github.com/shahwaiz90/virtual-office/blob/main/.agents/definitions/web-tester.md">QA</a></span><code>web-tester</code></th>
+            <th scope="row"><span class="who"><img alt="" src="img/qa.png"><a href="https://github.com/shahwaiz90/virtual-office/blob/main/.agents/definitions/web-tester.md">Web QA</a></span><code>web-tester</code></th>
             <td>Subagent</td>
             <td class="sk">kanban-handoff, codebase-explorer, automated-testing, web-design-guidelines, modern-web-guidance</td>
             <td>run_command, view_file, git_diff <small>(Claude Code: Read, Grep, Glob, Bash)</small></td>
             <td>None</td>
             <td><code>web-tech-lead</code></td>
             <td class="rt">Runs Vitest/Playwright and an accessibility/UX check; records pass/fail per criterion; moves the card to done or back with defects</td>
+            <td>Its card: what to test, criteria, impact map, the Developer's result</td>
+            <td><code>test_report</code></td>
+            <td>Modifying production code</td>
+            <td class="tok">~100k–400k<small>typical<sup>3</sup></small></td>
+            <td class="tok">~1k–5k<small>typical<sup>3</sup></small></td>
+          </tr>
+          <tr>
+            <th scope="row"><span class="who"><img alt="" src="img/techlead.png"><a href="https://github.com/shahwaiz90/virtual-office/blob/main/.agents/definitions/android-tech-lead.md">Android Tech Lead</a></span><code>android-tech-lead</code></th>
+            <td>Subagent</td>
+            <td class="sk">kanban-handoff, task-decomposition, codebase-explorer, android-architecture, android-cli, r8-analyzer, agp-9-upgrade, android-permissions-security, android-intent-security</td>
+            <td>view_file, run_command, git_diff, invoke_subagent, send_message <small>(Claude Code: Read, Grep, Glob, Bash)</small></td>
+            <td><code>android-dev</code>, <code>android-tester</code></td>
+            <td><code>tech-pm</code></td>
+            <td class="rt">Writes short technical contracts with the impact map as Android Developer cards; hands Android QA a card when needed; reviews Android Developer and QA cards</td>
+            <td>Its card: brief, criteria, context files, decisions, thread</td>
+            <td><code>architecture</code> (plan) or <code>code_review</code></td>
+            <td>Pushing unreviewed code to main</td>
+            <td class="tok">~200k–600k<small>typical<sup>3</sup></small></td>
+            <td class="tok">~3k–10k<small>typical<sup>3</sup></small></td>
+          </tr>
+          <tr>
+            <th scope="row"><span class="who"><img alt="" src="img/developer.png"><a href="https://github.com/shahwaiz90/virtual-office/blob/main/.agents/definitions/android-dev.md">Android Developer</a></span><code>android-dev</code></th>
+            <td>Subagent</td>
+            <td class="sk">kanban-handoff, feature-implementation, codebase-explorer, android-cli, android-architecture, gradle-build, jetpack-compose-performance, edge-to-edge, adaptive, navigation-3, migrate-xml-views-to-jetpack-compose</td>
+            <td>view_file, write_to_file, replace_file_content, run_command <small>(Claude Code: Read, Grep, Glob, Bash, Write, Edit)</small></td>
+            <td>None</td>
+            <td><code>android-tech-lead</code></td>
+            <td class="rt">Maps the impact on a fast-path card; builds the change; checks each criterion; records the result and moves the card to review</td>
+            <td>Its card: contract or brief, criteria, context files, decisions, thread</td>
+            <td><code>source_code</code> (code + PR)</td>
+            <td>Breaking architectural contracts</td>
+            <td class="tok">~200k–1M<small>typical<sup>3</sup></small></td>
+            <td class="tok">~2k–10k<small>typical<sup>3</sup></small></td>
+          </tr>
+          <tr>
+            <th scope="row"><span class="who"><img alt="" src="img/qa.png"><a href="https://github.com/shahwaiz90/virtual-office/blob/main/.agents/definitions/android-tester.md">Android QA</a></span><code>android-tester</code></th>
+            <td>Subagent</td>
+            <td class="sk">kanban-handoff, codebase-explorer, android-testing, testing-setup, android-profiler, android-cli, gradle-build</td>
+            <td>run_command, view_file, git_diff <small>(Claude Code: Read, Grep, Glob, Bash)</small></td>
+            <td>None</td>
+            <td><code>android-tech-lead</code></td>
+            <td class="rt">Runs Gradle unit and instrumented tests and a profiler check; records pass/fail per criterion; moves the card to done or back with defects</td>
+            <td>Its card: what to test, criteria, impact map, the Developer's result</td>
+            <td><code>test_report</code></td>
+            <td>Modifying production code</td>
+            <td class="tok">~100k–400k<small>typical<sup>3</sup></small></td>
+            <td class="tok">~1k–5k<small>typical<sup>3</sup></small></td>
+          </tr>
+          <tr>
+            <th scope="row"><span class="who"><img alt="" src="img/techlead.png"><a href="https://github.com/shahwaiz90/virtual-office/blob/main/.agents/definitions/ios-tech-lead.md">iOS Tech Lead</a></span><code>ios-tech-lead</code></th>
+            <td>Subagent</td>
+            <td class="sk">kanban-handoff, task-decomposition, codebase-explorer, swiftui-specialist, uikit-app-modernization, audit-xcode-security-settings, xcode-project-setup, c-bounds-safety</td>
+            <td>view_file, run_command, git_diff, invoke_subagent, send_message <small>(Claude Code: Read, Grep, Glob, Bash)</small></td>
+            <td><code>ios-dev</code>, <code>ios-tester</code></td>
+            <td><code>tech-pm</code></td>
+            <td class="rt">Writes short technical contracts with the impact map as iOS Developer cards; hands iOS QA a card when needed; reviews iOS Developer and QA cards</td>
+            <td>Its card: brief, criteria, context files, decisions, thread</td>
+            <td><code>architecture</code> (plan) or <code>code_review</code></td>
+            <td>Pushing unreviewed code to main</td>
+            <td class="tok">~200k–600k<small>typical<sup>3</sup></small></td>
+            <td class="tok">~3k–10k<small>typical<sup>3</sup></small></td>
+          </tr>
+          <tr>
+            <th scope="row"><span class="who"><img alt="" src="img/developer.png"><a href="https://github.com/shahwaiz90/virtual-office/blob/main/.agents/definitions/ios-dev.md">iOS Developer</a></span><code>ios-dev</code></th>
+            <td>Subagent</td>
+            <td class="sk">kanban-handoff, feature-implementation, codebase-explorer, swiftui-specialist, swiftui-whats-new-27, uikit-app-modernization, xcode-project-setup, device-interaction</td>
+            <td>view_file, write_to_file, replace_file_content, run_command <small>(Claude Code: Read, Grep, Glob, Bash, Write, Edit)</small></td>
+            <td>None</td>
+            <td><code>ios-tech-lead</code></td>
+            <td class="rt">Maps the impact on a fast-path card; builds the change; checks each criterion; records the result and moves the card to review</td>
+            <td>Its card: contract or brief, criteria, context files, decisions, thread</td>
+            <td><code>source_code</code> (code + PR)</td>
+            <td>Breaking architectural contracts</td>
+            <td class="tok">~200k–1M<small>typical<sup>3</sup></small></td>
+            <td class="tok">~2k–10k<small>typical<sup>3</sup></small></td>
+          </tr>
+          <tr>
+            <th scope="row"><span class="who"><img alt="" src="img/qa.png"><a href="https://github.com/shahwaiz90/virtual-office/blob/main/.agents/definitions/ios-tester.md">iOS QA</a></span><code>ios-tester</code></th>
+            <td>Subagent</td>
+            <td class="sk">kanban-handoff, codebase-explorer, test-modernizer, device-interaction, xcode-project-setup, audit-xcode-security-settings</td>
+            <td>run_command, view_file, git_diff <small>(Claude Code: Read, Grep, Glob, Bash)</small></td>
+            <td>None</td>
+            <td><code>ios-tech-lead</code></td>
+            <td class="rt">Runs XCTest and Swift Testing on a simulator or device; records pass/fail per criterion; moves the card to done or back with defects</td>
             <td>Its card: what to test, criteria, impact map, the Developer's result</td>
             <td><code>test_report</code></td>
             <td>Modifying production code</td>
@@ -606,6 +690,12 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
           <div>.agents/definitions/web-tech-lead.md</div>
           <div>.agents/definitions/web-dev.md</div>
           <div>.agents/definitions/web-tester.md</div>
+          <div>.agents/definitions/android-tech-lead.md</div>
+          <div>.agents/definitions/android-dev.md</div>
+          <div>.agents/definitions/android-tester.md</div>
+          <div>.agents/definitions/ios-tech-lead.md</div>
+          <div>.agents/definitions/ios-dev.md</div>
+          <div>.agents/definitions/ios-tester.md</div>
           <div>.agents/skills/ · 60 skills</div>
         </div>
       </div>
@@ -688,7 +778,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
       <div class="how">
         <ol>
           <li><span class="i">1</span><p><strong>Open your project folder</strong> in a terminal. New or existing, any stack.</p></li>
-          <li><span class="i">2</span><p><strong>Run the command.</strong> The portal finds your agents, or helps you pick an Android, iOS or Web team (Scrum Master, Tech Lead, Developer and QA) that you can adjust in Team Studio.</p></li>
+          <li><span class="i">2</span><p><strong>Run the command.</strong> The portal finds your agents, or helps you pick an Android, iOS or Web team (Scrum Master, Tech Lead, Developer and QA), or all three with the Scrum Master routing by platform, that you can adjust in Team Studio.</p></li>
           <li><span class="i">3</span><p><strong>Ask as usual</strong> in Claude Code, Codex, Gemini or OpenCode. Your session hands the request to the Scrum Master, and the office fills in as your agents work.</p></li>
         </ol>
       </div>
