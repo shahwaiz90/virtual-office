@@ -11,7 +11,7 @@
       "goal": "",
       "badge": "SM",
       "avatar_url": "/assets/projectmanager.png",
-      "description": "Orchestrator. Sizes each user request with a quick look (no full impact map), turns it into a requirement card and task cards on the Kanban board, and hands them to the Tech Lead, or for a small change straight to the Developer with the Tech Lead as reviewer. Never writes application code.",
+      "description": "Orchestrator. Sizes each user request with a quick look (no full impact map), picks the platform team (web, Android or iOS) from the request and the codebase, turns it into a requirement card and task cards on the Kanban board, and hands them to that team's Tech Lead, or for a small change straight to that team's Developer with its Tech Lead as reviewer. Unclear platform defaults to web. Never writes application code.",
       "skills": [
         "kanban-handoff",
         "task-decomposition",
@@ -38,7 +38,7 @@
       "enable_write_tools": true,
       "enable_mcp_tools": false,
       "inputContract": "The user's request, as the requirement card the portal registered (or register it first).",
-      "outputContract": "The size (small or full) and why, from a quick look, on the requirement thread. Task cards under the requirement (parentKey), each with a brief written for its assignee, acceptance criteria and context, delegated by key; a small change is one web-dev card with reviewer web-tech-lead whose brief gives scope, acceptance criteria and how to verify (web-dev maps the impact). The requirement closes by itself when its tasks are done; post a summary on its thread.",
+      "outputContract": "The size (small or full), the platform (web, Android or iOS; web when unclear) and why, from a quick look, on the requirement thread. Task cards under the requirement (parentKey), each with a brief written for its assignee, acceptance criteria and context, delegated by key: a full change goes to <platform>-tech-lead (web-tech-lead, android-tech-lead or ios-tech-lead); a small change is one <platform>-dev card (web-dev, android-dev or ios-dev) with reviewer <platform>-tech-lead whose brief gives scope, acceptance criteria and how to verify (the Developer maps the impact). The requirement closes by itself when its tasks are done; post a summary on its thread.",
       "permissions": [],
       "prohibited_actions": [
         "No direct application code modifications"
@@ -46,11 +46,19 @@
       "reportsTo": "user",
       "handoffTo": [
         "web-tech-lead",
-        "web-dev"
+        "web-dev",
+        "android-tech-lead",
+        "android-dev",
+        "ios-tech-lead",
+        "ios-dev"
       ],
       "delegation_targets": [
         "web-tech-lead",
-        "web-dev"
+        "web-dev",
+        "android-tech-lead",
+        "android-dev",
+        "ios-tech-lead",
+        "ios-dev"
       ]
     },
     {
@@ -185,6 +193,283 @@
         "No modifying production code"
       ],
       "reportsTo": "web-tech-lead",
+      "handoffTo": [],
+      "delegation_targets": []
+    },
+    {
+      "id": "android-tech-lead",
+      "name": "Android Lead",
+      "role": "Tech Lead",
+      "persona": "",
+      "goal": "",
+      "badge": "LEAD",
+      "avatar_url": "/assets/techlead.png",
+      "description": "Tech Lead. Turns a requirement card into short technical contracts for the Developer (the impact map it finds, files, APIs, data, edge cases, how to verify), hands verification to QA, then reviews the Developer's and QA's cards, including small changes the Scrum Master sent straight to the Developer.",
+      "skills": [
+        "kanban-handoff",
+        "task-decomposition",
+        "codebase-explorer",
+        "android-architecture",
+        "android-cli",
+        "r8-analyzer",
+        "agp-9-upgrade",
+        "android-permissions-security",
+        "android-intent-security"
+      ],
+      "tools": [
+        "view_file",
+        "run_command",
+        "git_diff",
+        "invoke_subagent",
+        "send_message"
+      ],
+      "allowed_tools": [
+        "view_file",
+        "run_command",
+        "git_diff",
+        "invoke_subagent",
+        "send_message"
+      ],
+      "enable_subagent_tools": true,
+      "enable_write_tools": true,
+      "enable_mcp_tools": false,
+      "inputContract": "Its card: the product brief, acceptance criteria, context and thread.",
+      "outputContract": "Developer cards under its card, each a technical contract of about 40 lines at most with the impact map; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review. Reviews fast-path cards that name it as reviewer the same way. Hands a QA card to android-tester when a change needs testing beyond the Developer's own checks.",
+      "permissions": [],
+      "prohibited_actions": [
+        "No direct unreviewed code pushes to main"
+      ],
+      "reportsTo": "tech-pm",
+      "handoffTo": [
+        "android-dev",
+        "android-tester"
+      ],
+      "delegation_targets": [
+        "android-dev",
+        "android-tester"
+      ]
+    },
+    {
+      "id": "android-dev",
+      "name": "Android Dev",
+      "role": "Developer",
+      "persona": "",
+      "goal": "",
+      "badge": "DEV",
+      "avatar_url": "/assets/developer.png",
+      "description": "Developer. Implements one card at a time from the Tech Lead's contract (or, on a small fast-path card, maps the impact first and hands it back if it is bigger than small), verifies each acceptance criterion, records the result on the card and moves it to review.",
+      "skills": [
+        "kanban-handoff",
+        "feature-implementation",
+        "codebase-explorer",
+        "android-cli",
+        "android-architecture",
+        "gradle-build",
+        "jetpack-compose-performance",
+        "edge-to-edge",
+        "adaptive",
+        "navigation-3",
+        "migrate-xml-views-to-jetpack-compose"
+      ],
+      "tools": [
+        "view_file",
+        "write_to_file",
+        "replace_file_content",
+        "run_command"
+      ],
+      "allowed_tools": [
+        "view_file",
+        "write_to_file",
+        "replace_file_content",
+        "run_command"
+      ],
+      "enable_subagent_tools": false,
+      "enable_write_tools": true,
+      "enable_mcp_tools": false,
+      "inputContract": "Its card: the technical contract (or, on a fast-path card, the Scrum Master's brief), acceptance criteria, context files and thread. Asks on the thread when anything is unclear.",
+      "outputContract": "On a fast-path card, the impact map on the thread before building. The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met. Hands the card back to its reviewer (or its delegator when no reviewer is set).",
+      "permissions": [],
+      "prohibited_actions": [
+        "No breaking architectural contracts"
+      ],
+      "reportsTo": "android-tech-lead",
+      "handoffTo": [],
+      "delegation_targets": []
+    },
+    {
+      "id": "android-tester",
+      "name": "Android QA",
+      "role": "QA Engineer",
+      "persona": "",
+      "goal": "",
+      "badge": "QA",
+      "avatar_url": "/assets/qa.png",
+      "description": "QA. Tests the cards the Tech Lead hands over with JUnit, Compose UI and instrumented tests run through Gradle, plus a profiling and accessibility check, records pass/fail per acceptance criterion, and moves each card to done or back to in_progress with the defects.",
+      "skills": [
+        "kanban-handoff",
+        "codebase-explorer",
+        "android-testing",
+        "testing-setup",
+        "android-profiler",
+        "android-cli",
+        "gradle-build"
+      ],
+      "tools": [
+        "run_command",
+        "view_file",
+        "git_diff"
+      ],
+      "allowed_tools": [
+        "run_command",
+        "view_file",
+        "git_diff"
+      ],
+      "enable_subagent_tools": false,
+      "enable_write_tools": true,
+      "enable_mcp_tools": false,
+      "inputContract": "Its card: what to test, pass/fail criteria, the impact map and the Developer's result.",
+      "outputContract": "A test_report deliverable with pass/fail per acceptance criterion and any defects; the card moves to done, or back to in_progress with the defects.",
+      "permissions": [],
+      "prohibited_actions": [
+        "No modifying production code"
+      ],
+      "reportsTo": "android-tech-lead",
+      "handoffTo": [],
+      "delegation_targets": []
+    },
+    {
+      "id": "ios-tech-lead",
+      "name": "iOS Lead",
+      "role": "Tech Lead",
+      "persona": "",
+      "goal": "",
+      "badge": "LEAD",
+      "avatar_url": "/assets/techlead.png",
+      "description": "Tech Lead. Turns a requirement card into short technical contracts for the Developer (the impact map it finds, files, APIs, data, edge cases, how to verify), hands verification to QA, then reviews the Developer's and QA's cards, including small changes the Scrum Master sent straight to the Developer.",
+      "skills": [
+        "kanban-handoff",
+        "task-decomposition",
+        "codebase-explorer",
+        "swiftui-specialist",
+        "uikit-app-modernization",
+        "audit-xcode-security-settings",
+        "xcode-project-setup",
+        "c-bounds-safety"
+      ],
+      "tools": [
+        "view_file",
+        "run_command",
+        "git_diff",
+        "invoke_subagent",
+        "send_message"
+      ],
+      "allowed_tools": [
+        "view_file",
+        "run_command",
+        "git_diff",
+        "invoke_subagent",
+        "send_message"
+      ],
+      "enable_subagent_tools": true,
+      "enable_write_tools": true,
+      "enable_mcp_tools": false,
+      "inputContract": "Its card: the product brief, acceptance criteria, context and thread.",
+      "outputContract": "Developer cards under its card, each a technical contract of about 40 lines at most with the impact map; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review. Reviews fast-path cards that name it as reviewer the same way. Hands a QA card to ios-tester when a change needs testing beyond the Developer's own checks.",
+      "permissions": [],
+      "prohibited_actions": [
+        "No direct unreviewed code pushes to main"
+      ],
+      "reportsTo": "tech-pm",
+      "handoffTo": [
+        "ios-dev",
+        "ios-tester"
+      ],
+      "delegation_targets": [
+        "ios-dev",
+        "ios-tester"
+      ]
+    },
+    {
+      "id": "ios-dev",
+      "name": "iOS Dev",
+      "role": "Developer",
+      "persona": "",
+      "goal": "",
+      "badge": "DEV",
+      "avatar_url": "/assets/developer.png",
+      "description": "Developer. Implements one card at a time from the Tech Lead's contract (or, on a small fast-path card, maps the impact first and hands it back if it is bigger than small), verifies each acceptance criterion, records the result on the card and moves it to review.",
+      "skills": [
+        "kanban-handoff",
+        "feature-implementation",
+        "codebase-explorer",
+        "swiftui-specialist",
+        "swiftui-whats-new-27",
+        "uikit-app-modernization",
+        "xcode-project-setup",
+        "device-interaction"
+      ],
+      "tools": [
+        "view_file",
+        "write_to_file",
+        "replace_file_content",
+        "run_command"
+      ],
+      "allowed_tools": [
+        "view_file",
+        "write_to_file",
+        "replace_file_content",
+        "run_command"
+      ],
+      "enable_subagent_tools": false,
+      "enable_write_tools": true,
+      "enable_mcp_tools": false,
+      "inputContract": "Its card: the technical contract (or, on a fast-path card, the Scrum Master's brief), acceptance criteria, context files and thread. Asks on the thread when anything is unclear.",
+      "outputContract": "On a fast-path card, the impact map on the thread before building. The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met. Hands the card back to its reviewer (or its delegator when no reviewer is set).",
+      "permissions": [],
+      "prohibited_actions": [
+        "No breaking architectural contracts"
+      ],
+      "reportsTo": "ios-tech-lead",
+      "handoffTo": [],
+      "delegation_targets": []
+    },
+    {
+      "id": "ios-tester",
+      "name": "iOS QA",
+      "role": "QA Engineer",
+      "persona": "",
+      "goal": "",
+      "badge": "QA",
+      "avatar_url": "/assets/qa.png",
+      "description": "QA. Tests the cards the Tech Lead hands over with XCTest, Swift Testing and XCUITest suites on simulators or devices, plus an accessibility check, records pass/fail per acceptance criterion, and moves each card to done or back to in_progress with the defects.",
+      "skills": [
+        "kanban-handoff",
+        "codebase-explorer",
+        "test-modernizer",
+        "device-interaction",
+        "xcode-project-setup",
+        "audit-xcode-security-settings"
+      ],
+      "tools": [
+        "run_command",
+        "view_file",
+        "git_diff"
+      ],
+      "allowed_tools": [
+        "run_command",
+        "view_file",
+        "git_diff"
+      ],
+      "enable_subagent_tools": false,
+      "enable_write_tools": true,
+      "enable_mcp_tools": false,
+      "inputContract": "Its card: what to test, pass/fail criteria, the impact map and the Developer's result.",
+      "outputContract": "A test_report deliverable with pass/fail per acceptance criterion and any defects; the card moves to done, or back to in_progress with the defects.",
+      "permissions": [],
+      "prohibited_actions": [
+        "No modifying production code"
+      ],
+      "reportsTo": "ios-tech-lead",
       "handoffTo": [],
       "delegation_targets": []
     }

@@ -13,6 +13,18 @@ agents:
     path: definitions/web-dev.md
   - id: web-tester
     path: definitions/web-tester.md
+  - id: android-tech-lead
+    path: definitions/android-tech-lead.md
+  - id: android-dev
+    path: definitions/android-dev.md
+  - id: android-tester
+    path: definitions/android-tester.md
+  - id: ios-tech-lead
+    path: definitions/ios-tech-lead.md
+  - id: ios-dev
+    path: definitions/ios-dev.md
+  - id: ios-tester
+    path: definitions/ios-tester.md
 skills_dir: skills
 adapters:
   opencode:

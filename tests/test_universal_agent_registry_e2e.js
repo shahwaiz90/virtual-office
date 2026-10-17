@@ -482,7 +482,7 @@ End of instructions.
   const agentsMd = fs.readFileSync(agentsMdPath, 'utf8');
   assertTest(agentsMd.includes('ALWAYS INVOKE `tech-pm` FIRST'), 'AGENTS.md enforces primary orchestrator invariant');
   assertTest(!agentsMd.includes('flowchart TD') && !agentsMd.includes('| Agent | Role |'), 'AGENTS.md leaves the diagram and roster table to the role prompts');
-  assertTest(agentsMd.length < 1500, 'AGENTS.md stays short: OpenCode injects it into every agent');
+  assertTest(agentsMd.length < 2000, 'AGENTS.md stays short (routing and roster only): OpenCode injects it into every agent');
   expectedTeamIds.forEach((id) => {
     assertTest(agentsMd.includes(`\`${id}\` (`), `AGENTS.md team line includes ${id}`);
   });

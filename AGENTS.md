@@ -3,7 +3,7 @@
 
 ALWAYS INVOKE `tech-pm` FIRST: send every software request to Scrum Master, the orchestrator, which puts the work on the Kanban board. Running as a team role? Follow your role prompt.
 
-Team: `tech-pm` (Tech Scrum Master, orchestrator → `web-tech-lead`, `web-dev`); `web-tech-lead` (Tech Lead → `web-dev`, `web-tester`); `web-dev` (Developer); `web-tester` (QA Engineer). In OpenCode each role is an agent (`.opencode/agent/<id>.md`).
+Team: `tech-pm` (Tech Scrum Master, orchestrator → `web-tech-lead`, `web-dev`, `android-tech-lead`, `android-dev`, `ios-tech-lead`, `ios-dev`); `web-tech-lead` (Tech Lead → `web-dev`, `web-tester`); `web-dev` (Developer); `web-tester` (QA Engineer); `android-tech-lead` (Tech Lead → `android-dev`, `android-tester`); `android-dev` (Developer); `android-tester` (QA Engineer); `ios-tech-lead` (Tech Lead → `ios-dev`, `ios-tester`); `ios-dev` (Developer); `ios-tester` (QA Engineer). In OpenCode each role is an agent (`.opencode/agent/<id>.md`).
 
 ## Dispatching (the top-level agent)
 The top-level agent only dispatches: it never edits project files or writes code. Every change, even a one-line fix, goes to `tech-pm` (Scrum Master), which sends small ones down the fast path. Doing what the user asks directly (merging a PR, restarting the portal, answering a question) is fine.
