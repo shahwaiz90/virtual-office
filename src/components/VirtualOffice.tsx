@@ -247,10 +247,14 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
 
       // 4. Dedicated Agent Workstations (Clean non-overlapping suites for all roles)
       drawOfficeRooms(ctx, agents, activeHandoff, events, tick);
-      // Each role's recorded token usage under its work timer (roles with none show nothing)
+      // Each role's recorded token usage at the room's bottom-left, above a handover ribbon (roles with none show nothing)
       agents.forEach((agent, idx) => {
+        const line = deskTokenLine(tokenStats.find((t) => t.agentId === agent.id));
+        if (!line) return;
         const b = getAgentBounds(agent, idx);
-        drawDeskTokenBadge(ctx, b.x + 14, b.y + 58, deskTokenLine(tokenStats.find((t) => t.agentId === agent.id)));
+        const ribbon = getRoomWorkingState({ ...b, assignedAgentId: agent.id }, agents, activeHandoff, events);
+        const lift = ribbon.isReceivingHandoff && ribbon.handoffTaskShortTitle ? 58 : 30;
+        drawDeskTokenBadge(ctx, b.x + 14, b.y + b.h - lift, line);
       });
 
       // 5. 3D Volumetric Animated Characters (with Crisp Retina Avatars & Role Badges)
@@ -1164,7 +1168,7 @@ function drawOfficeRooms(
   });
 }
 
-/** The role's recorded token usage under the work timer; nothing when it has none. */
+/** A role's recorded token usage as a small badge; nothing when it has none. */
 function drawDeskTokenBadge(ctx: CanvasRenderingContext2D, x: number, y: number, text: string | null) {
   if (!text) return;
   const label = `🪙 ${text}`;
