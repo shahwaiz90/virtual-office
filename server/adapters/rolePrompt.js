@@ -96,6 +96,11 @@ function boardQuickReference(agent, { isOrchestrator, delegates, agents = [] }) 
         ? ` Reviewing a card you delegated: finish that card with \`"column":"done"\`, or \`"column":"in_progress"\` and what is missing in \`"note"\`${deliverableFor(agent).includes('code_review') ? ' (deliverable type `code_review`)' : ''}.`
         : '')
   );
+  if (delegates.length) {
+    lines.push(
+      `- When you hand on, publish what you handed on (the ${deliverableTypeFor(agent)}) on your own card before you delegate: \`curl -s -X POST $VO/api/deliverables -d '{"taskKey":"<your KEY>","agentId":"${id}","type":"${deliverableTypeFor(agent)}","title":"...","content":"<markdown>"}'\`. Finishing your card later updates it.`
+    );
+  }
   lines.push(
     "- Long text (a contract, review notes): write the JSON body to a file and send it with `-d @file.json`.",
     `Edge cases (no card yet, key rules, server down): \`${skillPath('kanban-handoff')}\`.`

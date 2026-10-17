@@ -169,6 +169,8 @@ function request(port, method, urlPath, body, { form = false } = {}) {
     const dev = rolePrompt(registry.agents[2], registry, { dispatch: 'opencode-subagent' });
     assert.ok(dev.includes('/api/tasks/<KEY>/start') && dev.includes('/api/tasks/<KEY>/finish'));
     assert.ok(!dev.includes('register?format=brief'), 'Roles that hand nothing on get no register template');
+    const lead = rolePrompt(registry.agents[1], registry, { dispatch: 'opencode-subagent' });
+    assert.ok(lead.includes('"type":"architecture"') && lead.includes('Skills to choose from: feature-implementation'), 'A delegating role publishes its contract when it hands on and sees the delegate skills');
     assert.ok(!dev.includes("Content-Type"));
     const pm = rolePrompt(registry.agents[0], registry, { dispatch: 'opencode-subagent' });
     assert.ok(pm.includes('type=requirement&format=brief') && pm.includes('"assignedTo":"web-tech-lead"'));
