@@ -481,14 +481,14 @@ End of instructions.
   assertTest(fs.existsSync(agentsMdPath), 'AGENTS.md must exist');
   const agentsMd = fs.readFileSync(agentsMdPath, 'utf8');
   assertTest(agentsMd.includes('ALWAYS INVOKE `tech-pm` FIRST'), 'AGENTS.md enforces primary orchestrator invariant');
-  assertTest(agentsMd.includes('flowchart TD'), 'AGENTS.md renders Mermaid flowchart');
-  assertTest(agentsMd.includes('tech-pm["Scrum Master<br/><i>Tech Scrum Master (orchestrator)</i>"]'), 'AGENTS.md Mermaid diagram marks the orchestrator');
-  assertTest(agentsMd.includes('| Agent | Role | Hands work to | Reports to | Never |'), 'AGENTS.md contains the team table');
+  assertTest(!agentsMd.includes('flowchart TD') && !agentsMd.includes('| Agent | Role |'), 'AGENTS.md leaves the diagram and roster table to the role prompts');
+  assertTest(agentsMd.length < 1500, 'AGENTS.md stays short: OpenCode injects it into every agent');
   expectedTeamIds.forEach((id) => {
-    assertTest(agentsMd.includes(`| \`${id}\` |`), `AGENTS.md roster includes ${id}`);
+    assertTest(agentsMd.includes(`\`${id}\` (`), `AGENTS.md team line includes ${id}`);
   });
   assertTest(!agentsMd.includes('file://'), 'AGENTS.md links are relative, not machine paths');
-  assertTest(agentsMd.includes('## Registering subagents'), 'AGENTS.md includes the subagent registration note');
+  assertTest(agentsMd.includes('## Dispatching (the top-level agent)') && agentsMd.includes('Your task: <KEY>'), 'AGENTS.md tells the top-level agent how to dispatch HANDOFF lines');
+  assertTest(fs.readFileSync(path.join(PROJECT_ROOT, '.agents', 'rules', 'team-orchestration.md'), 'utf8').includes('registrationPayload'), 'The team rule carries the define_subagent note');
 
   // 4.2 OpenCode: .agents/rules/team-orchestration.md
   const rulePath = path.join(PROJECT_ROOT, '.agents', 'rules', 'team-orchestration.md');
