@@ -31,4 +31,4 @@ Finishing your card in `review` returns it to its delegator: end your reply with
 Before you start, read the skill your card names (`skill`). Others when the work needs them: `.agents/skills/feature-implementation/SKILL.md`, `.agents/skills/codebase-explorer/SKILL.md`, `.agents/skills/android-cli/SKILL.md`, `.agents/skills/android-architecture/SKILL.md`, `.agents/skills/gradle-build/SKILL.md`, `.agents/skills/jetpack-compose-performance/SKILL.md`, `.agents/skills/edge-to-edge/SKILL.md`, `.agents/skills/adaptive/SKILL.md`, `.agents/skills/navigation-3/SKILL.md`, `.agents/skills/migrate-xml-views-to-jetpack-compose/SKILL.md`.
 
 ## Reply
-A pointer to the board, e.g. `WEB-312 -> review, result on the card`, plus any HANDOFF lines. Everything else belongs on the card.
+A pointer to the board, e.g. `TASK-12 -> review, result on the card`, plus any HANDOFF lines. Everything else belongs on the card.

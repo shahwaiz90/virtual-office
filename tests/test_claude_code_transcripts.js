@@ -257,6 +257,9 @@ try {
   const cardOf = (conv) => Array.from(eventBus.tasks.values()).find((t) => t.sourceConversation === conv && t.type === 'requirement');
   assert.ok(cardOf('claude-session-new'), 'The first prompt of a new session becomes its card');
   assert.strictEqual(cardOf('claude-session-new').title, 'Make the portal header mobile-friendly');
+  // VO-40: the prompt card's key is the next EPIC-n; its id stays TASK-CC-<hash> for replay dedup
+  assert.ok(/^EPIC-\d+$/.test(cardOf('claude-session-new').key), `prompt card key is EPIC-n, got ${cardOf('claude-session-new').key}`);
+  assert.ok(cardOf('claude-session-new').id.startsWith('TASK-CC-'), 'prompt card id stays TASK-CC-<hash>');
   assert.ok(!cardOf('claude-session-old'), 'A session from before the portal started is not replayed');
   fs.unwatchFile(newFile);
   fs.unwatchFile(oldFile);

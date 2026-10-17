@@ -306,6 +306,31 @@ function request(port, method, urlPath, body) {
     assert.ok(Array.from(eventBus.tasks.values()).some((t) => t.title === 'Phase two header migration'), 'Lowercase "phase-2" must not suppress the card');
     console.log('  ✅ Test 11 Passed.\n');
 
+    // Test 12 (VO-40): keyless cards are minted EPIC-n (requirements) and TASK-n (everything else)
+    console.log('▶ Test 12: Keyless register mints EPIC-n and TASK-n keys...');
+    const { OrchestrationRules: Rules12 } = require('../server/orchestrationRules');
+    const taskBoard12 = require('../server/taskBoard');
+    const expectEpic = Rules12.nextKey(eventBus.tasks, 'EPIC');
+    const expectTask = Rules12.nextKey(eventBus.tasks, 'TASK');
+    res = await request(port, 'POST', '/api/tasks/register', { type: 'requirement', title: 'Keyless requirement', assignedTo: 'tech-pm', delegatedBy: 'tech-pm' });
+    const epicKey = res.body.tasks[0].key;
+    assert.ok(/^EPIC-\d+$/.test(expectEpic));
+    assert.strictEqual(epicKey, expectEpic, 'A keyless requirement gets the next EPIC key');
+    res = await request(port, 'POST', '/api/tasks/register', { title: 'Keyless task', assignedTo: 'web-dev', delegatedBy: 'web-tech-lead' });
+    const taskKey = res.body.tasks[0].key;
+    assert.strictEqual(taskKey, expectTask, 'A keyless task gets the next TASK key');
+    res = await request(port, 'POST', '/api/tasks/register', { title: 'Second keyless task', assignedTo: 'web-dev', delegatedBy: 'web-tech-lead' });
+    const nextTaskKey = res.body.tasks[0].key;
+    assert.strictEqual(nextTaskKey, `TASK-${Number(expectTask.split('-')[1]) + 1}`, 'TASK counter advances');
+    assert.strictEqual(taskBoard12.findTask(taskKey).title, 'Keyless task', 'findTask resolves a TASK key');
+    assert.strictEqual(taskBoard12.findTask(epicKey).type, 'requirement');
+    assert.strictEqual(taskBoard12.findTask('WEB-701').key, 'WEB-701', 'Legacy keys still resolve');
+    res = await request(port, 'GET', `/api/tasks/${taskKey}`);
+    assert.strictEqual(res.status, 200);
+    res = await request(port, 'POST', '/api/tasks/register', { key: 'TASK-90', title: 'Agent keyed', assignedTo: 'web-dev', delegatedBy: 'web-tech-lead' });
+    assert.ok(eventBus.tasks.has('TASK-TASK-90'), 'An explicit key is kept as given');
+    console.log('  ✅ Test 12 Passed: EPIC-n / TASK-n minted, legacy keys still resolve.\n');
+
     console.log('🎉 ALL KANBAN HANDOFF CHANNEL TESTS PASSED!');
   } finally {
     server.close();

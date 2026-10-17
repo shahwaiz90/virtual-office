@@ -21,7 +21,7 @@ Before splitting, size the request with a quick look: a few searches at most (`c
 On a small card the Developer maps the impact first (`codebase-explorer`) and posts it on the thread. A Developer who finds it bigger than small says so there and hands the card back instead of growing it.
 
 ## Steps
-1. Use the request's requirement card as the parent of every task (kanban-handoff §2).
+1. Use the request's requirement card (`EPIC-<n>`) as the parent of every task (`TASK-<n>`, kanban-handoff §2).
 2. Restate the requirement in one sentence and list what "done" means for the user.
 3. Size the request with a quick look (above). The full impact map is the Tech Lead's (in the contract) or, on a small card, the Developer's.
 4. Split into independent, verifiable tasks, each small enough for one specialist; record order in `dependsOn`.
@@ -38,6 +38,6 @@ Keep it to about 40 lines. Name what to do and how to check it; don't write the 
 The same contract, impact map included, is your `architecture` deliverable.
 
 ## Example breakdowns (illustrations, not a template)
-- "Fix the typo in the Settings modal title" → small: `WEB-301 Fix typo in Settings modal title` → the Developer, reviewer the Tech Lead.
-- "Make handoff walks faster" → small: `WEB-305 Shorten handoff walk timings` → the Developer, reviewer the Tech Lead (one constants block and one test).
-- "Export the board as CSV" → `WEB-310 Define CSV columns` (web-tech-lead), `WEB-311 Add GET /api/tasks/export.csv` (web-dev, dependsOn WEB-310), `WEB-312 Add Export button to Kanban header` (web-dev, dependsOn WEB-311).
+- "Fix the typo in the Settings modal title" → small: `TASK-1 Fix typo in Settings modal title` → the Developer, reviewer the Tech Lead.
+- "Make handoff walks faster" → small: `TASK-5 Shorten handoff walk timings` → the Developer, reviewer the Tech Lead (one constants block and one test).
+- "Export the board as CSV" (requirement `EPIC-4`) → `TASK-10 Define CSV columns` (web-tech-lead), `TASK-11 Add GET /api/tasks/export.csv` (web-dev, dependsOn TASK-10), `TASK-12 Add Export button to Kanban header` (web-dev, dependsOn TASK-11).

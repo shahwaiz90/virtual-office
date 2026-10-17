@@ -666,9 +666,9 @@ function registerRealAgentTask(taskData, options = {}) {
   let rawKey = sanitizeTaskKey(taskData.key);
   if (!rawKey && taskData.id) rawKey = String(taskData.id).replace(/^TASK-/, '');
   if (!rawKey) {
+    // Requirement cards are EPIC-<n>, every other card TASK-<n> (VO-40); legacy keys are left alone
     const { OrchestrationRules } = require('./orchestrationRules');
-    const prefix = OrchestrationRules.resolveTeamRoles(agentList).platformBadge;
-    rawKey = `${prefix}-${OrchestrationRules.highestKeyNumber(eventBus.tasks) + 1}`;
+    rawKey = OrchestrationRules.nextKey(eventBus.tasks, taskData.type === 'requirement' ? 'EPIC' : 'TASK');
   }
   const cleanKey = sanitizeTaskKey(rawKey);
   const taskId = taskData.id || `TASK-${cleanKey}`;
@@ -1737,8 +1737,11 @@ function handleConversationSteps(steps, state) {
     } else if (step.type === 'USER_INPUT') {
       const prompt = step.turn.prompt;
       const firstLine = promptTitle(prompt);
+      const { OrchestrationRules } = require('./orchestrationRules');
       const task = registerRealAgentTask({
+        // The id (TASK-CC-<hash>) dedups replays; the key the team sees is the next EPIC-<n> (VO-40)
         id: promptCardId,
+        key: OrchestrationRules.nextKey(eventBus.tasks, 'EPIC'),
         // The user's request, owned by the orchestrator, who breaks it into role-specific task cards
         type: 'requirement',
         sourceConversation: state.convId,
