@@ -382,3 +382,23 @@ test('replay: captionLine names label, card and role, and marks roles not on the
     'the board is not a role, so it is not marked'
   );
 });
+
+// VO-27: a saved team holds up to ten agents (tech-pm + web + android + ios)
+for (const n of [4, 10]) {
+  for (const width of [1400, 1200, 768, 375]) {
+    test(`team of ${n} @ ${width}px: ${n} slots, rooms disjoint, desks inside rooms, rooms within width`, () => {
+      const L = computeFloorLayout(n, width);
+      assert.equal(L.slots.length, n);
+      for (let i = 0; i < n; i++) {
+        const { room, desk } = L.slots[i];
+        assert.ok(room.x >= 0 && room.x + room.w <= width + EPS, `room ${i} within ${width}px`);
+        assert.ok(
+          desk.x >= room.x - EPS && desk.x + desk.w <= room.x + room.w + EPS &&
+          desk.y >= room.y - EPS && desk.y + desk.h <= room.y + room.h + EPS,
+          `desk ${i} inside room`
+        );
+        for (let j = i + 1; j < n; j++) assert.ok(!rectsOverlap(room, L.slots[j].room), `rooms ${i} and ${j} overlap`);
+      }
+    });
+  }
+}

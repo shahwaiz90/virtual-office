@@ -159,3 +159,153 @@ test('OrchestrationRules: sanitizeTaskKey and exact AI task title preservation',
   assert.equal(storedAi.title, 'Setup WebAuthn Passkey Credentials Storage', 'Exact AI title must be preserved');
   eventBus.tasks.delete(aiTask.id);
 });
+
+// VO-27: three-team roster (tech-pm + web + android + ios) routes by platform
+const TEN_ROSTER = [
+  { id: 'tech-pm', name: 'Scrum Master', role: 'Tech Scrum Master', is_primary: true, delegation_targets: ['web-tech-lead', 'web-dev', 'android-tech-lead', 'ios-tech-lead'] },
+  { id: 'web-tech-lead', name: 'Web Tech Lead', role: 'Tech Lead' },
+  { id: 'web-dev', name: 'Web Dev', role: 'Developer' },
+  { id: 'web-tester', name: 'Web Tester', role: 'QA Engineer' },
+  { id: 'android-tech-lead', name: 'Android Tech Lead', role: 'Android Tech Lead' },
+  { id: 'android-dev', name: 'Android Dev', role: 'Android Developer' },
+  { id: 'android-tester', name: 'Android Tester', role: 'Android QA Engineer' },
+  { id: 'ios-tech-lead', name: 'iOS Tech Lead', role: 'iOS Tech Lead' },
+  { id: 'ios-dev', name: 'iOS Dev', role: 'iOS Developer' },
+  { id: 'ios-tester', name: 'iOS Tester', role: 'iOS QA Engineer' },
+];
+
+test('OrchestrationRules: platformOf reads the platform from the agent ID only', () => {
+  assert.equal(OrchestrationRules.platformOf('web-dev'), 'web');
+  assert.equal(OrchestrationRules.platformOf('android-tech-lead'), 'android');
+  assert.equal(OrchestrationRules.platformOf('iOS-Tester'), 'ios');
+  assert.equal(OrchestrationRules.platformOf('ios'), 'ios');
+  assert.equal(OrchestrationRules.platformOf('tech-pm'), null);
+  assert.equal(OrchestrationRules.platformOf('webby-dev'), null);
+  assert.equal(OrchestrationRules.platformOf(''), null);
+  assert.equal(OrchestrationRules.platformOf(undefined), null);
+});
+
+test('OrchestrationRules: ten-agent roster defaults to the web team and resolves every platform team', () => {
+  const roles = OrchestrationRules.resolveTeamRoles(TEN_ROSTER);
+  assert.equal(roles.pm.id, 'tech-pm');
+  assert.equal(roles.lead.id, 'web-tech-lead');
+  assert.equal(roles.dev.id, 'web-dev');
+  assert.equal(roles.tester.id, 'web-tester');
+  assert.equal(roles.platformBadge, 'WEB');
+  assert.equal(roles.defaultPlatform, 'web');
+  assert.deepEqual(Object.keys(roles.teams), ['web', 'android', 'ios']);
+  for (const p of ['web', 'android', 'ios']) {
+    assert.equal(roles.teams[p].lead.id, `${p}-tech-lead`);
+    assert.equal(roles.teams[p].dev.id, `${p}-dev`);
+    assert.equal(roles.teams[p].tester.id, `${p}-tester`);
+  }
+});
+
+test('OrchestrationRules: default platform follows the pm target, else roster order', () => {
+  // Mobile agents listed first, but the pm delegates to web first
+  const reordered = [TEN_ROSTER[0], ...TEN_ROSTER.slice(4), ...TEN_ROSTER.slice(1, 4)];
+  const byTarget = OrchestrationRules.resolveTeamRoles(reordered);
+  assert.equal(byTarget.defaultPlatform, 'web');
+  assert.equal(byTarget.lead.id, 'web-tech-lead');
+  assert.equal(byTarget.platformBadge, 'WEB');
+
+  // pm without delegation targets: first platform in roster order
+  const noTargets = reordered.map((a) => (a.id === 'tech-pm' ? { id: 'tech-pm', is_primary: true } : a));
+  const byOrder = OrchestrationRules.resolveTeamRoles(noTargets);
+  assert.equal(byOrder.defaultPlatform, 'android');
+  assert.equal(byOrder.lead.id, 'android-tech-lead');
+  assert.equal(byOrder.dev.id, 'android-dev');
+  assert.equal(byOrder.tester.id, 'android-tester');
+  assert.equal(byOrder.platformBadge, 'AND');
+
+  // pm targeting an iOS lead first
+  const iosFirst = TEN_ROSTER.map((a) => (a.id === 'tech-pm' ? { ...a, delegation_targets: ['ios-tech-lead'] } : a));
+  const ios = OrchestrationRules.resolveTeamRoles(iosFirst);
+  assert.equal(ios.defaultPlatform, 'ios');
+  assert.equal(ios.platformBadge, 'IOS');
+  assert.equal(ios.dev.id, 'ios-dev');
+});
+
+test('OrchestrationRules: android-only roster gets badge AND and the android lead', () => {
+  const roster = [{ id: 'tech-pm', is_primary: true }, ...TEN_ROSTER.slice(4, 7)];
+  const roles = OrchestrationRules.resolveTeamRoles(roster);
+  assert.equal(roles.platformBadge, 'AND');
+  assert.equal(roles.defaultPlatform, 'android');
+  assert.equal(roles.lead.id, 'android-tech-lead');
+  assert.equal(roles.dev.id, 'android-dev');
+  assert.equal(roles.tester.id, 'android-tester');
+  assert.deepEqual(Object.keys(roles.teams), ['android']);
+});
+
+test('OrchestrationRules: roster without platforms has no teams and badge TSK', () => {
+  const roles = OrchestrationRules.resolveTeamRoles([{ id: 'pm' }, { id: 'lead' }, { id: 'dev' }]);
+  assert.deepEqual(roles.teams, {});
+  assert.equal(roles.defaultPlatform, null);
+  assert.equal(roles.platformBadge, 'TSK');
+  assert.equal(roles.lead.id, 'lead');
+  const empty = OrchestrationRules.resolveTeamRoles([]);
+  assert.deepEqual(empty.teams, {});
+  assert.equal(empty.defaultPlatform, null);
+});
+
+test('OrchestrationRules: normalizeAITasks on the ten-agent roster keeps mobile assignees', () => {
+  const out = OrchestrationRules.normalizeAITasks(
+    [
+      { title: 'Build Android screen', assignedTo: 'android-dev', delegatedBy: 'android-tech-lead' },
+      { title: 'Test iOS screen', assignedTo: 'ios-tester' },
+      { title: 'Unknown owner', assignedTo: 'someone-else' },
+    ],
+    TEN_ROSTER
+  );
+  assert.equal(out[0].assignedTo, 'android-dev');
+  assert.equal(out[0].delegatedBy, 'android-tech-lead');
+  assert.ok(out[0].key.startsWith('WEB-'));
+  assert.equal(out[1].assignedTo, 'ios-tester');
+  assert.equal(out[2].assignedTo, 'web-tech-lead', 'unknown assignee goes to the pm first target');
+});
+
+test('registerRealAgentTask: mobile cards keep their assignee and get their own platform lead', () => {
+  const { registerRealAgentTask } = require('../server/watchers.js');
+  const { eventBus } = require('../server/eventBus.js');
+  const saved = new Map(eventBus.agents);
+  eventBus.agents.clear();
+  for (const a of TEN_ROSTER) eventBus.agents.set(a.id, a);
+  const made = [];
+  const reg = (data) => {
+    const t = registerRealAgentTask(data, { skipPersist: true });
+    made.push(t.id);
+    return t;
+  };
+  try {
+    const androidDev = reg({ key: 'VO-9901', title: 'Android card', assignedTo: 'android-dev' });
+    assert.equal(androidDev.assignedTo, 'android-dev');
+    assert.equal(androidDev.delegatedBy, 'android-tech-lead');
+
+    const iosTester = reg({ key: 'VO-9902', title: 'iOS card', assignedTo: 'ios-tester' });
+    assert.equal(iosTester.assignedTo, 'ios-tester');
+    assert.equal(iosTester.delegatedBy, 'ios-tech-lead');
+
+    const iosLead = reg({ key: 'VO-9903', title: 'iOS lead card', assignedTo: 'ios-tech-lead' });
+    assert.equal(iosLead.delegatedBy, 'tech-pm', 'leads are delegated by the pm');
+
+    const webDev = reg({ key: 'VO-9904', title: 'Web card', assignedTo: 'web-dev' });
+    assert.equal(webDev.delegatedBy, 'web-tech-lead');
+    const webTester = reg({ key: 'VO-9905', title: 'Web test card', assignedTo: 'web-tester' });
+    assert.equal(webTester.delegatedBy, 'web-tech-lead');
+
+    // Fuzzy fallback: platform words pick that team, otherwise today's default (web)
+    assert.equal(reg({ key: 'VO-9906', title: 'f1', assignedTo: 'Android QA person' }).assignedTo, 'android-tester');
+    assert.equal(reg({ key: 'VO-9907', title: 'f2', assignedTo: 'ios lead person' }).assignedTo, 'ios-tech-lead');
+    assert.equal(reg({ key: 'VO-9908', title: 'f3', assignedTo: 'mobile ios coder' }).assignedTo, 'ios-dev');
+    assert.equal(reg({ key: 'VO-9909', title: 'f4', assignedTo: 'some qa person' }).assignedTo, 'web-tester');
+    assert.equal(reg({ key: 'VO-9910', title: 'f5', assignedTo: '' }).assignedTo, 'tech-pm');
+
+    // Explicit delegatedBy still wins
+    const explicit = reg({ key: 'VO-9911', title: 'x', assignedTo: 'android-dev', delegatedBy: 'tech-pm' });
+    assert.equal(explicit.delegatedBy, 'tech-pm');
+  } finally {
+    for (const id of made) eventBus.tasks.delete(id);
+    eventBus.agents.clear();
+    for (const [k, v] of saved) eventBus.agents.set(k, v);
+  }
+});

@@ -10,15 +10,32 @@
 
 class OrchestrationRules {
   /**
+   * Platform of an agent, by ID only: 'web' | 'android' | 'ios' | null
+   * (prefix 'web-' / 'android-' / 'ios-', or the exact id 'web' / 'android' / 'ios').
+   */
+  static platformOf(agentId) {
+    if (!agentId) return null;
+    const id = String(agentId).toLowerCase().trim();
+    for (const p of ['web', 'android', 'ios']) {
+      if (id === p || id.startsWith(`${p}-`)) return p;
+    }
+    return null;
+  }
+
+  /**
    * Resolves the 4 core team roles (Primary Orchestrator, Tech Lead, Developer, QA)
    * from any Map or Array of configured agents.
-   * 
+   *
    * Strict ID-First Hierarchy (Zero Regex on Mutable Display Names/Roles):
    * 1. Primary Orchestrator (PM): Explicitly flagged `is_primary` or `isPrimary`, ID matching ('tech-pm', '*-pm', 'pm'), or 1st agent in roster.
    * 2. Tech Lead (LEAD): ID matching ('*-tech-lead', '*-lead', 'tech-lead', 'lead'), or `enable_subagent_tools: true` / `invoke_subagent` tool permission, or badge 'LEAD'.
    * 3. Core Developer (DEV): ID matching ('*-dev', '*-developer', 'dev', 'developer'), or badge 'DEV'.
    * 4. QA Engineer (QA): ID matching ('*-tester', '*-qa', 'tester', 'qa'), or badge 'QA'/'TEST'.
    * 5. Deterministic fallback: Uses sequential array indices without guessing on arbitrary text.
+   * 6. Platform teams: `teams[platform] = { lead, dev, tester }` per platform present (same ID rules,
+   *    scoped to that platform), and `defaultPlatform` (the pm's first delegation target's platform,
+   *    else the first platform in roster order). On a multi-platform roster the default team supplies
+   *    lead/dev/tester and the platform badge.
    */
   static resolveTeamRoles(agentsMapOrList) {
     const list = Array.isArray(agentsMapOrList)
@@ -27,7 +44,7 @@ class OrchestrationRules {
 
     if (!list || list.length === 0) {
       const fallback = { id: 'agent-1', name: 'Agent', role: 'Specialist', badge: 'AGT' };
-      return { pm: fallback, lead: fallback, dev: fallback, tester: fallback, platformBadge: 'TSK', list: [] };
+      return { pm: fallback, lead: fallback, dev: fallback, tester: fallback, platformBadge: 'TSK', teams: {}, defaultPlatform: null, list: [] };
     }
 
     // Helper for clean, deterministic ID matching (exact or suffix)
@@ -56,7 +73,7 @@ class OrchestrationRules {
     // b. Capability: has subagent tools enabled or 'invoke_subagent' allowed
     // c. Badge: 'LEAD'
     // d. Array position fallback: First non-PM agent in list
-    const lead =
+    let lead =
       list.find(
         (a) =>
           a.id !== pm.id &&
@@ -75,7 +92,7 @@ class OrchestrationRules {
     // a. Canonical ID: 'android-dev', 'ios-dev', 'web-dev', 'dev', 'developer', or ending in '-dev' / '-developer'
     // b. Badge: 'DEV'
     // c. Array position fallback: First non-PM, non-Lead agent in list
-    const dev =
+    let dev =
       list.find(
         (a) =>
           a.id !== pm.id &&
@@ -92,7 +109,7 @@ class OrchestrationRules {
     // a. Canonical ID: 'android-tester', 'ios-tester', 'web-tester', 'tester', 'qa', or ending in '-tester' / '-qa'
     // b. Badge: 'QA', 'TEST'
     // c. Array position fallback: First remaining agent in list
-    const tester =
+    let tester =
       list.find(
         (a) =>
           a.id !== pm.id &&
@@ -106,15 +123,56 @@ class OrchestrationRules {
       list[3] ||
       list[0];
 
-    // 5. Platform Badge Inference purely by Agent ID prefixes
-    let platformBadge = 'TSK';
-    if (list.some((a) => (a.id || '').toLowerCase().startsWith('android-') || (a.id || '').toLowerCase() === 'android')) {
-      platformBadge = 'AND';
-    } else if (list.some((a) => (a.id || '').toLowerCase().startsWith('ios-') || (a.id || '').toLowerCase() === 'ios')) {
-      platformBadge = 'IOS';
-    } else if (list.some((a) => (a.id || '').toLowerCase().startsWith('web-') || (a.id || '').toLowerCase() === 'web')) {
-      platformBadge = 'WEB';
+    // 5. Platform teams (web / android / ios), keyed by agent ID prefix, in roster order
+    const platforms = [];
+    for (const a of list) {
+      const p = this.platformOf(a && a.id);
+      if (p && !platforms.includes(p)) platforms.push(p);
     }
+    const teams = {};
+    for (const p of platforms) {
+      const members = list.filter((a) => a.id !== pm.id && this.platformOf(a.id) === p);
+      const tLead =
+        members.find(
+          (a) =>
+            hasId(a, [`${p}-tech-lead`, 'tech-lead', 'lead'], ['-tech-lead', '-lead']) ||
+            a.enable_subagent_tools === true ||
+            (Array.isArray(a.allowed_tools) && a.allowed_tools.includes('invoke_subagent')) ||
+            (Array.isArray(a.tools) && a.tools.includes('invoke_subagent')) ||
+            a.badge === 'LEAD'
+        ) || null;
+      const tDev =
+        members.find(
+          (a) =>
+            (!tLead || a.id !== tLead.id) &&
+            (hasId(a, [`${p}-dev`, 'dev', 'developer'], ['-dev', '-developer']) || a.badge === 'DEV')
+        ) || null;
+      const tTester =
+        members.find(
+          (a) =>
+            (!tLead || a.id !== tLead.id) &&
+            (!tDev || a.id !== tDev.id) &&
+            (hasId(a, [`${p}-tester`, 'tester', 'qa'], ['-tester', '-qa']) || a.badge === 'QA' || a.badge === 'TEST')
+        ) || null;
+      teams[p] = { lead: tLead, dev: tDev, tester: tTester };
+    }
+
+    // 6. Default platform: the pm's first delegation target, else the first platform in roster order
+    const pmTargets = pm.delegation_targets || pm.handoffTo || pm.delegationTargets || [];
+    const targetPlatform = Array.isArray(pmTargets) && pmTargets.length ? this.platformOf(pmTargets[0]) : null;
+    const defaultPlatform = (targetPlatform && teams[targetPlatform] ? targetPlatform : null) || platforms[0] || null;
+
+    // 7. On a multi-platform roster the default team supplies lead/dev/tester. A single-platform
+    // roster keeps the roster-wide resolution above unchanged.
+    if (platforms.length > 1 && defaultPlatform) {
+      const team = teams[defaultPlatform];
+      if (team.lead) lead = team.lead;
+      if (team.dev) dev = team.dev;
+      if (team.tester) tester = team.tester;
+    }
+
+    const PLATFORM_BADGES = { web: 'WEB', android: 'AND', ios: 'IOS' };
+    const platformBadge = (defaultPlatform && PLATFORM_BADGES[defaultPlatform]) || 'TSK';
 
     return {
       pm,
@@ -122,6 +180,8 @@ class OrchestrationRules {
       dev,
       tester,
       platformBadge,
+      teams,
+      defaultPlatform,
       list,
     };
   }
