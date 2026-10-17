@@ -371,3 +371,39 @@ export interface OfficeState {
   events?: any[];
 }
 
+
+/** One step of a requirement replay (GET /api/tasks/:key/timeline, server/replayTimeline.js) */
+export interface ReplayStep {
+  at: string;
+  type: 'handoff' | 'caption';
+  cardKey: string;
+  cardTitle: string;
+  /** Who acted: the sender of a handoff, or the author of a caption */
+  agentId: string | null;
+  agentName: string;
+  onRoster: boolean;
+  /** Handoff receiver */
+  to?: string | null;
+  toName?: string | null;
+  toOnRoster?: boolean;
+  /** Handoff, Decision, Sent for review, Sent back, Done, Result or Deliverable */
+  label: string;
+  text: string;
+}
+
+/** Read-only replay of a done card and its nested sub-tasks, steps in chronological order */
+export interface ReplayTimeline {
+  rootKey: string;
+  title: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  cards: { key: string; title: string; parentKey: string | null }[];
+  steps: ReplayStep[];
+}
+
+/** A Replay click on a card: App passes it to the floor plan; a new nonce restarts the replay */
+export interface ReplayRequest {
+  key: string;
+  record: boolean;
+  nonce: number;
+}

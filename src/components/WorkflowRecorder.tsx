@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Video, Square, Download, X, Sparkles, Loader2, Monitor, Layers } from 'lucide-react';
 import { voiceService } from '../services/voiceService';
+import { pickRecorderMime, downloadUrl } from './canvasRecording';
 
 export interface WorkflowRecorderProps {
   canvasElement: HTMLCanvasElement | null;
@@ -83,41 +84,8 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const getBestMimeType = () => {
-    // 1. Check if browser natively supports MP4 recording
-    const mp4Types = [
-      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-      'video/mp4;codecs=avc1',
-      'video/mp4;codecs=h264',
-      'video/mp4',
-    ];
-    for (const t of mp4Types) {
-      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) {
-        return { mimeType: t, isNativeMp4: true };
-      }
-    }
-    // 2. Otherwise record WebM and convert automatically to MP4 via server ffmpeg
-    const webmTypes = [
-      'video/webm;codecs=vp9,opus',
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8',
-      'video/webm',
-    ];
-    for (const t of webmTypes) {
-      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) {
-        return { mimeType: t, isNativeMp4: false };
-      }
-    }
-    return { mimeType: 'video/webm', isNativeMp4: false };
-  };
-
   const triggerDownload = (url: string, extension: 'mp4' | 'webm') => {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `agent-virtual-office-workflow-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${extension}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    downloadUrl(url, `agent-virtual-office-workflow-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${extension}`);
   };
 
   const stopRecording = useCallback(() => {
@@ -140,7 +108,8 @@ export const WorkflowRecorder: React.FC<WorkflowRecorderProps> = ({
     setRecordedMp4Url(null);
     setConversionError(null);
 
-    const { mimeType, isNativeMp4 } = getBestMimeType();
+    // Native MP4 when the browser records it; otherwise WebM, converted to MP4 by the server below
+    const { mimeType, isNativeMp4 } = pickRecorderMime();
 
     const recorder = new MediaRecorder(stream, {
       mimeType,

@@ -697,6 +697,21 @@ app.get('/api/tasks/:key', (req, res) => {
   res.json({ success: true, task: detail });
 });
 
+// GET /api/tasks/:key/timeline - read-only replay of a done card and all its nested sub-tasks:
+// handoffs and captions (decisions, results, review outcomes, deliverables) in chronological order
+app.get('/api/tasks/:key/timeline', (req, res) => {
+  const task = taskBoard.findTask(req.params.key);
+  if (!task) return res.status(404).json({ error: `No task ${req.params.key} on the active sprint board` });
+  if (task.column !== 'done') return res.status(409).json({ error: `${task.key} is not done` });
+  const { buildReplayTimeline } = require('./replayTimeline');
+  const timeline = buildReplayTimeline(task.key, {
+    tasks: eventBus.tasks,
+    deliverables: eventBus.deliverables,
+    agents: eventBus.agents,
+  });
+  res.json({ success: true, timeline });
+});
+
 // POST /api/tasks/:key/start - { agentId?, note? } the assignee starts its card; prints the compact card
 app.post('/api/tasks/:key/start', (req, res) => {
   const task = taskBoard.findTask(req.params.key);
