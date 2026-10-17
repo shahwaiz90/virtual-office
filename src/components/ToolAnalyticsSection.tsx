@@ -448,7 +448,7 @@ export const ToolAnalyticsSection: React.FC<ToolAnalyticsSectionProps> = ({
 
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-sand-900 truncate">{stat.toolName}</span>
+                          <span className="font-mono font-bold text-sand-900 truncate" title={stat.toolName}>{stat.toolName}</span>
                           <span className="text-[10px] font-mono text-sand-400 hidden sm:inline">
                             ({new Date(stat.lastUsedAt).toLocaleTimeString()})
                           </span>
