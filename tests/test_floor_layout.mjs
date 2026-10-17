@@ -274,3 +274,32 @@ test('choreo: card labels use the key when known', () => {
   assert.equal(plain.key, undefined);
   assert.ok(plain.label.length <= 22 && plain.label.endsWith('...'));
 });
+
+// ---------- First-run demo script (client-only; follows whatever team is saved) ----------
+const { demo } = await import('./load_floor_layout.mjs');
+const role = (id, name, extra = {}) => ({ id, name, role: name, delegationTargets: [], ...extra });
+
+test('demo: follows the saved team from the orchestrator and back, for any roster', () => {
+  const teams = {
+    three: [role('tech-pm', 'Scrum Master', { isPrimary: true, delegationTargets: ['web-tech-lead'] }), role('web-tech-lead', 'Tech Lead', { delegationTargets: ['web-dev'] }), role('web-dev', 'Developer')],
+    withQa: [role('tech-pm', 'Scrum Master', { isPrimary: true, delegationTargets: ['ios-tech-lead', 'ios-dev'] }), role('ios-tech-lead', 'Tech Lead', { delegationTargets: ['ios-tester', 'ios-dev'] }), role('ios-dev', 'Developer'), role('ios-tester', 'QA Engineer')],
+    two: [role('pm', 'Scrum Master', { isPrimary: true }), role('dev', 'Developer')],
+    noDelegationData: Array.from({ length: 12 }, (_, i) => role(`agent-${i}`, `Agent ${i}`)),
+  };
+  for (const [name, team] of Object.entries(teams)) {
+    const steps = demo.buildDemoScript(team);
+    const ids = new Set(team.map((a) => a.id));
+    const head = (team.find((a) => a.isPrimary) || team[0]).id;
+    assert.ok(steps.length >= 2, `${name}: has steps`);
+    assert.equal(steps[0].fromId, head, `${name}: starts at the orchestrator`);
+    assert.equal(steps.at(-1).toId, head, `${name}: ends back at the orchestrator`);
+    for (const s of steps) {
+      assert.ok(ids.has(s.fromId) && ids.has(s.toId) && s.fromId !== s.toId, `${name}: ${s.key} moves between two real roles`);
+      assert.ok(s.caption && s.title, `${name}: ${s.key} has a caption and a card title`);
+    }
+    assert.equal(new Set(steps.map((s) => s.key)).size, steps.length, `${name}: card keys are unique`);
+  }
+  const qa = demo.buildDemoScript(teams.withQa).map((s) => s.toId);
+  assert.ok(qa.indexOf('ios-dev') < qa.indexOf('ios-tester'), 'The developer builds before QA tests');
+  assert.deepEqual(demo.buildDemoScript([role('solo', 'Solo')]), [], 'One role: nothing to show');
+});

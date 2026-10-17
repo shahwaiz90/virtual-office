@@ -12,5 +12,6 @@ export async function loadTs(relativePath) {
 
 const mod = await loadTs('../src/components/floorLayout.ts');
 export const choreo = await loadTs('../src/components/handoffChoreo.ts');
+export const demo = await loadTs('../src/components/demoTour.ts');
 
 export default mod;

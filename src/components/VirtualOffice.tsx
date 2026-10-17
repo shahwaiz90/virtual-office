@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
 import { Agent, ActiveHandoff, NormalizedEvent, TokenUsageStat } from '../types/office';
 import { deskTokenLine } from '../services/tokenFormat';
-import { Pencil, Sparkles, Users, Terminal, LayoutGrid } from 'lucide-react';
+import { Pencil, Sparkles, Users, Terminal, LayoutGrid, Play, Square } from 'lucide-react';
 import { WorkstationTerminalTile } from './WorkstationTerminalTile';
 import {
   computeFloorLayout,
@@ -29,6 +29,7 @@ import {
   type ChoreoEnv,
   type Handoff,
 } from './handoffChoreo';
+import { buildDemoScript, DEMO_STEP_MS } from './demoTour';
 
 interface VirtualOfficeProps {
   agents: Agent[];
@@ -286,14 +287,58 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   const reducedRef = useRef<boolean>(false);
   const drawnRef = useRef<DrawnAvatar[]>([]);
 
-  // TEMP-HARNESS (not committed)
-  if (import.meta.env.DEV) (window as any).__vo = { drawnRef, selectedRef, choreoRef, layoutRef, hoveredRef, agentsRef };
   useLayoutEffect(() => {
     agentsRef.current = agents;
     eventsRef.current = events;
     tokenStatsRef.current = tokenStats;
     selectedRef.current = selectedAgentId;
   }, [agents, events, tokenStats, selectedAgentId]);
+
+  // First-run demo: a scripted request walks through the real team on this floor plan only.
+  // It feeds the handoff choreography directly; nothing reaches the server, the board or the logs.
+  const [demo, setDemo] = useState<{ step: number; total: number; caption: string } | null>(null);
+  const [demoSeen, setDemoSeen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('vo-demo-seen') === '1';
+    } catch {
+      return true;
+    }
+  });
+  const demoTimersRef = useRef<number[]>([]);
+  const stopDemo = useCallback(() => {
+    demoTimersRef.current.forEach((t) => window.clearTimeout(t));
+    demoTimersRef.current = [];
+    setDemo(null);
+  }, []);
+  const startDemo = useCallback(() => {
+    stopDemo();
+    const team = agentsRef.current;
+    const steps = buildDemoScript(team);
+    if (!steps.length) return;
+    setViewMode('floor');
+    setDemoSeen(true);
+    try {
+      localStorage.setItem('vo-demo-seen', '1');
+    } catch {}
+    const run = Date.now();
+    steps.forEach((s, i) => {
+      demoTimersRef.current.push(
+        window.setTimeout(() => {
+          const from = agentsRef.current.find((a) => a.id === s.fromId);
+          const to = agentsRef.current.find((a) => a.id === s.toId);
+          const layout = layoutRef.current;
+          if (!from || !to || !layout) return;
+          const env = makeChoreoEnv(layout, agentsRef.current, Date.now(), reducedRef.current);
+          const seat = env.seatOf(from.id);
+          if (seat) enqueueHandoff(choreoRef.current, buildHandoff(`demo:${run}:${i}`, from, to, s.title, s.key, Date.now()), seat);
+          setDemo({ step: i + 1, total: steps.length, caption: s.caption });
+        }, i * DEMO_STEP_MS)
+      );
+    });
+    demoTimersRef.current.push(window.setTimeout(() => setDemo(null), steps.length * DEMO_STEP_MS + 2500));
+  }, [stopDemo]);
+  // A new team shape ends a running demo
+  useEffect(() => stopDemo, [agents.length, stopDemo]);
 
   const handleSetViewMode = (mode: 'floor' | 'terminal_grid') => {
     setViewMode(mode);
@@ -652,6 +697,22 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
             </div>
           ))}
 
+          {agents.length >= 2 && (
+            <button
+              type="button"
+              onClick={demo ? stopDemo : startDemo}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-[11px] border shadow-2xs transition-all cursor-pointer ml-0.5 ${
+                demo
+                  ? 'bg-sand-100 hover:bg-sand-200 text-sand-700 border-sand-300'
+                  : 'bg-brand-600 hover:bg-brand-700 text-white border-brand-600'
+              } ${!demo && !demoSeen ? 'ring-2 ring-brand-300 animate-pulse' : ''}`}
+              title={demo ? 'Stop the demo' : 'Watch a short demo of agents handing work to each other. Nothing is saved.'}
+            >
+              {demo ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+              <span>{demo ? 'Stop demo' : 'Watch demo'}</span>
+            </button>
+          )}
+
           {onEditTeam && agents.length > 0 && (
             <button
               onClick={onEditTeam}
@@ -678,6 +739,25 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
           aria-label={`Office floor plan with ${agents.length} workstations`}
           role="img"
         />
+
+        {demo && (
+          <div
+            className="absolute top-3 left-1/2 -translate-x-1/2 z-10 w-[min(560px,calc(100%-24px))] bg-surface/95 border border-brand-200 shadow-lg rounded-xl px-3.5 py-2.5 flex items-start gap-3 backdrop-blur"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-md bg-brand-600 text-white text-[10px] font-bold tracking-wider">
+              DEMO {demo.step}/{demo.total}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-sand-900 leading-snug">{demo.caption}</p>
+              <p className="text-[10px] text-sand-500 mt-0.5">Simulated walkthrough. Nothing is saved to your board.</p>
+            </div>
+            <button type="button" onClick={stopDemo} className="shrink-0 text-[11px] font-bold text-sand-600 hover:text-sand-900 cursor-pointer">
+              Stop
+            </button>
+          </div>
+        )}
 
         {/* Empty State Overlay when no agents are configured */}
         {!isLoading && agents.length === 0 && (
