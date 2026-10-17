@@ -13,7 +13,7 @@
 
 One conversation in, finished work out. You talk to a single routine, the **Scrum Master** (`tech-pm`). It takes a quick look, decides whether the request is small or full and which platform team owns it (Web, Android or iOS; Web when unclear), and registers it on the board: a small change goes straight to that team's Developer (`<platform>-dev`) with its Tech Lead (`<platform>-tech-lead`) as reviewer; a bigger one goes to the Tech Lead, who writes technical contracts for the Developer and hands testing to QA. Every instruction, decision and result lives on the cards, so each agent reads its card instead of a pasted prompt, and you see the work move from **Backlog ➔ In Progress ➔ Review ➔ Done**.
 
-**Virtual Office makes that teamwork visible:** each agent (the Scrum Master, plus a Tech Lead, Developer and QA for each platform team) has its own role, permissions and skills, and you can follow every handoff live. The office shows the team you saved in the **Agent Command Center Setup** modal, with a desk for each of its agents.
+**Virtual Office makes that teamwork visible:** each agent (the Scrum Master, plus a Tech Lead, Developer and QA for each platform team) has its own role, permissions and skills, and you can follow every handoff live. The office shows the team you saved in the **Agent Virtual Office Setup** modal, with a desk for each of its agents.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────┐
@@ -48,7 +48,7 @@ Whatever custom LLM model or AI platform you use (**Claude**, **OpenAI / Codex**
 
 ## 🔁 Agentic workflow
 
-You talk to one routine. The **main session** (your Claude Code chat) only dispatches: it sends your request to the Scrum Master, then starts each subagent named in the `HANDOFF <KEY> -> <agentId>` lines it gets back, until the requirement card is done. It never edits project files. Each role below is a Claude Code subagent in `.claude/agents/`, generated from `.agents/definitions/<id>.md` by `node bin/agents.js sync`. The roster has ten agents: the Scrum Master and three platform teams (Web, Android, iOS), each with a Tech Lead, a Developer and QA. Web is the default team. Fast path: a small change goes to `<platform>-dev` with reviewer `<platform>-tech-lead`; a full change goes to `<platform>-tech-lead`. The office shows only the team saved in the Agent Command Center Setup modal; this table lists every definition in the repository.
+You talk to one routine. The **main session** (your Claude Code chat) only dispatches: it sends your request to the Scrum Master, then starts each subagent named in the `HANDOFF <KEY> -> <agentId>` lines it gets back, until the requirement card is done. It never edits project files. Each role below is a Claude Code subagent in `.claude/agents/`, generated from `.agents/definitions/<id>.md` by `node bin/agents.js sync`. The roster has ten agents: the Scrum Master and three platform teams (Web, Android, iOS), each with a Tech Lead, a Developer and QA. Web is the default team. Fast path: a small change goes to `<platform>-dev` with reviewer `<platform>-tech-lead`; a full change goes to `<platform>-tech-lead`. The office shows only the team saved in the Agent Virtual Office Setup modal; this table lists every definition in the repository.
 
 | Role | What it is | Skills | Tools | Hands work to | Reports to | Routine (every card) | Context it reads | Delivers | Never | Token in | Token out |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -120,7 +120,7 @@ npx agent-virtual-office
 ```
 
 That's it! The visualizer will:
-1. **Auto-detect your codebase**: Discovers existing agents from `.agents/` or `agents.json`. In a project with no team yet, the portal opens **Agent Command Center Setup**, where you pick a platform team (Android, iOS, Web, …) or build your own in Team Studio.
+1. **Auto-detect your codebase**: Discovers existing agents from `.agents/` or `agents.json`. In a project with no team yet, the portal opens **Agent Virtual Office Setup**, where you pick a platform team (Android, iOS, Web, …) or build your own in Team Studio.
 2. **Scaffold agent definitions**: Automatically initializes `.agents/definitions/` so every agent has documented skills, tools, and rules.
 3. **Launch the Dashboard**: Starts the local server (default: `http://localhost:3000`, or the next free port) and opens it in your browser (Safari on macOS).
 

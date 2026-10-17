@@ -113,7 +113,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="flex items-center gap-2 min-w-0">
             <h1 className="text-sm sm:text-base font-extrabold text-sand-900 tracking-tight whitespace-nowrap truncate min-w-0">
-              Agent Command Center
+              Agent Virtual Office
             </h1>
 
             {/* Connection Status Pill */}

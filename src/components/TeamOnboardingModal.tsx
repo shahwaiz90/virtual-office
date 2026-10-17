@@ -516,7 +516,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-sm sm:text-base font-bold tracking-tight text-sand-900 truncate">
-                    {flowStep === 'platform' ? 'Agent Command Center Setup' : flowStep === 'preview' ? `${getPlatformLabel(selectedTemplateId)} Team` : 'Team Studio & Skills'}
+                    {flowStep === 'platform' ? 'Agent Virtual Office Setup' : flowStep === 'preview' ? `${getPlatformLabel(selectedTemplateId)} Team` : 'Team Studio & Skills'}
                   </h2>
                   {flowStep !== 'platform' && (
                     <span className={`text-[9px] sm:text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border shrink-0 ${
