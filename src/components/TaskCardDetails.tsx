@@ -13,6 +13,7 @@ import {
   Play,
   Send,
   Trophy,
+  Video,
 } from 'lucide-react';
 
 interface TaskCardDetailsProps {
@@ -119,6 +120,15 @@ export const TaskCardDetails: React.FC<TaskCardDetailsProps> = ({ task, tasks, a
           >
             <Play className="w-3.5 h-3.5" />
             <span>Replay</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onReplay?.(task.key, { record: true })}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface border border-sand-200 hover:bg-sand-50 text-sand-700 hover:text-sand-900 text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+            title="Play the replay while recording the floor plan, then download it as a video. Stop saves nothing."
+          >
+            <Video className="w-3.5 h-3.5 text-rose-600" />
+            <span>Save as video</span>
           </button>
         </div>
       )}

@@ -31,6 +31,7 @@ import {
 } from './handoffChoreo';
 import { buildDemoScript, DEMO_STEP_MS } from './demoTour';
 import { scheduleReplay, captionLine } from './replayPlayer';
+import { canRecordCanvas, recordCanvas, replayVideoName, saveVideo, type CanvasRecording } from './canvasRecording';
 
 interface VirtualOfficeProps {
   agents: Agent[];
@@ -311,8 +312,11 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   // Requirement Replay: a done requirement's timeline (read-only GET) plays through the handoff
   // choreography, faster than real time. Captions and progress are drawn on the canvas (so a recording
   // of the canvas carries them); the DOM bar only holds the Stop control and the screen-reader status.
-  const [replay, setReplay] = useState<{ key: string; step: number; total: number; loading: boolean } | null>(null);
+  const [replay, setReplay] = useState<{ key: string; step: number; total: number; loading: boolean; recording: boolean } | null>(null);
   const [replayNotice, setReplayNotice] = useState<string | null>(null);
+  // Save as video: the canvas recording of the running replay, and the key whose video is being saved
+  const replayRecordingRef = useRef<CanvasRecording | null>(null);
+  const [replaySaving, setReplaySaving] = useState<string | null>(null);
   const replayOverlayRef = useRef<ReplayOverlay | null>(null);
   const replayTimersRef = useRef<number[]>([]);
   const replayRunRef = useRef(0);
@@ -328,19 +332,51 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     setReplayNotice(text);
     noticeTimerRef.current = window.setTimeout(() => setReplayNotice(null), 4000);
   }, []);
-  // notify = false when a new replay replaces this one (the parent's request stays current)
-  const endReplay = useCallback((notify: boolean) => {
-    replayRunRef.current++;
-    replayTimersRef.current.forEach((t) => window.clearTimeout(t));
-    replayTimersRef.current = [];
-    replayOverlayRef.current = null;
-    setReplay(null);
-    if (replayActiveRef.current) {
-      replayActiveRef.current = false;
-      if (notify) onReplayEndRef.current?.();
-    }
-  }, []);
+  // notify = false when a new replay replaces this one (the parent's request stays current).
+  // A recording still attached here was not finished, so it is dropped: an early end saves nothing.
+  const endReplay = useCallback(
+    (notify: boolean) => {
+      replayRunRef.current++;
+      replayTimersRef.current.forEach((t) => window.clearTimeout(t));
+      replayTimersRef.current = [];
+      replayOverlayRef.current = null;
+      setReplay(null);
+      const recording = replayRecordingRef.current;
+      if (recording) {
+        replayRecordingRef.current = null;
+        recording.cancel();
+        if (notify) showReplayNotice('Replay stopped. Nothing saved.');
+      }
+      if (replayActiveRef.current) {
+        replayActiveRef.current = false;
+        if (notify) onReplayEndRef.current?.();
+      }
+    },
+    [showReplayNotice]
+  );
   const stopReplay = useCallback(() => endReplay(true), [endReplay]);
+  // The replay played to its end: a recording of it is complete, so stop it and save the file
+  const finishReplay = useCallback(
+    (key: string) => {
+      const recording = replayRecordingRef.current;
+      replayRecordingRef.current = null;
+      endReplay(true);
+      if (!recording) return;
+      setReplaySaving(key);
+      void recording
+        .stop()
+        .then((blob) => saveVideo(blob, recording.mimeType, replayVideoName(key)))
+        .then(
+          (ext) => showReplayNotice(`Saved ${replayVideoName(key)}.${ext}`),
+          (err) => {
+            console.error('Saving the replay video failed:', err);
+            showReplayNotice(`Could not save the video of ${key}.`);
+          }
+        )
+        .finally(() => setReplaySaving((k) => (k === key ? null : k)));
+    },
+    [endReplay, showReplayNotice]
+  );
 
   // First-run demo: a scripted request walks through the real team on this floor plan only.
   // It feeds the handoff choreography directly; nothing reaches the server, the board or the logs.
@@ -390,12 +426,18 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   useEffect(() => stopDemo, [agents.length, stopDemo]);
 
   const startReplay = useCallback(
-    async (key: string) => {
+    async (key: string, record: boolean) => {
       endReplay(false);
+      // Save as video needs canvas capture (missing in some browsers, e.g. older Safari): do not start
+      if (record && !canRecordCanvas(canvasRef.current)) {
+        showReplayNotice("This browser can't record the floor plan.");
+        onReplayEndRef.current?.();
+        return;
+      }
       const run = replayRunRef.current;
       replayActiveRef.current = true;
       setReplayNotice(null);
-      setReplay({ key, step: 0, total: 0, loading: true });
+      setReplay({ key, step: 0, total: 0, loading: true, recording: record });
       let timeline: ReplayTimeline | null = null;
       let error: string | null = null;
       try {
@@ -421,7 +463,18 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
 
       const { schedule, totalMs } = scheduleReplay(timeline.steps);
       const total = schedule.length;
-      setReplay({ key: timeline.rootKey, step: 0, total, loading: false });
+      const rootKey = timeline.rootKey;
+      // Recording starts before the first step and stops after totalMs (finishReplay)
+      if (record) {
+        const recording = canvasRef.current ? recordCanvas(canvasRef.current) : null;
+        if (!recording) {
+          stopReplay();
+          showReplayNotice("This browser can't record the floor plan.");
+          return;
+        }
+        replayRecordingRef.current = recording;
+      }
+      setReplay({ key: rootKey, step: 0, total, loading: false, recording: record });
       schedule.forEach(({ offsetMs, step }, i) => {
         replayTimersRef.current.push(
           window.setTimeout(() => {
@@ -441,14 +494,14 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
           }, offsetMs)
         );
       });
-      replayTimersRef.current.push(window.setTimeout(stopReplay, totalMs));
+      replayTimersRef.current.push(window.setTimeout(() => finishReplay(rootKey), totalMs));
     },
-    [endReplay, stopReplay, stopDemo, showReplayNotice, onViewModeChange]
+    [endReplay, stopReplay, finishReplay, stopDemo, showReplayNotice, onViewModeChange]
   );
 
-  // A new Replay click (new nonce) starts or restarts the replay
+  // A new Replay or Save as video click (new nonce) starts or restarts the replay
   useEffect(() => {
-    if (replayRequest) void startReplay(replayRequest.key);
+    if (replayRequest) void startReplay(replayRequest.key, replayRequest.record);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replayRequest?.nonce]);
   // Unmount: clear the timers without calling back into the parent
@@ -457,6 +510,8 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
       replayRunRef.current++;
       replayTimersRef.current.forEach((t) => window.clearTimeout(t));
       window.clearTimeout(noticeTimerRef.current);
+      replayRecordingRef.current?.cancel();
+      replayRecordingRef.current = null;
     },
     []
   );
@@ -884,21 +939,26 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
           </div>
         )}
 
-        {(replay || replayNotice) && (
+        {(replay || replaySaving || replayNotice) && (
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 max-w-[calc(100%-24px)] bg-surface/95 border border-sand-200 shadow-md rounded-lg px-3 py-1.5 flex items-center gap-3 text-[11px] backdrop-blur">
             <span className="font-bold text-sand-800 truncate" role="status" aria-live="polite">
               {replay
                 ? replay.loading
                   ? `Loading replay of ${replay.key}…`
-                  : `Replay ${replay.key} · step ${replay.step} of ${replay.total}`
-                : replayNotice}
+                  : `${replay.recording ? 'Recording' : 'Replay'} ${replay.key} · step ${replay.step} of ${replay.total}`
+                : replaySaving
+                  ? `Saving video of ${replaySaving}…`
+                  : replayNotice}
             </span>
+            {replay?.recording && !replay.loading && (
+              <span className="shrink-0 w-2 h-2 rounded-full bg-rose-600 animate-pulse" aria-hidden="true" />
+            )}
             {replay && (
               <button
                 type="button"
                 onClick={stopReplay}
                 className="shrink-0 flex items-center gap-1 font-bold text-sand-600 hover:text-sand-900 cursor-pointer"
-                title="Stop the replay"
+                title={replay.recording ? 'Stop the replay; nothing is saved' : 'Stop the replay'}
               >
                 <Square className="w-3 h-3" />
                 <span>Stop</span>

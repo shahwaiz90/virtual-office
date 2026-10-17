@@ -14,5 +14,6 @@ const mod = await loadTs('../src/components/floorLayout.ts');
 export const choreo = await loadTs('../src/components/handoffChoreo.ts');
 export const demo = await loadTs('../src/components/demoTour.ts');
 export const replay = await loadTs('../src/components/replayPlayer.ts');
+export const recording = await loadTs('../src/components/canvasRecording.ts');
 
 export default mod;
