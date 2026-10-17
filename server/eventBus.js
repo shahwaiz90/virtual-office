@@ -1,4 +1,12 @@
 const EventEmitter = require('events');
+
+// Statuses during which a role's work clock runs
+const ACTIVE_STATUSES = new Set(['working', 'coding', 'testing', 'planning', 'reviewing', 'delegating', 'busy']);
+// Runtime state a role keeps when its definition is reloaded
+const LIVE_AGENT_FIELDS = [
+  'status', 'currentTask', 'currentFile', 'lastTool', 'activityMessage', 'delegatedBy',
+  'taskStartedAt', 'taskCompletedAt', 'taskDurationSec', 'totalWorkTimeSec', 'currentPosition', 'targetPosition',
+];
 const path = require('path');
 const { discoverAgents, getProjectRoot } = require('./agentDiscovery');
 const { OrchestrationRules } = require('./orchestrationRules');
@@ -92,6 +100,45 @@ class EventBus extends EventEmitter {
       }
     }
     return normalized;
+  }
+
+  /** Adds the time since the role's clock started to its logged work and stops the clock. */
+  bankWorkTime(agent) {
+    if (!agent || !agent.taskStartedAt) return 0;
+    const elapsed = Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000);
+    agent.taskStartedAt = null;
+    if (!(elapsed > 0)) return 0;
+    agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
+    agent.taskCompletedAt = new Date().toISOString();
+    this.recordRoleInvocation(agent.id, elapsed);
+    return elapsed;
+  }
+
+  /**
+   * One rule for logged work, whichever code path changed a role's status: an active role has a running
+   * clock, any other role has its running time banked. Runs before every state snapshot (every broadcast).
+   */
+  settleWorkClocks() {
+    for (const agent of this.agents.values()) {
+      const active = ACTIVE_STATUSES.has(agent.status);
+      if (active && !agent.taskStartedAt) agent.taskStartedAt = new Date().toISOString();
+      else if (!active && agent.taskStartedAt) this.bankWorkTime(agent);
+    }
+  }
+
+  /**
+   * Swaps in freshly discovered roles (after a team edit or a change to the role files) while keeping each
+   * remaining role's live state: status, current work, clock and logged time. Returns the removed role ids.
+   */
+  replaceAgents(discovered) {
+    const previous = new Map(this.agents);
+    this.agents.clear();
+    for (const a of discovered || []) {
+      const old = previous.get(a.id);
+      if (old) for (const field of LIVE_AGENT_FIELDS) if (old[field] !== undefined) a[field] = old[field];
+      this.agents.set(a.id, a);
+    }
+    return Array.from(previous.keys()).filter((id) => !this.agents.has(id));
   }
 
   setAgentBusyTimer(agentId, callback, delayMs = 4000) {
@@ -825,13 +872,7 @@ class EventBus extends EventEmitter {
       if (payload.task) {
         if (!agent.currentTask || agent.currentTask !== payload.task) {
           // Bank the time already worked before the clock restarts for the new task
-          if (agent.taskStartedAt && ['working', 'coding', 'testing', 'planning'].includes(agent.status)) {
-            const elapsed = Math.round((Date.now() - new Date(agent.taskStartedAt).getTime()) / 1000);
-            if (elapsed > 0) {
-              agent.totalWorkTimeSec = (agent.totalWorkTimeSec || 0) + elapsed;
-              this.recordRoleInvocation(agentId, elapsed);
-            }
-          }
+          this.bankWorkTime(agent);
           agent.taskStartedAt = new Date().toISOString();
           agent.taskCompletedAt = null;
           agent.taskDurationSec = null;
@@ -1106,6 +1147,7 @@ class EventBus extends EventEmitter {
   }
 
   getStateSnapshot() {
+    this.settleWorkClocks();
     const agentsList = Array.from(this.agents.values());
     const hasAgents = agentsList.length > 0;
     const tasksList = hasAgents ? Array.from(this.tasks.values()) : [];

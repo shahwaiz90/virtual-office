@@ -1124,15 +1124,11 @@ function reloadAgentRolesFromDisk(root) {
       autoDiscoverAndRegisterAgents(root);
       const discovered = discoverAgents(root);
       if (discovered && discovered.length > 0) {
-        eventBus.agents.clear();
-        const activeIds = new Set(discovered.map((a) => a.id));
-        for (const a of discovered) {
-          eventBus.agents.set(a.id, a);
-        }
-        // Purge events/tasks from removed agents
-        eventBus.events = eventBus.events.filter((e) => activeIds.has(e.agentId));
+        // Remaining roles keep their live state (status, clock, logged time); only removed roles are purged
+        const removed = new Set(eventBus.replaceAgents(discovered));
+        eventBus.events = eventBus.events.filter((e) => !removed.has(e.agentId));
         for (const [tId, t] of eventBus.tasks.entries()) {
-          if (t.assignedTo && !activeIds.has(t.assignedTo)) {
+          if (t.assignedTo && removed.has(t.assignedTo)) {
             eventBus.tasks.delete(tId);
           }
         }
@@ -1312,6 +1308,7 @@ function handleWorkspaceFileChange(filePath, action) {
     (norm.includes('/.agents/definitions/') && norm.endsWith('.md'));
 
   if (isAgentConfig) {
+    console.log(`[Watchers] Role files changed (${relPath} ${action}): reloading roles`);
     reloadAgentRolesFromDisk(getProjectRoot());
   }
 
