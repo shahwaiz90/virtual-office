@@ -369,6 +369,133 @@ function renderTaskMarkdown(detail) {
   return lines.join('\n') + '\n';
 }
 
+const clip = (text, max) => {
+  const t = String(text || '').trim();
+  return t.length > max ? `${t.slice(0, max).trimEnd()}… (${t.length - max} more chars)` : t;
+};
+
+function deliverablesOf(key) {
+  return Array.from(eventBus.deliverables.values()).filter((d) => d.metadata?.taskKey === key);
+}
+
+/**
+ * The compact card agents read (format=brief): everything needed to act on it, without the full
+ * history. The brief, criteria and context are complete; the thread shows only its latest entries
+ * and deliverables are listed by id. `?format=md` and GET /api/deliverables/<id> return the rest.
+ */
+function renderTaskBrief(detail, { threadLimit = 4 } = {}) {
+  const lines = [`# ${detail.key}: ${detail.title}`, ''];
+  const meta = [`${detail.type || 'task'}`, detail.column, `assigned to ${detail.assignedTo || '-'}`];
+  if (detail.delegatedBy) meta.push(`by ${detail.delegatedBy}`);
+  if (detail.skill) meta.push(`skill ${detail.skill}`);
+  lines.push(`- ${meta.join(' · ')}`);
+  if (detail.parent) lines.push(`- Part of: ${detail.parent.key} ${detail.parent.title} (${detail.parent.column})`);
+  if (detail.dependencies.length) {
+    lines.push(`- Depends on: ${detail.dependencies.map((d) => `${d.key}${d.column ? ` (${d.column})` : ' (missing)'}`).join(', ')}`);
+  }
+  if (detail.brief) lines.push('', '## Brief', detail.brief);
+  if (detail.description && detail.description !== detail.brief) lines.push('', '## Description', clip(detail.description, 1500));
+  if (detail.acceptanceCriteria && detail.acceptanceCriteria.length) lines.push('', '## Acceptance criteria', list(detail.acceptanceCriteria));
+  if (detail.context) {
+    const ctx = detail.context;
+    lines.push('', '## Context');
+    if (typeof ctx === 'string') lines.push(clip(ctx, 2000));
+    else {
+      if (ctx.files && ctx.files.length) lines.push(`Files: ${ctx.files.join(', ')}`);
+      if (ctx.decisions && ctx.decisions.length) lines.push('Decisions:', list(ctx.decisions));
+      if (ctx.links && ctx.links.length) lines.push(`Links: ${ctx.links.join(', ')}`);
+      if (ctx.notes) lines.push(clip(ctx.notes, 1500));
+    }
+  }
+  if (detail.children.length) {
+    lines.push('', '## Sub-tasks');
+    for (const c of detail.children) {
+      const child = findTask(c.key);
+      lines.push(`- ${c.key} ${c.title} → ${c.assignedTo} (${c.column})${child && child.result ? `: ${clip(child.result, 300)}` : ''}`);
+    }
+  }
+  const delivs = deliverablesOf(detail.key);
+  if (delivs.length) {
+    lines.push('', '## Deliverables');
+    for (const d of delivs) lines.push(`- ${d.id} · ${d.type} by ${d.agentId}: ${clip(d.summary || d.title, 200)}`);
+  }
+  // The handoff entry repeats the brief; leave it out
+  const thread = (detail.thread || []).filter((m) => !(m.kind === 'handoff' && detail.brief && m.text === String(detail.brief).trim()));
+  if (thread.length) {
+    const shown = thread.slice(-threadLimit);
+    lines.push('', `## Thread (latest ${shown.length} of ${thread.length})`);
+    for (const m of shown) lines.push(`- ${String(m.at || '').slice(5, 16).replace('T', ' ')} [${m.kind}] ${m.agentId}${m.to ? ` → ${m.to}` : ''}: ${clip(m.text, 600)}`);
+  }
+  if (detail.result) lines.push('', '## Result', clip(detail.result, 1500));
+  const more = [thread.length > threadLimit ? 'full thread: `?format=md`' : '', delivs.length ? 'a deliverable: `GET /api/deliverables/<id>`' : ''].filter(Boolean);
+  if (more.length) lines.push('', `More: ${more.join('; ')}.`);
+  return lines.join('\n') + '\n';
+}
+
+/** One line per card, for agents looking something up on the board. */
+function renderTaskList(tasks) {
+  return tasks.map((t) => `${t.key} [${t.type || 'task'}] ${t.title} → ${t.assignedTo || '-'} (${t.column})${t.parentKey ? ` part of ${t.parentKey}` : ''}`).join('\n') + '\n';
+}
+
+/**
+ * POST /api/tasks/:key/start: the assignee picks up its card in one call (moved to in_progress unless a
+ * dependency is still open). Anyone else, such as the delegator reviewing it, just reads it.
+ * Returns the line that says what happened, for the top of the brief.
+ */
+function startTask(task, { agentId, note } = {}) {
+  const actor = agentId || task.assignedTo;
+  const open = (task.dependsOn || []).map((k) => findTask(k)).filter((d) => d && d.column !== 'done');
+  if (actor !== task.assignedTo) {
+    return ['review', 'testing'].includes(task.column)
+      ? `${task.key} is in ${task.column}: review it as ${actor}, then finish it with column "done", or "in_progress" with what is missing.`
+      : `${task.key} is assigned to ${task.assignedTo} (${task.column}); you are reading it as ${actor}.`;
+  }
+  if (open.length) {
+    return `${task.key} waits on ${open.map((d) => `${d.key} (${d.column})`).join(', ')}: say so on the thread and stop until ${open.length > 1 ? 'they are' : 'it is'} done.`;
+  }
+  if (['backlog', 'assigned'].includes(task.column)) {
+    const from = task.column;
+    setTaskStatus(task, { column: 'in_progress', agentId: actor, note: note || 'Starting' });
+    return `${task.key}: ${from} → in_progress.`;
+  }
+  return `${task.key} is already ${task.column}.`;
+}
+
+/**
+ * POST /api/tasks/:key/finish: deliverable, result and move in one call. The column defaults to
+ * `review` for a card someone delegated to its assignee, otherwise `done`.
+ */
+function finishTask(task, { agentId, column, result, note, deliverable } = {}) {
+  const actor = agentId || task.assignedTo;
+  const target = column || (actor === task.assignedTo && task.delegatedBy && task.delegatedBy !== actor ? 'review' : 'done');
+  if (!COLUMNS.includes(target)) throw new Error(`column must be one of: ${COLUMNS.join(', ')}`);
+  let saved = null;
+  if (deliverable) {
+    const item = typeof deliverable === 'string' ? { content: deliverable } : deliverable;
+    saved = eventBus.recordDeliverable(
+      normalizeCardDeliverable({
+        ...item,
+        title: item.title || task.title,
+        summary: item.summary || (result ? String(result).trim().slice(0, 300) : undefined),
+        format: item.format || 'markdown',
+        taskKey: task.key,
+        agentId: actor,
+      })
+    );
+  }
+  const outcome = result || (saved && saved.summary) || undefined;
+  setTaskStatus(task, { column: target, agentId: actor, note, result: outcome });
+  recordCardDeliverable(task, { agentId: actor, result: outcome, column: target });
+  const handBackTo = task.column === 'review' && task.delegatedBy && task.delegatedBy !== actor ? task.delegatedBy : null;
+  return {
+    key: task.key,
+    column: task.column,
+    deliverable: saved ? saved.id : null,
+    parent: task.parentKey ? summarize(findTask(task.parentKey)) : null,
+    reviewer: handBackTo,
+  };
+}
+
 module.exports = {
   COLUMNS,
   THREAD_KINDS,
@@ -381,6 +508,10 @@ module.exports = {
   rosterHasTester,
   effectiveColumn,
   renderTaskMarkdown,
+  renderTaskBrief,
+  renderTaskList,
+  startTask,
+  finishTask,
   normalizeCardDeliverable,
   recordCardDeliverable,
 };

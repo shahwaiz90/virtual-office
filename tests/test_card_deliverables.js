@@ -128,7 +128,7 @@ async function deliverables(port) {
     const prompt = (id) => subagentMarkdown(registry.agents.find((a) => a.id === id), registry, testRoot);
     assert.ok(prompt('tech-pm').includes('`prd`'));
     assert.ok(prompt('web-tech-lead').includes('`architecture`') && prompt('web-tech-lead').includes('`code_review`'));
-    assert.ok(prompt('web-dev').includes('`source_code`') && prompt('web-dev').includes('/api/deliverables'));
+    assert.ok(prompt('web-dev').includes('`source_code`') && prompt('web-dev').includes('/finish') && prompt('web-dev').includes('"deliverable":{"type":"source_code"'));
     const skill = fs.readFileSync(path.join(__dirname, '..', '.agents', 'skills', 'kanban-handoff', 'SKILL.md'), 'utf8');
     assert.ok(skill.includes('/api/deliverables') && skill.includes('taskKey'));
     console.log('  ✅ Test 4 Passed: Skill and prompts describe the role deliverable.\n');

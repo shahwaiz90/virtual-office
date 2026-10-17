@@ -179,7 +179,7 @@ This is the instructions body.
     // Verify AGENTS.md content
     const agentsMd = fs.readFileSync(path.join(sandboxDir, 'AGENTS.md'), 'utf8');
     assert.ok(agentsMd.includes('ALWAYS INVOKE `tech-pm` FIRST'));
-    assert.ok(agentsMd.includes('flowchart TD'));
+    assert.ok(!agentsMd.includes('flowchart TD') && agentsMd.length < 1500, 'AGENTS.md holds only the routing (it is injected into every agent)');
     assert.ok(agentsMd.includes('tech-pm'));
 
     // Verify CLAUDE.md content

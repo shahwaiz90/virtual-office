@@ -7,7 +7,7 @@
 
 const path = require('path');
 const BaseAdapter = require('./baseAdapter');
-const { rosterTable, skillsList, orchestratorOf } = require('./rolePrompt');
+const { DELEGATION_PROMPT, rosterTable, skillsList, orchestratorOf } = require('./rolePrompt');
 
 class GeminiAdapter extends BaseAdapter {
   constructor() {
@@ -39,7 +39,7 @@ class GeminiAdapter extends BaseAdapter {
       rosterTable(reg),
       ``,
       `## Delegation`,
-      `Hand work on only along "Hands work to". A delegation prompt carries only the card reference: \`Your task: <KEY>. Read it with curl -s "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/<KEY>?format=md" and follow the kanban-handoff skill.\` Everything else (brief, criteria, context, thread, result) is on the card; see \`.agents/skills/kanban-handoff/SKILL.md\`.`,
+      `Hand work on only along "Hands work to". A delegation prompt carries only the card reference: \`${DELEGATION_PROMPT}\` Everything else (brief, criteria, context, thread, result) is on the card; see \`.agents/skills/kanban-handoff/SKILL.md\`.`,
       ``,
       `## Skills`,
       skillsList(reg),
