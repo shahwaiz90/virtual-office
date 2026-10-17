@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f2f4f9">
 <meta name="description" content="Virtual Office turns the hidden work of AI coding agents into an office you can see.">
 <title>Virtual Office</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -12,36 +14,16 @@
 <style>
 /* Layout: an after-hours engineering floor seen from above — a live floor plan stage, then calm bands that unpack it. */
 :root {
-  --bg:#0d1220; --bg2:#111829; --panel:#161f33; --panel2:#1c2740;
-  --line:#283550; --line2:#3a4a6b;
-  --fg:#e9edf6; --muted:#9aa6bf; --faint:#66738f;
-  --lamp:#f4ae47; --lamp-soft:rgba(244,174,71,.15); --on-lamp:#1d1405;
-  --sky:#7cc2ff; --mint:#5ccf9f; --rose:#ff8496;
-  --floor:#10192a; --grid:#1d2840; --wall:#41537a; --desk:#1b2741;
-  --shadow:0 24px 60px -24px rgba(0,0,0,.7);
+  --bg:#f2f4f9; --bg2:#e9edf5; --panel:#ffffff; --panel2:#f5f7fb;
+  --line:#d6dceb; --line2:#b6c1d8;
+  --fg:#121a2c; --muted:#4d5973; --faint:#5f6b85;
+  --lamp:#9a5a08; --lamp-soft:rgba(154,90,8,.12); --on-lamp:#ffffff;
+  --sky:#1866b4; --mint:#0d7a52; --rose:#b5344a;
+  --floor:#f8fafd; --grid:#dfe5f0; --wall:#8a99b8; --desk:#e5eaf4;
+  --shadow:0 24px 60px -28px rgba(30,45,80,.35);
   --f-display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
   --f-body:"Instrument Sans", "Helvetica Neue", system-ui, sans-serif;
   --f-mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  color-scheme: dark;
-}
-@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
-  --bg:#f2f4f9; --bg2:#e9edf5; --panel:#ffffff; --panel2:#f5f7fb;
-  --line:#d6dceb; --line2:#b6c1d8;
-  --fg:#121a2c; --muted:#4d5973; --faint:#7d89a3;
-  --lamp:#b5690a; --lamp-soft:rgba(181,105,10,.12); --on-lamp:#ffffff;
-  --sky:#1b6ec0; --mint:#0f8257; --rose:#c43a4f;
-  --floor:#f8fafd; --grid:#dfe5f0; --wall:#8a99b8; --desk:#e5eaf4;
-  --shadow:0 24px 60px -28px rgba(30,45,80,.35);
-  color-scheme: light;
-} }
-:root[data-theme="light"] {
-  --bg:#f2f4f9; --bg2:#e9edf5; --panel:#ffffff; --panel2:#f5f7fb;
-  --line:#d6dceb; --line2:#b6c1d8;
-  --fg:#121a2c; --muted:#4d5973; --faint:#7d89a3;
-  --lamp:#b5690a; --lamp-soft:rgba(181,105,10,.12); --on-lamp:#ffffff;
-  --sky:#1b6ec0; --mint:#0f8257; --rose:#c43a4f;
-  --floor:#f8fafd; --grid:#dfe5f0; --wall:#8a99b8; --desk:#e5eaf4;
-  --shadow:0 24px 60px -28px rgba(30,45,80,.35);
   color-scheme: light;
 }
 
@@ -115,7 +97,7 @@ code, .mono { font-family: var(--f-mono); }
 .log { border-top: 1px solid var(--line); padding: 10px 14px 12px; font: 400 .72rem/1.65 var(--f-mono); color: var(--muted); height: 158px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }
 .log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: slidein .35s ease both; }
 .log .ts { color: var(--faint); }
-.log .who { display: inline-block; min-width: 13ch; }
+.log .who { display: inline-block; min-width: 14ch; }
 .log .handoff { color: var(--sky); }
 .log .ok { color: var(--mint); }
 @keyframes slidein { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -173,11 +155,20 @@ section { padding-block: clamp(64px, 9vw, 120px); }
 .sd-code .g { color: var(--mint); }
 .sd-code .a { color: var(--lamp); }
 .fade-in { animation: slidein .4s ease both; }
+.fast { margin-top: 14px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px 28px; align-items: center; padding: clamp(18px, 3vw, 26px) clamp(20px, 3vw, 32px); border: 1px dashed var(--line2); border-radius: 14px; background: var(--panel2); }
+.fast-copy { display: grid; gap: 8px; }
+.fast-copy p { color: var(--muted); max-width: 58ch; }
+.fast-route { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font: 500 .76rem var(--f-mono); color: var(--fg); }
+.fast-route .hop { display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px 5px 5px; border-radius: 999px; border: 1px solid var(--line2); background: var(--panel); }
+.fast-route img, .fast-route .you { width: 22px; height: 22px; border-radius: 50%; background: var(--panel2); flex: none; }
+.fast-route .you { display: grid; place-items: center; font: 600 .6rem var(--f-mono); border: 1px solid var(--line2); }
+.fast-route .arr { color: var(--lamp); }
 @media (max-width: 860px) {
   .steps { grid-template-columns: repeat(5, minmax(150px, 1fr)); overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x mandatory; }
   .step { scroll-snap-align: start; }
   .step-detail { grid-template-columns: 1fr; }
   .sd-code { border-left: 0; border-top: 1px solid var(--line); }
+  .fast { grid-template-columns: 1fr; }
 }
 
 /* views */
@@ -230,6 +221,18 @@ section { padding-block: clamp(64px, 9vw, 120px); }
 .meter .spark { grid-column: 2 / 4; height: 4px; border-radius: 2px; background: var(--panel2); overflow: hidden; }
 .meter .spark i { display: block; height: 100%; width: var(--w); background: var(--c); transition: width .8s ease; }
 
+.replay, .tour { display: grid; gap: 7px; }
+.rp { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: center; padding: 6px 9px; border-radius: 9px; border: 1px solid transparent; font-size: .8rem; line-height: 1.35; color: var(--muted); transition: background .3s, border-color .3s, color .3s; }
+.rp img { width: 22px; height: 22px; border-radius: 50%; background: var(--panel2); }
+.rp small { display: block; font: 500 .64rem var(--f-mono); color: var(--faint); }
+.rp.on { background: var(--panel2); border-color: var(--line2); color: var(--fg); }
+.rp-bar { display: flex; align-items: center; gap: 10px; margin-top: 4px; font: 500 .68rem var(--f-mono); color: var(--muted); }
+.rp-bar .track { flex: 1; height: 4px; border-radius: 2px; background: var(--panel2); overflow: hidden; }
+.rp-bar .track i { display: block; height: 100%; width: 0; background: var(--lamp); transition: width .5s ease; }
+.rp-bar .tag { padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line2); background: var(--panel); white-space: nowrap; }
+.tour-banner { padding: 7px 11px; border-radius: 9px; background: var(--lamp-soft); border: 1px solid color-mix(in srgb, var(--lamp) 35%, transparent); font-size: .78rem; color: var(--fg); }
+.tour-banner b { color: var(--lamp); font-weight: 600; }
+
 /* sync diagram */
 .sync { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: clamp(24px, 6vw, 90px); align-items: center; }
 .sync svg.wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
@@ -254,7 +257,8 @@ section { padding-block: clamp(64px, 9vw, 120px); }
 }
 
 /* trust */
-.trust { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(20px, 4vw, 48px); }
+.trust { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(20px, 4vw, 48px); }
+@media (max-width: 1020px) { .trust { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .trust-item { display: grid; gap: 10px; align-content: start; }
 .trust-item svg { width: 34px; height: 34px; color: var(--lamp); }
 .trust-item p { color: var(--muted); }
@@ -334,7 +338,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
         <h1>Watch your AI team <span class="lit">at work.</span></h1>
       </div>
       <div class="hero-side">
-        <p class="lede">Virtual Office turns the hidden work of AI coding agents into an office you can see. A Scrum Master, a Tech Lead and a Developer sit at their desks, hand real cards to each other, and move them across a live Kanban board.</p>
+        <p class="lede">Virtual Office turns the hidden work of AI coding agents into an office you can see. A Scrum Master, a Tech Lead, a Developer and a QA engineer sit at their desks, walk over to hand each other real cards, and move them across a live Kanban board.</p>
         <div class="ctas">
           <a class="btn btn-primary" href="#flow">See a request move <span aria-hidden="true">→</span></a>
           <button class="cmd" type="button" data-copy="npx agent-virtual-office" aria-label="Copy the install command"><span><span class="p">$</span> npx agent-virtual-office</span><span class="copy">copy</span></button>
@@ -342,7 +346,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
       </div>
     </div>
 
-    <div class="stage" role="img" aria-label="Animated replay of the Virtual Office portal: three agents at desks hand cards to each other while a Kanban board and activity log update.">
+    <div class="stage" role="img" aria-label="Animated replay of the Virtual Office portal: four agents at desks walk over to hand cards to each other while a Kanban board and activity log update.">
       <div class="stage-bar">
         <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="url">127.0.0.1:3000 · Virtual Office · Sprint 1</span>
@@ -368,6 +372,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
           <span style="--c: var(--lamp)">Scrum Master</span>
           <span style="--c: var(--sky)">Tech Lead</span>
           <span style="--c: var(--mint)">Developer</span>
+          <span style="--c: var(--rose)">QA</span>
         </div>
         <span>Replay of a typical run, shortened</span>
       </div>
@@ -380,7 +385,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
     <div class="raw" aria-hidden="true"><div class="raw-inner" id="raw"></div></div>
     <div class="problem-copy">
       <div class="eyebrow">The problem</div>
-      <p class="big">Three AI agents can plan, build and review a feature in minutes. <em>All you usually see is a scrolling terminal.</em></p>
+      <p class="big">A team of AI agents can plan, build, test and review a feature in minutes. <em>All you usually see is a scrolling terminal.</em></p>
       <p class="lede">Virtual Office reads the same sessions your tools already record and shows who is working, on which card, what they handed off and why. Managers get the picture at a glance. Engineers get the detail one click away.</p>
     </div>
   </div>
@@ -394,6 +399,18 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
     </div>
     <div class="steps" role="tablist" aria-label="Stages of a request" id="steps"></div>
     <div class="step-detail" id="stepDetail" role="tabpanel"></div>
+    <div class="fast">
+      <div class="fast-copy">
+        <div class="eyebrow">Small change? Fast path.</div>
+        <p>When the Scrum Master sizes a request as small (one to three files, no change to a shared type, API, payload or stored data), it skips the contract. One card goes straight to the Developer, who maps the impact first, and the Tech Lead reviews it.</p>
+      </div>
+      <div class="fast-route" aria-label="Fast path: you, Scrum Master, Developer, then Tech Lead review">
+        <span class="hop"><span class="you">you</span>You</span><span class="arr" aria-hidden="true">→</span>
+        <span class="hop"><img alt="" src="img/projectmanager.png">Scrum Master</span><span class="arr" aria-hidden="true">→</span>
+        <span class="hop"><img alt="" src="img/developer.png">Developer</span><span class="arr" aria-hidden="true">→</span>
+        <span class="hop"><img alt="" src="img/techlead.png">Tech Lead reviews</span>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -401,8 +418,8 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
   <div class="wrap">
     <div class="sec-head">
       <div class="eyebrow">What you see</div>
-      <h2>Four views of the same work, all from real sessions.</h2>
-      <p class="lede">Next to the floor plan and the board, the portal shows the conversation between agents, the tools they used, the code they changed and the time and tokens each role spent.</p>
+      <h2>Every angle on the same work, all from real sessions.</h2>
+      <p class="lede">Next to the floor plan and the board, the portal shows the conversation between agents, the tools they used, the code they changed and the time and tokens each role spent. A finished requirement can be replayed on the floor plan, and first-time users can watch a short demo.</p>
     </div>
     <div class="views">
       <article class="view">
@@ -418,7 +435,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
       <article class="view">
         <div class="view-copy"><h3>Code change inspector</h3><p>The diff each agent produced, filed under the card and the role that made it.</p></div>
         <div class="view-vis"><div class="diff">
-          <div class="diff-h"><b>src/components/SettingsModal.tsx</b><span><span class="add">+3</span> <span class="del">−1</span></span></div>
+          <div class="diff-h"><b>src/components/KanbanBoard.tsx</b><span><span class="add">+3</span> <span class="del">−1</span></span></div>
           <div class="diff-body" id="diff"></div>
         </div></div>
         <div class="view-foot">Example diff · web-dev · VO-43</div>
@@ -427,6 +444,16 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
         <div class="view-copy"><h3>Time and tokens</h3><p>Work time is logged per role while it is active, with the token usage your tools recorded.</p></div>
         <div class="view-vis"><div class="meters" id="meters"></div></div>
         <div class="view-foot">Example figures, counting up</div>
+      </article>
+      <article class="view">
+        <div class="view-copy"><h3>Replay a requirement</h3><p>A Replay button on a finished requirement plays its handoffs on the floor plan, with decisions, reviews and results as captions. Save as video keeps a recording. Nothing is written to the board.</p></div>
+        <div class="view-vis"><div class="replay" id="replay"></div></div>
+        <div class="view-foot">Example timeline · VO-41</div>
+      </article>
+      <article class="view">
+        <div class="view-copy"><h3>Watch demo</h3><p>New to the office? A Watch demo button on the floor plan walks a scripted request through your own team, from the Scrum Master to the people who build and test it and back. It runs in the browser and saves nothing.</p></div>
+        <div class="view-vis"><div class="tour" id="tour"></div></div>
+        <div class="view-foot">Built from the roster you saved in Team Studio</div>
       </article>
     </div>
   </div>
@@ -437,7 +464,7 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
     <div class="sec-head">
       <div class="eyebrow">Works with your AI tool</div>
       <h2>Define the team once. Every tool gets the same roles.</h2>
-      <p class="lede">Roles, skills and rules live as plain Markdown and YAML in your repository. One command writes them out in the format each AI tool reads, so nothing drifts between tools.</p>
+      <p class="lede">Roles, skills and rules live as plain Markdown and YAML in your repository, and Team Studio in the portal edits the same files. One command writes them out in the format each AI tool reads, including the rule that the main session only dispatches, so nothing drifts between tools.</p>
     </div>
     <div class="sync" id="sync">
       <svg class="wires" id="wires" aria-hidden="true"></svg>
@@ -448,7 +475,8 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
           <div>.agents/definitions/tech-pm.md</div>
           <div>.agents/definitions/web-tech-lead.md</div>
           <div>.agents/definitions/web-dev.md</div>
-          <div>.agents/skills/ · 59 skills</div>
+          <div>.agents/definitions/web-tester.md</div>
+          <div>.agents/skills/ · 60 skills</div>
         </div>
       </div>
       <div class="pill" id="pill">npx agents sync</div>
@@ -483,7 +511,12 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
       <div class="trust-item">
         <svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 18l7 7L28 9"/></svg>
         <h3>No made-up numbers</h3>
-        <p>Demo mode and mock data were removed. Every card, handoff and token count comes from a real session, and 26 test suites guard it in CI.</p>
+        <p>There is no mock data. Every card, handoff and token count comes from a real session, and 32 test suites guard it in CI. The Watch demo is labelled as a simulation and never touches your board.</p>
+      </div>
+      <div class="trust-item">
+        <svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="7" width="24" height="18" rx="3"/><path d="M11 30h12M17 25v5M11 13l12 7M23 13l-12 7"/></svg>
+        <h3>Changes go through the team</h3>
+        <p>The session you type into only dispatches work. In Claude Code a hook stops it from editing files, so every change, even a one-line fix, goes to the Scrum Master and gets reviewed.</p>
       </div>
     </div>
   </div>
@@ -496,11 +529,11 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
       <h2>Built in four days, shipped as an npm package.</h2>
     </div>
     <div class="numbers" id="numbers">
-      <div class="num-cell"><b data-n="4">4</b><span>days, first commit to v1.2.1</span></div>
-      <div class="num-cell"><b data-n="71">71</b><span>commits</span></div>
-      <div class="num-cell"><b data-n="16">16</b><span>pull requests merged</span></div>
-      <div class="num-cell"><b data-n="59">59</b><span>skills in the catalog</span></div>
-      <div class="num-cell"><b data-n="26">26</b><span>test suites in CI</span></div>
+      <div class="num-cell"><b data-n="4">4</b><span>days, first commit to today</span></div>
+      <div class="num-cell"><b data-n="99">99</b><span>commits</span></div>
+      <div class="num-cell"><b data-n="23">23</b><span>pull requests merged</span></div>
+      <div class="num-cell"><b data-n="60">60</b><span>skills in the catalog</span></div>
+      <div class="num-cell"><b data-n="32">32</b><span>test suites in CI</span></div>
       <div class="num-cell"><b data-n="4">4</b><span>AI tools supported</span></div>
     </div>
     <div class="build">
@@ -510,9 +543,10 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
         <div class="mile"><b>15 Oct</b><span><strong>Seeing the work.</strong> Workflow screen and video recorder, agent-to-agent prompts captured, file changes tab.</span></div>
         <div class="mile"><b>16 Oct</b><span><strong>One team file.</strong> Universal agent registry, multi-project isolation, project launcher.</span></div>
         <div class="mile"><b>17 Oct</b><span><strong>Ready to share.</strong> Local-only security, Integrations panel, token usage on desks and cards, OpenCode support, v1.2.1.</span></div>
+        <div class="mile"><b>17 Oct</b><span><strong>A team that works like one.</strong> Agents walk to each other's desks on handoffs, a fast path for small tasks, a QA role and Team Studio, Watch demo, a main session that only dispatches, and Replay with Save as video.</span></div>
       </div>
     </div>
-    <p class="src">Counted from the repository's git history on 17 Oct 2026.</p>
+    <p class="src">Counted from main at 7b64e94 (pull request #23) on 17 Oct 2026, 17:30: commits from git log, merged pull requests on GitHub, SKILL.md files in .agents/skills, suites in npm test, tool adapters in server/adapters.</p>
   </div>
 </section>
 
@@ -524,14 +558,14 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
       <div class="how">
         <ol>
           <li><span class="i">1</span><p><strong>Open your project folder</strong> in a terminal. New or existing, any stack.</p></li>
-          <li><span class="i">2</span><p><strong>Run the command.</strong> The portal finds your agents, or helps you pick a team for Android, iOS, Web and more.</p></li>
-          <li><span class="i">3</span><p><strong>Work as usual</strong> in Claude Code, Codex, Gemini or OpenCode. The office fills in as your agents work.</p></li>
+          <li><span class="i">2</span><p><strong>Run the command.</strong> The portal finds your agents, or helps you pick an Android, iOS or Web team (Scrum Master, Tech Lead, Developer and QA) that you can adjust in Team Studio.</p></li>
+          <li><span class="i">3</span><p><strong>Ask as usual</strong> in Claude Code, Codex, Gemini or OpenCode. Your session hands the request to the Scrum Master, and the office fills in as your agents work.</p></li>
         </ol>
       </div>
     </div>
     <div class="term">
       <div class="stage-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="url">~/your-project</span><button class="cmd" type="button" data-copy="npx agent-virtual-office" style="padding:4px 8px" aria-label="Copy the install command"><span class="copy" style="border:0;padding:0">copy</span></button></div>
-      <div class="term-body"><div><span class="p">$</span> npx agent-virtual-office</div><div class="o">Found 3 agents in .agents/registry.yaml</div><div class="o">Synced CLAUDE.md, AGENTS.md, GEMINI.md, .opencode/</div><div><span class="g">✓</span> Portal running at http://127.0.0.1:3000</div><div class="o caret">Watching Claude Code and OpenCode sessions </div></div>
+      <div class="term-body"><div><span class="p">$</span> npx agent-virtual-office</div><div class="o">Discovered 4 agents in .agents/registry.yaml</div><div class="o">  SM · LEAD · DEV · QA</div><div><span class="g">✓</span> Portal running at http://127.0.0.1:3000</div><div class="o caret">Watching Claude Code, OpenCode and Antigravity sessions </div></div>
     </div>
   </div>
 </section>
@@ -549,9 +583,9 @@ footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wr
 (() => {
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const $ = (s, r = document) => r.querySelector(s);
-const IMG = { 'tech-pm': 'img/projectmanager.png', 'web-tech-lead': 'img/techlead.png', 'web-dev': 'img/developer.png' };
-const ROLE = { 'tech-pm': 'Scrum Master', 'web-tech-lead': 'Tech Lead', 'web-dev': 'Developer' };
-const COLOR = { 'tech-pm': '--lamp', 'web-tech-lead': '--sky', 'web-dev': '--mint' };
+const IMG = { 'tech-pm': 'img/projectmanager.png', 'web-tech-lead': 'img/techlead.png', 'web-dev': 'img/developer.png', 'web-tester': 'img/qa.png' };
+const ROLE = { 'tech-pm': 'Scrum Master', 'web-tech-lead': 'Tech Lead', 'web-dev': 'Developer', 'web-tester': 'QA' };
+const COLOR = { 'tech-pm': '--lamp', 'web-tech-lead': '--sky', 'web-dev': '--mint', 'web-tester': '--rose' };
 const sleep = ms => new Promise(r => setTimeout(r, reduce ? Math.min(ms, 400) : ms));
 
 /* ---------- copy ---------- */
@@ -563,22 +597,17 @@ document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click'
   p.then(() => say('Copied: ' + txt)).catch(() => say('Select and copy: ' + txt));
 }));
 
-/* ---------- theme tokens for canvas ---------- */
-let T = {};
-function readTokens() {
-  const cs = getComputedStyle(document.documentElement);
-  ['--floor','--grid','--wall','--desk','--line','--line2','--fg','--muted','--faint','--panel','--panel2','--lamp','--sky','--mint','--rose'].forEach(k => T[k] = cs.getPropertyValue(k).trim());
-}
-readTokens();
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readTokens);
-new MutationObserver(readTokens).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+/* ---------- colour tokens for canvas (light only, read once) ---------- */
+const T = {};
+const cs = getComputedStyle(document.documentElement);
+['--floor','--grid','--wall','--desk','--line','--line2','--fg','--muted','--faint','--panel','--panel2','--lamp','--sky','--mint','--rose'].forEach(k => T[k] = cs.getPropertyValue(k).trim());
 
 /* ---------- floor plan ---------- */
 const cv = $('#floor'), ctx = cv.getContext('2d');
 const W = 720, H = 430, CORR = 262;
 const imgs = {};
 for (const [k, src] of Object.entries(IMG)) { const im = new Image(); im.src = src; imgs[k] = im; }
-const desks = { 'tech-pm': { x: 140, y: 74 }, 'web-tech-lead': { x: 360, y: 74 }, 'web-dev': { x: 580, y: 74 } };
+const desks = { 'tech-pm': { x: 116, y: 74 }, 'web-tech-lead': { x: 278, y: 74 }, 'web-dev': { x: 440, y: 74 }, 'web-tester': { x: 602, y: 74 } };
 const seat = id => ({ x: desks[id].x, y: desks[id].y + 92 });
 const DOOR = { x: 92, y: 440 };
 const agents = {};
@@ -648,7 +677,7 @@ function draw() {
   ctx.beginPath(); ctx.ellipse(360, 365, 70, 20, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; ctx.beginPath(); ctx.arc(360 + Math.cos(a) * 88, 365 + Math.sin(a) * 30, 6, 0, Math.PI * 2); ctx.stroke(); }
   // plants
-  for (const [px, py] of [[675, 385], [44, 60], [675, 50]]) {
+  for (const [px, py] of [[675, 385], [42, 300], [680, 236]]) {
     ctx.fillStyle = T['--mint']; ctx.globalAlpha = .35;
     for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; ctx.beginPath(); ctx.ellipse(px + Math.cos(a) * 7, py + Math.sin(a) * 7, 7, 4, a, 0, Math.PI * 2); ctx.fill(); }
     ctx.globalAlpha = 1;
@@ -700,7 +729,7 @@ function draw() {
   for (const a of Object.values(agents).sort((p, q) => p.y - q.y)) {
     const col = T[COLOR[a.id]], moving = a.path.length > 0, bob = moving ? Math.abs(Math.sin(a.walk / 110)) * 4 : 0;
     const x = a.x, y = a.y - bob, R = 21;
-    ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.ellipse(a.x, a.y + R + 2, 16 - bob, 5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(30,45,80,.14)'; ctx.beginPath(); ctx.ellipse(a.x, a.y + R + 2, 16 - bob, 5, 0, 0, Math.PI * 2); ctx.fill();
     ctx.save(); ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fillStyle = T['--panel2']; ctx.fill(); ctx.clip();
     const im = imgs[a.id];
     if (im.complete && im.naturalWidth) ctx.drawImage(im, x - R - 2, y - R - 1, R * 2 + 4, R * 2 + 4);
@@ -785,92 +814,135 @@ function log(who, text, cls = '') {
 /* seed: a board and log that already have history */
 addCard('VO-38', 'Mobile-friendly portal header', 'web-dev', false, 'done');
 addCard('VO-39', 'Contract: header breakpoints', 'web-tech-lead', false, 'done');
-addCard('VO-40', 'Readable dark mode', 'web-dev', false, 'review');
-log('web-dev', 'run   npm test  26 suites passed', 'ok');
+addCard('VO-40', 'Fix clipped column label', 'web-dev', false, 'review');
+log('web-dev', 'run   npm test  32 suites passed', 'ok');
 log('web-tech-lead', 'review VO-40  in progress');
 
 /* ---------- the replay ---------- */
 const REQUESTS = [
-  { title: 'Add a dark mode toggle to Settings', build: 'Build the theme toggle', files: [['src/components/SettingsModal.tsx', 42, 3], ['src/styles/tokens.css', 18, 0]] },
-  { title: 'Show token usage on Kanban cards', build: 'Token badge on cards', files: [['src/components/KanbanBoard.tsx', 36, 8], ['server/taskBoard.js', 21, 2]] },
-  { title: 'Keep logged time across handoffs', build: 'Persist work time', files: [['server/agentRunner.js', 27, 11], ['tests/test_work_time.js', 64, 0]] },
+  { title: 'Add CSV export to the board', size: 'full · API change', build: 'Build CSV export', qa: true, files: [['src/components/KanbanBoard.tsx', 42, 3], ['server/taskBoard.js', 31, 2]] },
+  { title: 'Fix the empty-board message', size: 'small · 1 file', fast: true, build: 'Fix the empty-board message', files: [['src/components/KanbanBoard.tsx', 4, 2]] },
+  { title: 'Keep logged time across handoffs', size: 'full · stored data', build: 'Persist work time', files: [['server/agentRunner.js', 27, 11], ['tests/test_work_time.js', 64, 0]] },
 ];
 let keyN = 41;
 const nk = () => 'VO-' + keyN++;
-async function cycle(req) {
-  const R = nk(), C = nk(), B = nk(), pm = 'tech-pm', tl = 'web-tech-lead', dev = 'web-dev';
-  log('you', `"${req.title}"`);
-  await packet(DOOR, seat(pm), 'goal', T['--lamp']);
-  agents[pm].working = true; agents[pm].status = 'planning';
-  addCard(R, req.title, pm, true);
-  log(pm, `register ${R}  requirement`);
-  if (cards['VO-40']) { move('VO-40', 'done'); log(tl, 'review VO-40  approved', 'ok'); }
-  await sleep(1300);
-  move(R, 'prog');
-  addCard(C, 'Contract: ' + req.build.toLowerCase(), tl); await sleep(350);
-  addCard(B, req.build, dev);
-  log(pm, `task ${C} → web-tech-lead, ${B} → web-dev`);
-  await sleep(1100);
-  agents[pm].working = false; agents[pm].status = null;
-  await walkTo(pm, beside(tl, pm));
-  log(pm, `HANDOFF ${C} -> web-tech-lead`, 'handoff');
-  await packet(agents[pm], seat(tl), C, T['--sky']);
-  home(pm);
-  agents[tl].working = true; agents[tl].status = 'writing contract'; move(C, 'prog');
-  await sleep(2400);
-  log(tl, `contract ${C}: ${req.files.length} files, 3 criteria`);
-  move(C, 'done'); agents[tl].working = false; agents[tl].status = null;
-  await sleep(400);
-  await walkTo(tl, beside(dev, tl));
-  log(tl, `HANDOFF ${B} -> web-dev`, 'handoff');
-  await packet(agents[tl], seat(dev), B, T['--mint']);
-  home(tl);
-  agents[dev].working = true; agents[dev].status = 'building'; move(B, 'prog');
+const dispatch = (to, key) => log('main session', `start ${to} · ${key}`);
+async function handoff(from, to, key, color) {
+  await walkTo(from, beside(to, from));
+  log(from, `HANDOFF ${key} -> ${to}`, 'handoff');
+  await packet(agents[from], seat(to), key, color);
+  home(from);
+  dispatch(to, key);
+}
+async function build(req, B) {
+  const dev = 'web-dev';
+  agents[dev].working = true; agents[dev].status = req.fast ? 'mapping impact' : 'building'; move(B, 'prog');
+  if (req.fast) { await sleep(1100); log(dev, `impact ${B}: 1 file, nothing shared`); agents[dev].status = 'building'; }
   for (const [f, a, d] of req.files) { await sleep(1300); log(dev, `edit  ${f.split('/').pop()}  +${a} −${d}`); }
   await sleep(1000); agents[dev].status = 'running tests';
-  await sleep(1300); log(dev, 'run   npm test  26 suites passed', 'ok');
+  await sleep(1300); log(dev, 'run   npm test  32 suites passed', 'ok');
   move(B, 'review'); agents[dev].working = false; agents[dev].status = null;
-  await walkTo(tl, beside(dev, tl));
+}
+async function review(B) {
+  const tl = 'web-tech-lead';
+  await walkTo(tl, beside('web-dev', tl));
   agents[tl].status = 'reviewing';
   await sleep(1800);
   agents[tl].status = null; move(B, 'done'); log(tl, `review ${B}  approved`, 'ok');
   home(tl);
+}
+async function cycle(req) {
+  const pm = 'tech-pm', tl = 'web-tech-lead', dev = 'web-dev', qa = 'web-tester';
+  const R = nk();
+  log('you', `"${req.title}"`);
+  await packet(DOOR, seat(pm), 'request', T['--lamp']);
+  dispatch(pm, R);
+  agents[pm].working = true; agents[pm].status = 'sizing';
+  addCard(R, req.title, pm, true);
+  log(pm, `register ${R}  requirement`);
+  if (cards['VO-40']) { move('VO-40', 'done'); log(tl, 'review VO-40  approved', 'ok'); }
+  await sleep(1300);
+  log(pm, `size ${R}: ${req.size}`);
+  move(R, 'prog');
+  if (req.fast) {
+    const B = nk();
+    addCard(B, req.build, dev);
+    log(pm, `task ${B} → web-dev, reviewer web-tech-lead`);
+    await sleep(900);
+    agents[pm].working = false; agents[pm].status = null;
+    await handoff(pm, dev, B, T['--mint']);
+    await build(req, B);
+    await review(B);
+    await sleep(600);
+    move(R, 'done'); log(pm, `${R} done · fast path · 1 handoff`, 'ok');
+    await sleep(2600);
+    return;
+  }
+  const C = nk();
+  addCard(C, 'Contract: ' + req.build.toLowerCase(), tl);
+  log(pm, `task ${C} → web-tech-lead`);
+  await sleep(900);
+  agents[pm].working = false; agents[pm].status = null;
+  await handoff(pm, tl, C, T['--sky']);
+  agents[tl].working = true; agents[tl].status = 'impact map'; move(C, 'prog');
+  await sleep(1600);
+  agents[tl].status = 'writing contract';
+  await sleep(1200);
+  const B = nk();
+  addCard(B, req.build, dev);
+  log(tl, `contract ${B}: impact map, ${req.files.length} files, 3 criteria`);
+  agents[tl].working = false; agents[tl].status = null;
+  await sleep(400);
+  await handoff(tl, dev, B, T['--mint']);
+  await build(req, B);
+  if (req.qa) {
+    const Q = nk();
+    addCard(Q, 'Test ' + req.build.toLowerCase(), qa);
+    await handoff(tl, qa, Q, T['--rose']);
+    agents[qa].working = true; agents[qa].status = 'testing'; move(Q, 'prog');
+    await sleep(2200); log(qa, `test  ${Q}  3/3 criteria pass`, 'ok');
+    move(Q, 'review'); agents[qa].working = false; agents[qa].status = null;
+    await sleep(500); move(Q, 'done');
+  }
+  await review(B);
+  move(C, 'done');
   await sleep(600);
-  move(R, 'done'); log(pm, `${R} done · 3 cards · 2 handoffs`, 'ok');
+  const n = req.qa ? 4 : 3;
+  move(R, 'done'); log(pm, `${R} done · ${n} cards · ${n - 1} handoffs`, 'ok');
   await sleep(2600);
 }
 (async () => { let i = 0; await sleep(900); for (;;) { await cycle(REQUESTS[i++ % REQUESTS.length]); } })();
 
 /* ---------- raw transcript (problem) ---------- */
 const RAW = [
-  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"curl -s $PORTAL/api/tasks/VO-42?format=md"}}]}}',
-  '{"type":"user","message":{"content":[{"type":"tool_result","content":"# VO-42 Technical contract\\n## Acceptance criteria\\n- toggle persists"}]}}',
-  '{"type":"assistant","message":{"content":[{"type":"text","text":"Reading SettingsModal.tsx to find the preferences form"}]}}',
-  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/components/SettingsModal.tsx"}}]}}',
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"curl -s $PORTAL/api/tasks/VO-43?format=brief"}}]}}',
+  '{"type":"user","message":{"content":[{"type":"tool_result","content":"# VO-43 Build CSV export\\n## Impact map\\n- change KanbanBoard.tsx, taskBoard.js"}]}}',
+  '{"type":"assistant","message":{"content":[{"type":"text","text":"Reading KanbanBoard.tsx to find the board toolbar"}]}}',
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/components/KanbanBoard.tsx"}}]}}',
   '{"type":"assistant","message":{"usage":{"input_tokens":18422,"output_tokens":911,"cache_read_input_tokens":40211}}}',
-  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"old_string":"<Toggle","new_string":"<ThemeToggle"}}]}}',
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"old_string":"<Toolbar>","new_string":"<Toolbar>\\n  <ExportButton"}}]}}',
   '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"web-dev","prompt":"Your task: VO-43"}}]}}',
-  '{"type":"user","message":{"content":[{"type":"tool_result","content":"HANDOFF VO-43 -> web-dev"}]}}',
+  '{"type":"user","message":{"content":[{"type":"tool_result","content":"HANDOFF VO-44 -> web-tester"}]}}',
   '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test"}}]}}',
-  '{"type":"user","message":{"content":[{"type":"tool_result","content":"ok 26 suites"}]}}',
-  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Grep","input":{"pattern":"data-theme","path":"src"}}]}}',
-  '{"type":"assistant","message":{"content":[{"type":"text","text":"Moving VO-43 to review with the verification notes"}]}}',
+  '{"type":"user","message":{"content":[{"type":"tool_result","content":"ok 32 suites"}]}}',
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Grep","input":{"pattern":"toCsv","path":"server"}}]}}',
+  '{"type":"assistant","message":{"content":[{"type":"text","text":"Finishing VO-43 in review with the result and deliverable"}]}}',
 ];
 const rawEl = $('#raw');
 for (let k = 0; k < 4; k++) RAW.forEach(l => { const d = document.createElement('div'); d.textContent = l; rawEl.appendChild(d); });
 
 /* ---------- stepper ---------- */
 const STEPS = [
-  { t: 'Request', who: 'you', w: 'You', body: 'You describe the goal in plain words, in whichever AI tool you already use. The portal registers it as a requirement card on the board.',
-    code: `<span class="c"># your message</span>\n<span class="a">"Add a dark mode toggle to Settings"</span>\n\n<span class="c"># the board</span>\nVO-41  requirement  backlog` },
-  { t: 'Plan', who: 'tech-pm', w: 'Scrum Master', body: 'The Scrum Master splits the requirement into one task per role, each with a brief, acceptance criteria and the order they must run in. It never writes application code.',
-    code: `VO-41  Requirement · Dark mode toggle\n├─ VO-42  web-tech-lead  Technical contract\n└─ VO-43  web-dev        Build the toggle\n                         <span class="c">dependsOn VO-42</span>\n\n<span class="h">HANDOFF VO-42 -> web-tech-lead</span>` },
-  { t: 'Contract', who: 'web-tech-lead', w: 'Tech Lead', body: 'The Tech Lead turns the card into a technical contract: the files to touch, the data and APIs involved, the edge cases, and how each criterion will be checked.',
-    code: `<span class="c">## VO-43 contract</span>\nFiles    SettingsModal.tsx, tokens.css\nState    theme in localStorage, 'system' default\nEdge     no flash of the wrong theme on load\nVerify   choice survives reload; contrast ≥ 4.5:1\n\n<span class="h">HANDOFF VO-43 -> web-dev</span>` },
-  { t: 'Build', who: 'web-dev', w: 'Developer', body: 'The Developer implements one card at a time, checks every acceptance criterion, writes the result on the card and moves it to review.',
-    code: `edit  SettingsModal.tsx      <span class="g">+42</span> −3\nedit  tokens.css             <span class="g">+18</span>\nrun   npm test               <span class="g">26 suites passed</span>\n\n✓ choice survives reload\n✓ contrast 7.1:1\nmove  VO-43 → review` },
-  { t: 'Review', who: 'web-tech-lead', w: 'Tech Lead', body: 'The Tech Lead reviews the change against the contract. When every task is done, the requirement closes itself and a summary is posted on its thread.',
-    code: `review VO-43  <span class="g">approved</span>\n\nVO-41  <span class="g">done</span>\n  3 cards · 2 handoffs\n  time logged per role\n  tokens recorded per card` },
+  { t: 'Request', who: 'you', w: 'You', body: 'You describe the goal in plain words, in whichever AI tool you already use. That session only dispatches: it passes the request to the Scrum Master and starts each next role from the HANDOFF lines they return. In Claude Code a hook stops it from editing files itself.',
+    code: `<span class="c"># your message</span>\n<span class="a">"Add CSV export to the board"</span>\n\n<span class="c"># main session</span>\nstart tech-pm\n<span class="c"># the board</span>\nVO-41  requirement  backlog` },
+  { t: 'Plan', who: 'tech-pm', w: 'Scrum Master', body: 'The Scrum Master sizes the request with a quick look and posts the size on the requirement. A small change takes the fast path below. Anything bigger becomes a card for the Tech Lead with a brief, acceptance criteria and context. It never writes application code.',
+    code: `VO-41  size: full\n       <span class="c">new API route, 2+ files</span>\n└─ VO-42  web-tech-lead  Contract\n\n<span class="h">HANDOFF VO-42 -> web-tech-lead</span>` },
+  { t: 'Contract', who: 'web-tech-lead', w: 'Tech Lead', body: 'The Tech Lead writes a short contract for the Developer, about 40 lines at most. It starts with an impact map: the files to change, the files affected, the files checked and left alone, and the risks. When a change needs real testing, it also opens a card for QA.',
+    code: `<span class="c">## VO-43 contract</span>\nChange   KanbanBoard.tsx, taskBoard.js\nAffects  GET /api/tasks (new ?format=csv)\nLeft     TaskCardDetails.tsx\nRisk     commas and quotes in titles\nVerify   empty board exports headers\n\n<span class="h">HANDOFF VO-43 -> web-dev</span>` },
+  { t: 'Build', who: 'web-dev', w: 'Developer', body: 'The Developer implements one card at a time, checks every acceptance criterion, writes the result and deliverable on the card and moves it to review.',
+    code: `edit  KanbanBoard.tsx        <span class="g">+42</span> −3\nedit  taskBoard.js           <span class="g">+31</span> −2\nrun   npm test               <span class="g">32 suites passed</span>\n\n✓ quotes escaped\n✓ empty board: headers only\nfinish VO-43 → review` },
+  { t: 'Test and review', who: 'web-tech-lead', w: 'QA · Tech Lead', body: 'QA tests the change against the criteria and records pass or fail for each one. The Tech Lead reviews against the contract. When every task is done, the requirement closes itself and a summary goes on its thread.',
+    code: `<span class="h">HANDOFF VO-44 -> web-tester</span>\ntest   VO-44  <span class="g">3/3 criteria pass</span>\nreview VO-43  <span class="g">approved</span>\n\nVO-41  <span class="g">done</span>\n  4 cards · 3 handoffs\n  time and tokens per role` },
 ];
 const stepsEl = $('#steps'), detail = $('#stepDetail');
 let cur = 0, auto = !reduce, timer;
@@ -904,9 +976,9 @@ new IntersectionObserver(([e]) => { if (!auto) return; if (e.isIntersecting) sho
 
 /* ---------- views ---------- */
 const CHAT = [
-  ['tech-pm', 'Scrum Master → Tech Lead', 'Please write the contract for <span class="hk">VO-42</span>. The toggle must survive a reload and default to the system theme.', false],
-  ['web-tech-lead', 'Tech Lead → Developer', 'Contract is on <span class="hk">VO-43</span>: two files, three checks. Start once you have read it.', true],
-  ['web-dev', 'Developer → Tech Lead', 'Done and tested. All 26 suites pass; contrast measured at 7.1:1. Moved to review.', false],
+  ['tech-pm', 'Scrum Master → Tech Lead', 'Sized as full: it adds an API route. Please write the contract for <span class="hk">VO-42</span>. Titles with commas must survive the export.', false],
+  ['web-tech-lead', 'Tech Lead → Developer', 'Impact map and contract are on <span class="hk">VO-43</span>: two files, three checks. QA tests it after you.', true],
+  ['web-dev', 'Developer → Tech Lead', 'Done. All 32 suites pass and every criterion is checked on the card. Moved to review.', false],
 ];
 const chat = $('#chat');
 CHAT.forEach(([id, h, t, r]) => { const m = document.createElement('div'); m.className = 'msg' + (r ? ' r' : ''); m.innerHTML = `<img alt="" src="${IMG[id]}"><div class="b"><small>${h}</small>${t}</div>`; chat.appendChild(m); });
@@ -918,12 +990,12 @@ const BARS = [['Read', 52, '--sky'], ['Edit', 38, '--mint'], ['Bash', 24, '--lam
 $('#bars').innerHTML = BARS.map(([n, v, c], i) => `<div class="bar-row" style="--i:${i}"><span>${n}</span><span class="tr"><span class="fl" style="--w:${v / 52 * 100}%;--c:var(${c})"></span></span><span class="v">${v}</span></div>`).join('');
 
 const DIFF = [
-  ['c', '  const [theme, setTheme] = usePrefs("theme");'],
-  ['m', '  <Toggle label="Dark" />'],
-  ['p', '  <ThemeToggle value={theme} onChange={setTheme}'],
-  ['p', '    options={["system", "light", "dark"]} />'],
-  ['p', '  <p className="hint">Saved on this device</p>'],
-  ['c', '  </Section>'],
+  ['c', '  const tasks = useBoard(sprintId);'],
+  ['m', '  <Toolbar title="Board" />'],
+  ['p', '  <Toolbar title="Board">'],
+  ['p', '    <ExportButton href={csvUrl(sprintId)} />'],
+  ['p', '  </Toolbar>'],
+  ['c', '  <Columns tasks={tasks} />'],
 ];
 const diffEl = $('#diff');
 function renderDiff(n, partial) {
@@ -937,7 +1009,7 @@ const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&g
 renderDiff(99);
 if (!reduce) (async () => { for (;;) { await sleep(2500); for (let i = 2; i <= 4; i++) { const L = DIFF[i][1].length; for (let c = 0; c <= L; c += 2) { renderDiff(i, c); await sleep(28); } } renderDiff(99); } })();
 
-const METERS = [['tech-pm', 'planning, 2 cards', 6 * 60 + 12, 18.4], ['web-tech-lead', 'contract + review', 9 * 60 + 47, 27.9], ['web-dev', 'building VO-43', 18 * 60 + 5, 41.2]];
+const METERS = [['tech-pm', 'sizing, 2 cards', 4 * 60 + 12, 12.4], ['web-tech-lead', 'contract + review', 9 * 60 + 47, 27.9], ['web-dev', 'building VO-43', 18 * 60 + 5, 41.2], ['web-tester', 'testing VO-44', 7 * 60 + 31, 16.8]];
 const mEl = $('#meters');
 mEl.innerHTML = METERS.map(([id, st], i) => `<div class="meter"><img alt="" src="${IMG[id]}"><div><div class="nm">${ROLE[id]}</div><div class="st">${st}</div></div><div class="num" id="m${i}"></div><div class="spark"><i id="s${i}" style="--c:var(${COLOR[id]})"></i></div></div>`).join('');
 let tick = 0;
@@ -950,6 +1022,33 @@ function renderMeters() {
 }
 renderMeters();
 if (!reduce) setInterval(() => { tick++; renderMeters(); }, 1000);
+
+/* replay timeline and demo walkthrough: a highlighted step moves down the list */
+const RP = [
+  ['tech-pm', 'handoff · Scrum Master → Tech Lead', 'VO-42 Contract for CSV export'],
+  ['web-tech-lead', 'decision', 'Escape quotes on the server, not in the browser'],
+  ['web-dev', 'result', 'VO-43 built, 32 suites pass'],
+  ['web-tester', 'review · QA', 'VO-44 3/3 criteria pass'],
+  ['web-tech-lead', 'review · Tech Lead', 'VO-43 approved, VO-41 done'],
+];
+const TOUR = [
+  ['tech-pm', 'Scrum Master → Tech Lead', 'The Scrum Master hands the request to the Tech Lead.'],
+  ['web-tech-lead', 'Tech Lead → Developer', 'The Tech Lead hands the build to the Developer.'],
+  ['web-dev', 'Developer → Tech Lead', 'The Developer builds it and hands it back for review.'],
+  ['web-tester', 'QA → Tech Lead', 'QA tests it and reports the results back.'],
+  ['web-tech-lead', 'Tech Lead → Scrum Master', 'The Tech Lead reports back to the Scrum Master.'],
+];
+const rpRow = ([id, h, t]) => `<div class="rp"><img alt="" src="${IMG[id]}"><div><small>${h}</small>${t}</div></div>`;
+$('#replay').innerHTML = RP.map(rpRow).join('') + '<div class="rp-bar"><span class="tag">▶ Replay</span><span class="track"><i id="rpTrack"></i></span><span class="tag">Save as video</span></div>';
+$('#tour').innerHTML = '<div class="tour-banner"><b>Demo</b> · Simulated walkthrough. Nothing is saved to your board.</div>' + TOUR.map(rpRow).join('');
+function stepper(rows, onStep) {
+  let i = 0;
+  const go = () => { rows.forEach((r, j) => r.classList.toggle('on', j === i)); onStep && onStep(i); i = (i + 1) % rows.length; };
+  if (reduce) { rows.forEach(r => r.classList.add('on')); onStep && onStep(rows.length - 1); return; }
+  go(); setInterval(go, 1600);
+}
+stepper([...$('#replay').querySelectorAll('.rp')], i => { $('#rpTrack').style.width = ((i + 1) / RP.length * 100) + '%'; });
+stepper([...$('#tour').querySelectorAll('.rp')]);
 
 /* play-on-view for bar charts */
 const playIO = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.remove('play'); void e.target.offsetWidth; e.target.classList.add('play'); playIO.unobserve(e.target); } }), { threshold: .35 });
@@ -976,14 +1075,14 @@ new ResizeObserver(drawWires).observe(sync);
 document.fonts && document.fonts.ready.then(drawWires);
 
 /* ---------- build chart ---------- */
-const DAYS = [['14 Oct', 14], ['15 Oct', 4], ['16 Oct', 10], ['17 Oct', 43]];
+const DAYS = [['14 Oct', 14], ['15 Oct', 4], ['16 Oct', 10], ['17 Oct', 71]];
 (function chart() {
-  const w = 560, h = 260, pl = 40, pr = 12, pt = 18, pb = 34, max = 50, ih = h - pt - pb, iw = w - pl - pr, bw = iw / DAYS.length;
+  const w = 560, h = 260, pl = 40, pr = 12, pt = 18, pb = 34, max = 80, ih = h - pt - pb, iw = w - pl - pr, bw = iw / DAYS.length;
   const y = v => pt + ih - v / max * ih;
-  let s = `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Commits per day: 14 on 14 Oct, 4 on 15 Oct, 10 on 16 Oct, 43 on 17 Oct">`;
-  for (const v of [0, 25, 50]) s += `<line x1="${pl}" x2="${w - pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1" ${v ? 'stroke-dasharray="3 4"' : ''}/><text x="${pl - 8}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--faint)">${v}</text>`;
+  let s = `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Commits per day: ${DAYS.map(([d, v]) => v + ' on ' + d).join(', ')}">`;
+  for (const v of [0, 40, 80]) s += `<line x1="${pl}" x2="${w - pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1" ${v ? 'stroke-dasharray="3 4"' : ''}/><text x="${pl - 8}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--faint)">${v}</text>`;
   DAYS.forEach(([d, v], i) => {
-    const x = pl + i * bw + bw * .2, bwid = bw * .6, hi = v === 43;
+    const x = pl + i * bw + bw * .2, bwid = bw * .6, hi = i === DAYS.length - 1;
     s += `<rect class="cbar${hi ? ' hi' : ''}" style="--i:${i}" x="${x}" y="${y(v)}" width="${bwid}" height="${y(0) - y(v)}" rx="4"/>`;
     s += `<text x="${x + bwid / 2}" y="${y(v) - 8}" text-anchor="middle" font-size="13" font-weight="500" fill="var(--fg)">${v}</text>`;
     s += `<text x="${x + bwid / 2}" y="${h - 12}" text-anchor="middle" font-size="11" fill="var(--muted)">${d}</text>`;
