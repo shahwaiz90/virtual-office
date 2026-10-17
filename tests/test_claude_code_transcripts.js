@@ -134,16 +134,23 @@ try {
   );
   assert.strictEqual(card2Obj.column, 'done', 'The turn end closes the card');
 
-  // A follow-up after the card was done reopens it; replaying the same prompt adds nothing
+  // A follow-up after the card was done goes on its thread but leaves it done; replaying it adds nothing
+  const completions = () => eventBus.events.filter((e) => e.type === 'subagent_completed' && e.payload?.taskId === card2).length;
+  const completionsBefore = completions();
   const prompt4 = { ...prompt, uuid: 'u-4', message: { role: 'user', content: 'One more tweak' } };
   handleClaudeEntry(prompt4, state2);
-  assert.strictEqual(card2Obj.column, 'in_progress', 'New work reopens the finished card');
+  assert.strictEqual(card2Obj.column, 'done', 'A follow-up does not reopen the finished card');
+  assert.strictEqual(card2Obj.progress, 100, 'The finished card keeps its progress');
+  assert.strictEqual(state2.promptTaskId, null, 'No open prompt card for the turn end to complete');
+  assert.ok(card2Obj.thread.some((m) => m.kind === 'request' && m.agentId === 'user' && m.text === 'One more tweak'), 'The follow-up is on the thread');
   handleClaudeEntry(prompt4, { convId: 'claude-session-b', promptTaskId: null });
   assert.strictEqual(card2Obj.thread.filter((m) => m.kind === 'request').length, 2, 'A replayed follow-up is not posted twice');
   handleClaudeEntry(
     { type: 'assistant', timestamp: new Date().toISOString(), message: { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Done.' }] } },
     state2
   );
+  assert.strictEqual(card2Obj.column, 'done');
+  assert.strictEqual(completions(), completionsBefore, 'The turn end after the follow-up emits no second completion');
   // With every card done, editing a test file must not reopen any of them
   handleClaudeEntry(testEdit, { convId: 'claude-session-b', promptTaskId: null });
   assert.strictEqual(card2Obj.column, 'done', 'Finished card must not be reopened by a test edit');

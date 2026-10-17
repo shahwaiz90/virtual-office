@@ -173,7 +173,8 @@ try {
   watchers.readOpenCodeActivity(true);
   const cards = Array.from(eventBus.tasks.values()).filter((t) => String(t.sourceConversation || '').startsWith('opencode-'));
   assert.strictEqual(cards.length, 1, 'One card per conversation; the subagent prompt is not a new request');
-  assert.strictEqual(cards[0].column, 'in_progress', 'A follow-up reopens the card');
+  assert.strictEqual(cards[0].column, 'done', 'A follow-up does not reopen the finished card');
+  assert.strictEqual(cards[0].progress, 100);
   assert.ok(cards[0].thread.some((m) => m.agentId === 'user' && m.text === 'Also show the build date'));
   const devTokens = eventBus.tokenUsageMap.get('web-dev');
   assert.deepStrictEqual([devTokens.messages, devTokens.inputTokens], [1, 500], 'Subagent tokens go to its role');
