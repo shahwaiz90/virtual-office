@@ -825,6 +825,8 @@ const handleStartSprint = (req, res) => {
   const { startNewSprint } = require('./watchers');
   try {
     const goalTitle = req.body?.goal || req.body?.title || 'Sprint Execution';
+    // A new sprint is a full reset, like POST /api/state/clear; startNewSprint clears the state
+    agentRunner.stop();
     const newSprint = startNewSprint(root, goalTitle);
     if (!newSprint) {
       return res.status(500).json({ error: 'Failed to start sprint' });

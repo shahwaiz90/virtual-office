@@ -882,22 +882,14 @@ function startNewSprint(root, goalTitle) {
     };
     saveSprintIndex(projectRoot, newIndex);
 
-    eventBus.tasks.clear();
-    if (eventBus.fileChanges && Array.isArray(eventBus.fileChanges)) {
-      eventBus.fileChanges = [];
-    }
+    // Same full in-memory reset as the header Reset (POST /api/state/clear): events, analytics,
+    // communications, deliverables, handoff, agent statuses. Sprint history on disk is untouched.
+    // The sprint is set first so clearState()'s SYNC_STATE broadcast already carries the new id.
     if (typeof eventBus.setSprintState === 'function') {
       eventBus.setSprintState(sprintId, sprintPath, updatedSprints);
     }
-    // A new sprint starts with an empty hub; the previous sprint keeps its deliverables.json
-    eventBus.deliverables = new Map();
-
-    const snap = eventBus.getStateSnapshot();
-    eventBus.broadcast({
-      type: 'SYNC_STATE',
-      data: snap,
-      state: snap,
-    });
+    resetWatchersOffsets();
+    eventBus.clearState();
 
     return newSprint;
   } catch (e) {
