@@ -473,5 +473,11 @@
       "handoffTo": [],
       "delegation_targets": []
     }
+  ],
+  "team": [
+    "tech-pm",
+    "web-tech-lead",
+    "web-dev",
+    "web-tester"
   ]
 }

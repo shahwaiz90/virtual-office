@@ -93,6 +93,23 @@ function loadSkillsMap(projectRoot, customSkillsDir = null) {
   return map;
 }
 
+/** A saved team list as unique string ids, or null when there is none */
+function normalizeTeam(team) {
+  if (!Array.isArray(team)) return null;
+  return [...new Set(team.map((t) => (typeof t === 'string' ? t : t && t.id)).filter(Boolean))];
+}
+
+/** The `team` list already in .agents/registry.yaml, or null */
+function readManifestTeam(projectRoot) {
+  const yamlPath = path.join(projectRoot, REGISTRY_YAML_REL);
+  if (!fs.existsSync(yamlPath)) return null;
+  try {
+    return normalizeTeam(parseYaml(fs.readFileSync(yamlPath, 'utf8')).team);
+  } catch (e) {
+    return null;
+  }
+}
+
 /**
  * Loads the complete canonical registry for a project
  */
@@ -337,6 +354,8 @@ function loadRegistry(projectRoot) {
     skills_dir: rawManifest.skills_dir || SKILLS_DIR_REL,
     adapters: rawManifest.adapters || {},
     agents: loadedAgents,
+    // The team saved in Team Studio (the office's desks); null = every agent in the catalog
+    team: normalizeTeam(rawManifest.team),
     skills: skillsMap,
     manifestFound,
     projectRoot,
@@ -429,6 +448,9 @@ function saveRegistry(registry, projectRoot) {
 
   // 3. Save .agents/registry.yaml
   const registryYamlPath = path.join(projectRoot, REGISTRY_YAML_REL);
+  // `agents` is the catalog; `team` (the office's desks) is kept unless the caller sets it
+  const savedTeam = (registry.team !== undefined ? normalizeTeam(registry.team) : readManifestTeam(projectRoot));
+  const team = savedTeam ? savedTeam.filter((id) => activeAgentIds.has(id)) : null;
   const manifestData = {
     version: registry.version || '2.0.0',
     name: registry.name || path.basename(projectRoot),
@@ -436,6 +458,7 @@ function saveRegistry(registry, projectRoot) {
     orchestrator: registry.orchestrator || (manifestAgents[0] ? manifestAgents[0].id : null),
     default_framework: registry.default_framework || 'all',
     agents: manifestAgents,
+    ...(team && team.length ? { team } : {}),
     skills_dir: registry.skills_dir || 'skills',
     adapters: registry.adapters || {
       opencode: { enabled: true, sync_agents_json: true, sync_runtime_manifest: true, sync_team_rule: true },

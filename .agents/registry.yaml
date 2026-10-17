@@ -25,6 +25,11 @@ agents:
     path: definitions/ios-dev.md
   - id: ios-tester
     path: definitions/ios-tester.md
+team:
+  - tech-pm
+  - web-tech-lead
+  - web-dev
+  - web-tester
 skills_dir: skills
 adapters:
   opencode:

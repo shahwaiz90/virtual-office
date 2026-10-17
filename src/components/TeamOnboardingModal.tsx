@@ -93,6 +93,8 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
   const [availableSkills, setAvailableSkills] = useState<SkillMeta[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('android');
   const [agents, setAgents] = useState<AgentConfig[]>([]);
+  // Every role defined in the project (.agents/definitions); `agents` is the team being edited
+  const [catalogAgents, setCatalogAgents] = useState<AgentConfig[]>([]);
   const [selectedAgentIndex, setSelectedAgentIndex] = useState<number>(0);
 
   // Progressive Disclosure: 'platform' -> 'preview' -> 'studio'
@@ -145,7 +147,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
         setHasExistingConfig(exists);
 
         if (exists) {
-          const loadedAgents: AgentConfig[] = curData.agents.map((a: any) => ({
+          const toAgentConfig = (a: any): AgentConfig => ({
             id: a.id,
             name: a.name,
             role: a.role,
@@ -156,7 +158,14 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
             allowed_tools: a.allowedTools || ['view_file'],
             prohibited_actions: a.prohibitedActions || [],
             delegation_targets: a.delegationTargets || [],
-          }));
+          });
+          // Open with the saved team, in saved order; no saved list (older server) = every agent
+          const byId = new Map<string, any>(curData.agents.map((a: any) => [a.id, a]));
+          const teamIds: string[] = Array.isArray(curData.team) && curData.team.length > 0
+            ? curData.team.filter((id: string) => byId.has(id))
+            : curData.agents.map((a: any) => a.id);
+          const loadedAgents: AgentConfig[] = teamIds.map((id) => toAgentConfig(byId.get(id)));
+          setCatalogAgents(curData.agents.map(toAgentConfig));
           setAgents(loadedAgents);
 
           const isIos = loadedAgents.some((a) => a.id.startsWith('ios-') || (a.skills || []).some((s) => s.includes('swift') || s.includes('xcode')));
@@ -186,6 +195,7 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
           }
         } else {
           // First time / New project: start with Apple-style Platform Selection!
+          setCatalogAgents([]);
           const androidTmpl = (tmplData.templates || []).find((t: any) => t.id === 'android') || tmplData.templates[0];
           if (androidTmpl) {
             setSelectedTemplateId(androidTmpl.id);
@@ -343,6 +353,18 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
     setSelectedAgentIndex(agents.length);
     setFlowStep('studio');
     setViewMode('edit');
+  };
+
+  // Catalog roles that are not in the team yet (e.g. the mobile roles), ready to add back
+  const catalogRolesOutsideTeam = useMemo(
+    () => catalogAgents.filter((c) => !agents.some((a) => a.id === c.id)),
+    [catalogAgents, agents]
+  );
+
+  const handleAddCatalogAgent = (id: string) => {
+    const role = catalogAgents.find((c) => c.id === id);
+    if (!role || agents.some((a) => a.id === id)) return;
+    setAgents((prev) => [...prev, JSON.parse(JSON.stringify(role))]);
   };
 
   const handleRemoveAgent = (idx: number) => {
@@ -951,6 +973,25 @@ export const TeamOnboardingModal: React.FC<TeamOnboardingModalProps> = ({
                   </button>
                 </div>
               </div>
+
+              {catalogRolesOutsideTeam.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Add a role from this project's catalog">
+                  <span className="text-xs font-semibold text-sand-500 mr-1">Add from catalog:</span>
+                  {catalogRolesOutsideTeam.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => handleAddCatalogAgent(c.id)}
+                      title={`Add ${c.name} (${c.id}) to the team`}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-sand-700 hover:text-brand-800 bg-surface border border-sand-200 hover:border-brand-300 cursor-pointer transition-all active:scale-95"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{c.name}</span>
+                      <span className="font-mono text-[10px] text-sand-400">{c.id}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {viewMode === 'skills' ? (
                 /* Advanced Skills Catalog */
