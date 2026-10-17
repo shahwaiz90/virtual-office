@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
-import { Agent, ActiveHandoff, NormalizedEvent, TokenUsageStat } from '../types/office';
+import { Agent, ActiveHandoff, NormalizedEvent, TokenUsageStat, ReplayRequest, ReplayTimeline } from '../types/office';
 import { deskTokenLine } from '../services/tokenFormat';
 import { Pencil, Sparkles, Users, Terminal, LayoutGrid, Play, Square } from 'lucide-react';
 import { WorkstationTerminalTile } from './WorkstationTerminalTile';
@@ -30,6 +30,7 @@ import {
   type Handoff,
 } from './handoffChoreo';
 import { buildDemoScript, DEMO_STEP_MS } from './demoTour';
+import { scheduleReplay, captionLine } from './replayPlayer';
 
 interface VirtualOfficeProps {
   agents: Agent[];
@@ -44,6 +45,17 @@ interface VirtualOfficeProps {
   onViewModeChange?: (mode: 'floor' | 'terminal_grid') => void;
   /** Recorded model usage per role (from session transcripts); roles without usage show nothing */
   tokenStats?: TokenUsageStat[];
+  /** A Replay click on a done requirement; a new nonce (re)starts the replay */
+  replayRequest?: ReplayRequest | null;
+  /** Called once when a replay ends: finished, stopped, or it could not start */
+  onReplayEnd?: () => void;
+}
+
+/** What the canvas draws for a running replay: the current caption and step n of N */
+interface ReplayOverlay {
+  caption: string;
+  step: number;
+  total: number;
 }
 
 interface RoomWorkingState {
@@ -261,6 +273,8 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   events: rawEvents = [],
   onViewModeChange,
   tokenStats = NO_TOKEN_STATS,
+  replayRequest = null,
+  onReplayEnd,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -294,6 +308,40 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     selectedRef.current = selectedAgentId;
   }, [agents, events, tokenStats, selectedAgentId]);
 
+  // Requirement Replay: a done requirement's timeline (read-only GET) plays through the handoff
+  // choreography, faster than real time. Captions and progress are drawn on the canvas (so a recording
+  // of the canvas carries them); the DOM bar only holds the Stop control and the screen-reader status.
+  const [replay, setReplay] = useState<{ key: string; step: number; total: number; loading: boolean } | null>(null);
+  const [replayNotice, setReplayNotice] = useState<string | null>(null);
+  const replayOverlayRef = useRef<ReplayOverlay | null>(null);
+  const replayTimersRef = useRef<number[]>([]);
+  const replayRunRef = useRef(0);
+  const replayActiveRef = useRef(false);
+  const noticeTimerRef = useRef<number>(0);
+  const onReplayEndRef = useRef(onReplayEnd);
+  useLayoutEffect(() => {
+    onReplayEndRef.current = onReplayEnd;
+  }, [onReplayEnd]);
+
+  const showReplayNotice = useCallback((text: string) => {
+    window.clearTimeout(noticeTimerRef.current);
+    setReplayNotice(text);
+    noticeTimerRef.current = window.setTimeout(() => setReplayNotice(null), 4000);
+  }, []);
+  // notify = false when a new replay replaces this one (the parent's request stays current)
+  const endReplay = useCallback((notify: boolean) => {
+    replayRunRef.current++;
+    replayTimersRef.current.forEach((t) => window.clearTimeout(t));
+    replayTimersRef.current = [];
+    replayOverlayRef.current = null;
+    setReplay(null);
+    if (replayActiveRef.current) {
+      replayActiveRef.current = false;
+      if (notify) onReplayEndRef.current?.();
+    }
+  }, []);
+  const stopReplay = useCallback(() => endReplay(true), [endReplay]);
+
   // First-run demo: a scripted request walks through the real team on this floor plan only.
   // It feeds the handoff choreography directly; nothing reaches the server, the board or the logs.
   const [demo, setDemo] = useState<{ step: number; total: number; caption: string } | null>(null);
@@ -312,6 +360,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   }, []);
   const startDemo = useCallback(() => {
     stopDemo();
+    stopReplay();
     const team = agentsRef.current;
     const steps = buildDemoScript(team);
     if (!steps.length) return;
@@ -336,9 +385,81 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
       );
     });
     demoTimersRef.current.push(window.setTimeout(() => setDemo(null), steps.length * DEMO_STEP_MS + 2500));
-  }, [stopDemo]);
+  }, [stopDemo, stopReplay]);
   // A new team shape ends a running demo
   useEffect(() => stopDemo, [agents.length, stopDemo]);
+
+  const startReplay = useCallback(
+    async (key: string) => {
+      endReplay(false);
+      const run = replayRunRef.current;
+      replayActiveRef.current = true;
+      setReplayNotice(null);
+      setReplay({ key, step: 0, total: 0, loading: true });
+      let timeline: ReplayTimeline | null = null;
+      let error: string | null = null;
+      try {
+        const res = await fetch(`/api/tasks/${encodeURIComponent(key)}/timeline`);
+        const body = await res.json().catch(() => null);
+        if (res.ok && body?.timeline) timeline = body.timeline as ReplayTimeline;
+        else error = body?.error || `Could not load the replay of ${key} (HTTP ${res.status})`;
+      } catch {
+        error = `Could not load the replay of ${key}: the portal server is not reachable`;
+      }
+      // A Stop or a newer Replay click while loading wins
+      if (run !== replayRunRef.current) return;
+      if (!timeline || !timeline.steps.length) {
+        stopReplay();
+        showReplayNotice(error || `Nothing to replay on ${key}`);
+        return;
+      }
+
+      stopDemo();
+      setViewMode('floor');
+      onViewModeChange?.('floor');
+      wrapperRef.current?.scrollIntoView({ behavior: reducedRef.current ? 'auto' : 'smooth', block: 'center' });
+
+      const { schedule, totalMs } = scheduleReplay(timeline.steps);
+      const total = schedule.length;
+      setReplay({ key: timeline.rootKey, step: 0, total, loading: false });
+      schedule.forEach(({ offsetMs, step }, i) => {
+        replayTimersRef.current.push(
+          window.setTimeout(() => {
+            replayOverlayRef.current = { caption: captionLine(step), step: i + 1, total };
+            setReplay((r) => (r ? { ...r, step: i + 1 } : r));
+            if (step.type !== 'handoff') return;
+            // Both ends must be on today's roster to walk; otherwise the caption alone tells it
+            const list = agentsRef.current;
+            const from = list.find((a) => a.id === step.agentId);
+            const to = list.find((a) => a.id === step.to);
+            const layout = layoutRef.current;
+            if (!from || !to || from.id === to.id || !layout) return;
+            const seat = makeChoreoEnv(layout, list, Date.now(), reducedRef.current).seatOf(from.id);
+            if (seat) {
+              enqueueHandoff(choreoRef.current, buildHandoff(`replay:${run}:${i}`, from, to, step.cardTitle, step.cardKey, Date.now()), seat);
+            }
+          }, offsetMs)
+        );
+      });
+      replayTimersRef.current.push(window.setTimeout(stopReplay, totalMs));
+    },
+    [endReplay, stopReplay, stopDemo, showReplayNotice, onViewModeChange]
+  );
+
+  // A new Replay click (new nonce) starts or restarts the replay
+  useEffect(() => {
+    if (replayRequest) void startReplay(replayRequest.key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replayRequest?.nonce]);
+  // Unmount: clear the timers without calling back into the parent
+  useEffect(
+    () => () => {
+      replayRunRef.current++;
+      replayTimersRef.current.forEach((t) => window.clearTimeout(t));
+      window.clearTimeout(noticeTimerRef.current);
+    },
+    []
+  );
 
   const handleSetViewMode = (mode: 'floor' | 'terminal_grid') => {
     setViewMode(mode);
@@ -541,6 +662,10 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
       // 4. Card packets in flight, or the reduced-motion static cue
       drawPackets(ctx, view);
       drawReducedMotionCues(ctx, view, agents);
+
+      // 5. Requirement Replay banner: caption and progress on top of everything
+      const overlay = replayOverlayRef.current;
+      if (overlay) drawReplayOverlay(ctx, layout, overlay);
 
       drawnRef.current = view.drawn;
       animationId = requestAnimationFrame(render);
@@ -756,6 +881,29 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
             <button type="button" onClick={stopDemo} className="shrink-0 text-[11px] font-bold text-sand-600 hover:text-sand-900 cursor-pointer">
               Stop
             </button>
+          </div>
+        )}
+
+        {(replay || replayNotice) && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 max-w-[calc(100%-24px)] bg-surface/95 border border-sand-200 shadow-md rounded-lg px-3 py-1.5 flex items-center gap-3 text-[11px] backdrop-blur">
+            <span className="font-bold text-sand-800 truncate" role="status" aria-live="polite">
+              {replay
+                ? replay.loading
+                  ? `Loading replay of ${replay.key}…`
+                  : `Replay ${replay.key} · step ${replay.step} of ${replay.total}`
+                : replayNotice}
+            </span>
+            {replay && (
+              <button
+                type="button"
+                onClick={stopReplay}
+                className="shrink-0 flex items-center gap-1 font-bold text-sand-600 hover:text-sand-900 cursor-pointer"
+                title="Stop the replay"
+              >
+                <Square className="w-3 h-3" />
+                <span>Stop</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -2405,6 +2553,85 @@ function drawCardChip(ctx: CanvasRenderingContext2D, label: string, color: strin
   ctx.fillStyle = tc('#334155');
   ctx.fillText(label, 2, 4);
   ctx.textAlign = 'left';
+}
+
+/** Wraps text to at most maxLines lines of maxWidth; the last line ends with an ellipsis when cut */
+function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = '';
+  let i = 0;
+  for (; i < words.length && lines.length < maxLines; i++) {
+    const next = line ? `${line} ${words[i]}` : words[i];
+    if (ctx.measureText(next).width <= maxWidth || !line) {
+      line = next;
+    } else {
+      lines.push(line);
+      line = words[i];
+    }
+  }
+  if (lines.length < maxLines && line) {
+    lines.push(line);
+    line = '';
+  }
+  const cut = i < words.length || line !== '';
+  return lines.map((l, n) =>
+    n === lines.length - 1 && cut ? fitText(ctx, `${l}…`, maxWidth) : fitText(ctx, l, maxWidth)
+  );
+}
+
+/** Requirement Replay: a top banner with "REPLAY n/N", the caption (two lines max) and a thin progress bar */
+function drawReplayOverlay(ctx: CanvasRenderingContext2D, layout: FloorLayout, overlay: ReplayOverlay) {
+  const w = Math.min(layout.width - 24, 640);
+  if (w <= 80) return;
+  const x = (layout.width - w) / 2;
+  const y = 12;
+  const pad = 12;
+  const badge = `REPLAY ${overlay.step}/${overlay.total}`;
+
+  ctx.save();
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.font = 'bold 10px JetBrains Mono, monospace';
+  const badgeW = ctx.measureText(badge).width + 12;
+  ctx.font = '600 12px Inter, system-ui, sans-serif';
+  const textX = x + pad + badgeW + 10;
+  const lines = wrapLines(ctx, overlay.caption, x + w - pad - textX, 2);
+  const lineH = 16;
+  const h = pad * 2 + Math.max(18, lines.length * lineH) + 6;
+
+  ctx.shadowColor = 'rgba(0,0,0,0.18)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 3;
+  ctx.fillStyle = tc('#ffffff');
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 10);
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.strokeStyle = tc('#e2e8f0');
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = tc('#4f46e5');
+  ctx.beginPath();
+  ctx.roundRect(x + pad, y + pad, badgeW, 18, 5);
+  ctx.fill();
+  ctx.font = 'bold 10px JetBrains Mono, monospace';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(badge, x + pad + 6, y + pad + 13);
+
+  ctx.font = '600 12px Inter, system-ui, sans-serif';
+  ctx.fillStyle = tc('text-900');
+  lines.forEach((line, n) => ctx.fillText(line, textX, y + pad + 13 + n * lineH));
+
+  // Progress: steps reached out of all steps
+  const barY = y + h - 7;
+  const barW = w - pad * 2;
+  ctx.fillStyle = tc('#e2e8f0');
+  ctx.fillRect(x + pad, barY, barW, 3);
+  ctx.fillStyle = tc('#4f46e5');
+  ctx.fillRect(x + pad, barY, barW * (overlay.total ? overlay.step / overlay.total : 0), 3);
+  ctx.restore();
 }
 
 function drawPackets(ctx: CanvasRenderingContext2D, view: SceneView) {

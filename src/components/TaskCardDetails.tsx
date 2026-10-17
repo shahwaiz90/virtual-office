@@ -10,6 +10,7 @@ import {
   Layers,
   ListChecks,
   MessageSquare,
+  Play,
   Send,
   Trophy,
 } from 'lucide-react';
@@ -19,6 +20,8 @@ interface TaskCardDetailsProps {
   tasks: KanbanTask[];
   agents: Agent[];
   onOpenTask: (task: KanbanTask) => void;
+  /** Replay a done requirement on the floor plan (read-only); record is for saving it as a video */
+  onReplay?: (key: string, opts: { record: boolean }) => void;
 }
 
 const KIND_STYLE: Record<TaskThreadKind, { label: string; className: string }> = {
@@ -65,7 +68,8 @@ function formatTime(iso: string) {
  * Everything agents said to each other about one card: the brief handed over, what "done" means,
  * the context provided, the conversation on the thread, and the delivered result.
  */
-export const TaskCardDetails: React.FC<TaskCardDetailsProps> = ({ task, tasks, agents, onOpenTask }) => {
+export const TaskCardDetails: React.FC<TaskCardDetailsProps> = ({ task, tasks, agents, onOpenTask, onReplay }) => {
+  const canReplay = Boolean(onReplay) && task.type === 'requirement' && task.column === 'done';
   const agentById = (id?: string) => agents.find((a) => a.id === id);
   const taskByKey = (key: string) => tasks.find((t) => t.key === key);
   const parent = task.parentKey ? taskByKey(task.parentKey) : undefined;
@@ -105,6 +109,20 @@ export const TaskCardDetails: React.FC<TaskCardDetailsProps> = ({ task, tasks, a
 
   return (
     <div className="space-y-5">
+      {canReplay && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onReplay?.(task.key, { record: false })}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+            title="Play how this requirement was planned, built and reviewed on the floor plan. Nothing is changed on the board."
+          >
+            <Play className="w-3.5 h-3.5" />
+            <span>Replay</span>
+          </button>
+        </div>
+      )}
+
       {/* Handoff chain: who asked whom */}
       <div className="flex flex-wrap items-center gap-2 text-xs p-3 rounded-xl bg-sand-50 border border-sand-200/70">
         {task.type === 'requirement' ? (

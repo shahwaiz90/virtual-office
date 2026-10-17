@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { OfficeState, Agent, NormalizedEvent } from './types/office';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { OfficeState, Agent, NormalizedEvent, ReplayRequest } from './types/office';
 import { Header } from './components/Header';
 import { VirtualOffice } from './components/VirtualOffice';
 import { KanbanBoard } from './components/KanbanBoard';
@@ -23,6 +23,12 @@ export const App: React.FC = () => {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
   const [viewMode, setViewMode] = useState<'floor' | 'terminal_grid'>('floor');
+  // Requirement Replay: the board asks, the floor plan plays; a new nonce restarts a replay of the same card
+  const [replayRequest, setReplayRequest] = useState<ReplayRequest | null>(null);
+  const handleReplay = useCallback((key: string, opts: { record: boolean }) => {
+    setReplayRequest({ key, record: opts.record, nonce: Date.now() });
+  }, []);
+  const handleReplayEnd = useCallback(() => setReplayRequest(null), []);
   const [isVoiceOpen, setIsVoiceOpen] = useState<boolean>(false);
   const [voiceListenTrigger, setVoiceListenTrigger] = useState<number>(0);
 
@@ -352,6 +358,8 @@ export const App: React.FC = () => {
             events={eventsToDisplay}
             onViewModeChange={setViewMode}
             tokenStats={tokenStats}
+            replayRequest={replayRequest}
+            onReplayEnd={handleReplayEnd}
           />
         </section>
 
@@ -364,6 +372,7 @@ export const App: React.FC = () => {
             activeSprintPath={state?.activeSprintPath}
             sprints={state?.sprints}
             portalUrl={state?.workflow?.portalUrl}
+            onReplay={handleReplay}
           />
         </section>
 

@@ -46,6 +46,8 @@ interface KanbanBoardProps {
   onSwitchSprint?: (sprintId: string) => Promise<void> | void;
   onStartSprint?: () => Promise<void> | void;
   portalUrl?: string;
+  /** Replay a done requirement on the floor plan; the card modal closes first */
+  onReplay?: (key: string, opts: { record: boolean }) => void;
 }
 
 const COLUMNS: { id: TaskColumn; label: string; color: string; bg: string; border: string; icon: any }[] = [
@@ -66,6 +68,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onSwitchSprint,
   onStartSprint,
   portalUrl,
+  onReplay,
 }) => {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -720,6 +723,14 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                   tasks={tasks}
                   agents={agents}
                   onOpenTask={(t) => setSelectedTaskModal(t)}
+                  onReplay={
+                    onReplay
+                      ? (key, opts) => {
+                          setSelectedTaskModal(null);
+                          onReplay(key, opts);
+                        }
+                      : undefined
+                  }
                 />
 
                 {/* Telemetry Execution Logs */}

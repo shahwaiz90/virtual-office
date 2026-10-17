@@ -303,3 +303,82 @@ test('demo: follows the saved team from the orchestrator and back, for any roste
   assert.ok(qa.indexOf('ios-dev') < qa.indexOf('ios-tester'), 'The developer builds before QA tests');
   assert.deepEqual(demo.buildDemoScript([role('solo', 'Solo')]), [], 'One role: nothing to show');
 });
+
+// ---------- Requirement Replay schedule and captions (VO-9) ----------
+const { replay } = await import('./load_floor_layout.mjs');
+const T0 = Date.parse('2026-10-17T10:00:00.000Z');
+const rstep = (offsetSec, type, extra = {}) => ({
+  at: new Date(T0 + offsetSec * 1000).toISOString(),
+  type,
+  cardKey: 'VO-1',
+  cardTitle: 'Build it',
+  agentId: 'web-dev',
+  agentName: 'Web Dev',
+  onRoster: true,
+  label: type === 'handoff' ? 'Handoff' : 'Decision',
+  text: 'Some text',
+  ...(type === 'handoff' ? { to: 'web-tech-lead', toName: 'Web Lead', toOnRoster: true } : {}),
+  ...extra,
+});
+
+test('replay: handoff hold matches the demo step, so a walk has time to finish', () => {
+  assert.equal(replay.HANDOFF_HOLD_MS, demo.DEMO_STEP_MS);
+  assert.equal(replay.CAPTION_HOLD_MS, 1600);
+  assert.equal(replay.REPLAY_SPEEDUP, 600);
+  assert.equal(replay.MAX_GAP_MS, 1500);
+});
+
+test('replay: offsets increase, gaps are compressed and capped, 30 min plays far faster than real time', () => {
+  // A 30 minute requirement: bursts of steps seconds apart and long quiet stretches
+  const secs = [0, 5, 20, 300, 302, 900, 905, 1500, 1790, 1800];
+  const steps = secs.map((s, i) => rstep(s, i % 3 === 0 ? 'handoff' : 'caption'));
+  const { schedule, totalMs } = replay.scheduleReplay(steps);
+  assert.equal(schedule.length, steps.length);
+  assert.equal(schedule[0].offsetMs, 0);
+  for (let i = 1; i < schedule.length; i++) {
+    const prev = steps[i - 1];
+    const hold = replay.holdOf(prev);
+    const gap = schedule[i].offsetMs - schedule[i - 1].offsetMs - hold;
+    assert.ok(schedule[i].offsetMs > schedule[i - 1].offsetMs, `offset ${i} increases`);
+    assert.ok(gap >= -1e-6 && gap <= replay.MAX_GAP_MS + 1e-6, `gap ${i} is within [0, MAX_GAP_MS]`);
+    const real = (secs[i] - secs[i - 1]) * 1000;
+    assert.ok(Math.abs(gap - Math.min(real / replay.REPLAY_SPEEDUP, replay.MAX_GAP_MS)) < 1e-6, `gap ${i} follows the formula`);
+    assert.equal(schedule[i].step, steps[i], 'steps keep timeline order');
+  }
+  const last = schedule.at(-1);
+  assert.equal(totalMs, last.offsetMs + replay.holdOf(last.step) + 1000);
+  assert.ok(totalMs < 30 * 60 * 1000, 'shorter than the real 30 minutes');
+  assert.ok(totalMs < 60 * 1000, 'under a minute for ten steps');
+});
+
+test('replay: no steps, out-of-order and unreadable times', () => {
+  assert.deepEqual(replay.scheduleReplay([]), { schedule: [], totalMs: 0 });
+  const odd = [rstep(10, 'caption'), rstep(0, 'caption'), { ...rstep(0, 'caption'), at: 'not a date' }];
+  const { schedule } = replay.scheduleReplay(odd);
+  assert.deepEqual(
+    schedule.map((s) => s.offsetMs),
+    [0, replay.CAPTION_HOLD_MS, 2 * replay.CAPTION_HOLD_MS],
+    'negative or NaN gaps count as zero'
+  );
+});
+
+test('replay: captionLine names label, card and role, and marks roles not on the team', () => {
+  assert.equal(replay.captionLine(rstep(0, 'caption')), 'Decision · VO-1 · Web Dev: Some text');
+  assert.equal(
+    replay.captionLine(rstep(0, 'caption', { agentId: 'ghost', agentName: 'ghost', onRoster: false })),
+    'Decision · VO-1 · ghost (not on the team): Some text'
+  );
+  assert.equal(
+    replay.captionLine(rstep(0, 'handoff', { text: 'Build it' })),
+    'Handoff · VO-1 · Web Dev → Web Lead: Build it'
+  );
+  assert.equal(
+    replay.captionLine(rstep(0, 'handoff', { to: 'old-qa', toName: 'old-qa', toOnRoster: false })),
+    'Handoff · VO-1 · Web Dev → old-qa (not on the team): Some text'
+  );
+  assert.equal(
+    replay.captionLine(rstep(0, 'caption', { agentId: 'system', agentName: 'Board', onRoster: false, label: 'Done' })),
+    'Done · VO-1 · Board: Some text',
+    'the board is not a role, so it is not marked'
+  );
+});
