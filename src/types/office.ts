@@ -102,6 +102,8 @@ export interface KanbanTask {
   thread?: TaskThreadEntry[];
   /** What the assignee delivered */
   result?: string;
+  /** Model usage recorded while a role worked on this card (cost only when the source reports it) */
+  tokenUsage?: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number };
 }
 
 export type TaskThreadKind = 'request' | 'handoff' | 'question' | 'answer' | 'update' | 'decision' | 'result' | 'status';
@@ -218,6 +220,8 @@ export interface TokenUsageStat {
   outputTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  /** USD, summed from sources that report it; 0 when none did */
+  cost?: number;
   lastUsedAt?: string;
 }
 

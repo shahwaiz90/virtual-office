@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Agent, ActiveHandoff, NormalizedEvent } from '../types/office';
+import { Agent, ActiveHandoff, NormalizedEvent, TokenUsageStat } from '../types/office';
+import { deskTokenLine } from '../services/tokenFormat';
 import { Pencil, Sparkles, Users, Terminal, LayoutGrid } from 'lucide-react';
 import { WorkstationTerminalTile } from './WorkstationTerminalTile';
 
@@ -14,6 +15,8 @@ interface VirtualOfficeProps {
   isLoading?: boolean;
   events?: NormalizedEvent[];
   onViewModeChange?: (mode: 'floor' | 'terminal_grid') => void;
+  /** Recorded model usage per role (from session transcripts); roles without usage show nothing */
+  tokenStats?: TokenUsageStat[];
 }
 
 interface RoomWorkingState {
@@ -115,6 +118,8 @@ function createCrispAvatarCanvas(img: HTMLImageElement, targetSize = 160): HTMLC
   return canvas;
 }
 
+const NO_TOKEN_STATS: TokenUsageStat[] = [];
+
 export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   agents,
   activeHandoff,
@@ -126,6 +131,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
   isLoading = false,
   events: rawEvents = [],
   onViewModeChange,
+  tokenStats = NO_TOKEN_STATS,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [viewMode, setViewMode] = useState<'floor' | 'terminal_grid'>('floor');
@@ -241,6 +247,11 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
 
       // 4. Dedicated Agent Workstations (Clean non-overlapping suites for all roles)
       drawOfficeRooms(ctx, agents, activeHandoff, events, tick);
+      // Each role's recorded token usage under its work timer (roles with none show nothing)
+      agents.forEach((agent, idx) => {
+        const b = getAgentBounds(agent, idx);
+        drawDeskTokenBadge(ctx, b.x + 14, b.y + 58, deskTokenLine(tokenStats.find((t) => t.agentId === agent.id)));
+      });
 
       // 5. 3D Volumetric Animated Characters (with Crisp Retina Avatars & Role Badges)
       draw3DCharacters(
@@ -267,7 +278,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [agents, activeHandoff, hoveredAgentId, selectedAgentId, LOGICAL_HEIGHT, events]);
+  }, [agents, activeHandoff, hoveredAgentId, selectedAgentId, LOGICAL_HEIGHT, events, tokenStats, getAgentBounds]);
 
   // Click handler
   const handleCanvasClick = useCallback(
@@ -530,6 +541,7 @@ export const VirtualOffice: React.FC<VirtualOfficeProps> = ({
                 agent={agent}
                 events={events}
                 onSelectAgent={onSelectAgent}
+                tokenLine={deskTokenLine(tokenStats.find((t) => t.agentId === agent.id))}
               />
             ))
           )}
@@ -1150,6 +1162,27 @@ function drawOfficeRooms(
     // Draw appropriate 3D workstation furniture
     drawDynamicWorkstation(ctx, agent, deskPos.x, deskPos.y, bounds, idx, tick);
   });
+}
+
+/** The role's recorded token usage under the work timer; nothing when it has none. */
+function drawDeskTokenBadge(ctx: CanvasRenderingContext2D, x: number, y: number, text: string | null) {
+  if (!text) return;
+  const label = `🪙 ${text}`;
+  ctx.save();
+  ctx.font = 'bold 9.5px JetBrains Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const w = ctx.measureText(label).width + 18;
+  ctx.fillStyle = tc('#f8fafc');
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, 18, 5);
+  ctx.fill();
+  ctx.strokeStyle = tc('#e2e8f0');
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = tc('#334155');
+  ctx.fillText(label, x + 8, y + 13);
+  ctx.restore();
 }
 
 function drawDynamicWorkstation(

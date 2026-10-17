@@ -111,7 +111,7 @@ const parseJson = (text) => {
 
 /**
  * Messages of the given sessions created at or after `sinceMs`, oldest first, in one shape for both versions:
- * { id, sessionId, role: 'user' | 'assistant' | 'agent-switched' | 'idle', createdAt, completed, agent, text, tools: [{ name, input }], finish, tokens }
+ * { id, sessionId, role: 'user' | 'assistant' | 'agent-switched' | 'idle', createdAt, completed, agent, text, tools: [{ name, input }], finish, tokens, cost }
  */
 function readOpenCodeMessages(dbPath, sessions, sinceMs = 0) {
   const out = [];
@@ -143,6 +143,7 @@ function readOpenCodeMessages(dbPath, sessions, sinceMs = 0) {
           tools: content.filter((c) => c.type === 'tool').map((c) => ({ name: c.name || '', input: (c.state && c.state.input) || {} })),
           finish: data.finish || null,
           tokens: data.tokens || null,
+          cost: typeof data.cost === 'number' ? data.cost : null,
         });
       }
     }
@@ -179,6 +180,7 @@ function readOpenCodeMessages(dbPath, sessions, sinceMs = 0) {
         tools: own.filter((p) => p.type === 'tool').map((p) => ({ name: p.tool || '', input: (p.state && p.state.input) || {} })),
         finish: data.finish || null,
         tokens: data.tokens || null,
+        cost: typeof data.cost === 'number' ? data.cost : null,
       });
     }
     out.sort((a, b) => a.createdAt - b.createdAt);
@@ -253,6 +255,8 @@ function usageOf(message) {
     cache_read_input_tokens: cache.read || 0,
     cache_creation_input_tokens: cache.write || 0,
   };
+  // OpenCode reports each message's cost in USD (0 for free or local models); only a real charge is kept
+  if (typeof message.cost === 'number' && message.cost > 0) usage.cost = message.cost;
   return usage.input_tokens || usage.output_tokens || usage.cache_read_input_tokens || usage.cache_creation_input_tokens ? usage : null;
 }
 

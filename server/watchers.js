@@ -1845,7 +1845,7 @@ function handleOpenCodeMessage(message, state) {
   const createdAt = new Date(message.createdAt).toISOString();
   if (eventBus.isBeforeReset(createdAt)) return;
   const usage = opencode.usageOf(message);
-  if (usage) eventBus.recordTokenUsage(openCodeActor(message, state), usage);
+  if (usage) recordUsage(openCodeActor(message, state), usage, state);
   const steps = opencode.toOpenCodeSteps(message, { directory: state.directory, isChild: state.isChild, isInProject: isPathInProject });
   if (message.agent && eventBus.agents.has(message.agent)) {
     for (const step of steps) step.actorAgentId = message.agent;
@@ -1873,7 +1873,30 @@ function recordClaudeTokenUsage(entry, state) {
     state.lastUsageId = found.messageId;
   }
   const agentId = state.agentType && eventBus.agents.has(state.agentType) ? state.agentType : getResolvedAgent('pm', 0).id;
-  eventBus.recordTokenUsage(agentId, found.usage);
+  recordUsage(agentId, found.usage, state);
+}
+
+/** Credits one message's usage to the role and to the card it is working on. */
+function recordUsage(agentId, usage, state) {
+  eventBus.recordTokenUsage(agentId, usage);
+  const card = usageCard(agentId, state);
+  if (card && eventBus.recordTaskTokenUsage(card.id, usage)) persistActiveSprintTasks();
+}
+
+/**
+ * The card a role's tokens go to: the orchestrator's go to the conversation's requirement card,
+ * any other role's to its open in_progress card (the most recently updated one).
+ */
+function usageCard(agentId, state) {
+  if (agentId === getResolvedAgent('pm', 0).id) {
+    const open = state.promptTaskId ? eventBus.tasks.get(state.promptTaskId) : null;
+    return open || conversationCard(state.convId);
+  }
+  return (
+    Array.from(eventBus.tasks.values())
+      .filter((t) => t.assignedTo === agentId && t.column === 'in_progress')
+      .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')))[0] || null
+  );
 }
 
 function completeClaudePromptCard(taskId, step) {

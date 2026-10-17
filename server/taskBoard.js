@@ -327,6 +327,25 @@ function list(items) {
 }
 
 /** Plain-text card for agents: everything the assignee needs, nothing it has to guess. */
+/** 1234 -> "1.2k", 72000 -> "72k", 1234567 -> "1.2M". */
+function compactNumber(n) {
+  const trim = (v) => v.toFixed(1).replace(/\.0$/, '');
+  if (n >= 1e6) return `${trim(n / 1e6)}M`;
+  if (n >= 1e4) return `${Math.round(n / 1e3)}k`;
+  if (n >= 1e3) return `${trim(n / 1e3)}k`;
+  return String(n);
+}
+
+/** "72k in · 2k out · 400k cached · $0.0125" from a card's recorded tokenUsage, or null when there is none. */
+function formatTokenUsage(u) {
+  if (!u || !(u.input || u.output || u.cacheRead || u.cacheWrite || u.cost)) return null;
+  const parts = [`${compactNumber(u.input || 0)} in`, `${compactNumber(u.output || 0)} out`];
+  if (u.cacheRead) parts.push(`${compactNumber(u.cacheRead)} cached`);
+  if (u.cacheWrite) parts.push(`${compactNumber(u.cacheWrite)} cache writes`);
+  if (u.cost > 0) parts.push(`$${u.cost >= 1 ? u.cost.toFixed(2) : u.cost.toFixed(4)}`);
+  return parts.join(' · ');
+}
+
 function renderTaskMarkdown(detail) {
   const lines = [];
   lines.push(`# ${detail.key}: ${detail.title}`);
@@ -336,6 +355,8 @@ function renderTaskMarkdown(detail) {
   lines.push(`- Assigned to: ${agentLabel(detail.assignedTo)}`);
   if (detail.delegatedBy) lines.push(`- Delegated by: ${agentLabel(detail.delegatedBy)}`);
   if (detail.skill) lines.push(`- Skill: ${detail.skill}`);
+  const tokens = formatTokenUsage(detail.tokenUsage);
+  if (tokens) lines.push(`- Tokens: ${tokens}`);
   if (detail.parent) lines.push(`- Part of: ${detail.parent.key} ${detail.parent.title} (${detail.parent.column})`);
   if (detail.dependencies.length) {
     lines.push(`- Depends on: ${detail.dependencies.map((d) => `${d.key}${d.column ? ` (${d.column})` : ' (missing)'}`).join(', ')}`);
@@ -381,6 +402,7 @@ module.exports = {
   rosterHasTester,
   effectiveColumn,
   renderTaskMarkdown,
+  formatTokenUsage,
   normalizeCardDeliverable,
   recordCardDeliverable,
 };
