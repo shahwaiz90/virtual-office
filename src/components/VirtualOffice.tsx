@@ -1315,7 +1315,7 @@ function drawOfficeRooms(
     if (works) drawDeskLamp(ctx, cx, lw, lh, color);
     drawChair(ctx, cx, ART.seatY, seated);
     drawDynamicWorkstation(ctx, agent, cx, ART.deskCenterY, { x: 0, y: 0, w: lw, h: lh }, idx, tick);
-    if (works && seated) drawMonitorLines(ctx, cx, color, view.clock, view.reduced);
+    if (works && seated) drawMonitorLines(ctx, cx, workstationKind(agent, idx), color, view.clock, view.reduced);
 
     // Recorded token usage at the room's bottom-left, above a handover ribbon (roles with none show nothing)
     const line = deskTokenLine(view.tokenStats.find((t) => t.agentId === agent.id));
@@ -1365,15 +1365,40 @@ function drawDeskLamp(ctx: CanvasRenderingContext2D, cx: number, w: number, h: n
   ctx.restore();
 }
 
-/** Code lines flickering over the monitors while the agent works at its desk */
-function drawMonitorLines(ctx: CanvasRenderingContext2D, cx: number, color: string, clock: number, reduced: boolean) {
+/** Widest flickering bar (10 + 2 * 13), the width each screen's maxW is scaled against */
+const MONITOR_LINE_MAX_W = 36;
+
+/**
+ * Where the flickering bars sit on each desk's screen, relative to the desk center:
+ * left edge, top bar's y, and the widest bar's width. Three 2.5px bars, 6px apart.
+ * - executive: laptop screen x-17..x+17, y-15..y+3
+ * - dev: right monitor screen x+9..x+47, y-20..y-2
+ * - qa: right simulator screen x+8..x+48, y-20..y-1
+ */
+const MONITOR_LINE_AREA: Record<WorkstationKind, { x: number; y: number; maxW: number }> = {
+  executive: { x: -15, y: -13, maxW: 30 },
+  dev: { x: 9, y: -19, maxW: MONITOR_LINE_MAX_W },
+  qa: { x: 9, y: -19, maxW: MONITOR_LINE_MAX_W },
+};
+
+/** Code lines flickering over the desk's screen while the agent works at its desk */
+function drawMonitorLines(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  kind: WorkstationKind,
+  color: string,
+  clock: number,
+  reduced: boolean
+) {
   const y = ART.deskCenterY;
+  const area = MONITOR_LINE_AREA[kind];
+  const fit = area.maxW / MONITOR_LINE_MAX_W;
   ctx.save();
   ctx.fillStyle = color;
   ctx.globalAlpha = 0.85;
   for (let i = 0; i < 3; i++) {
     const w = reduced ? 22 : 10 + (Math.sin(clock / 180 + i * 2) + 1) * 13;
-    ctx.fillRect(cx + 9, y - 19 + i * 6, w, 2.5);
+    ctx.fillRect(cx + area.x, y + area.y + i * 6, w * fit, 2.5);
   }
   ctx.restore();
 }
@@ -1480,22 +1505,30 @@ function drawDynamicWorkstation(
   idx: number,
   tick: number
 ) {
-  const roleLower = (agent.role || '').toLowerCase();
   const theme = agent.theme.themeColor;
+  const kind = workstationKind(agent, idx);
 
-  if (roleLower.includes('manager') || roleLower.includes('owner') || idx === 0) {
+  if (kind === 'executive') {
     draw3DExecutiveDesk(ctx, deskX, deskY, theme, tick);
-  } else if (roleLower.includes('architect') || roleLower.includes('lead') || roleLower.includes('plan') || idx === 1) {
-    // Clean Technical Architecture Workstation (Removed hardcoded 5-tier whiteboard)
-    draw3DDevWorkstation(ctx, deskX, deskY, theme, tick);
-  } else if (roleLower.includes('dev') || roleLower.includes('code') || roleLower.includes('author') || idx === 2) {
-    draw3DDevWorkstation(ctx, deskX, deskY, theme, tick);
-  } else if (roleLower.includes('test') || roleLower.includes('qa') || roleLower.includes('quality') || idx === 3) {
+  } else if (kind === 'qa') {
     // Clean modern QA Lab workstation (Zero clutter, zero unwanted plants or racks)
     draw3DModernQALab(ctx, deskX, deskY, bounds, theme, tick);
   } else {
     draw3DDevWorkstation(ctx, deskX, deskY, theme, tick);
   }
+}
+
+type WorkstationKind = 'executive' | 'dev' | 'qa';
+
+/** Which desk a room draws; drawDynamicWorkstation and drawMonitorLines both read it so they cannot drift */
+function workstationKind(agent: Agent, idx: number): WorkstationKind {
+  const roleLower = (agent.role || '').toLowerCase();
+  if (roleLower.includes('manager') || roleLower.includes('owner') || idx === 0) return 'executive';
+  // Technical Architecture and dev rooms both use the dev workstation
+  if (roleLower.includes('architect') || roleLower.includes('lead') || roleLower.includes('plan') || idx === 1) return 'dev';
+  if (roleLower.includes('dev') || roleLower.includes('code') || roleLower.includes('author') || idx === 2) return 'dev';
+  if (roleLower.includes('test') || roleLower.includes('qa') || roleLower.includes('quality') || idx === 3) return 'qa';
+  return 'dev';
 }
 
 function drawRoomBox(
