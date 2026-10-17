@@ -309,6 +309,25 @@ export const App: React.FC = () => {
     }
   };
 
+  // Starting a sprint is a full reset on the server (same as Reset), so drop the local event list too
+  const handleStartSprint = async () => {
+    try {
+      voiceService.stop();
+      setEvents([]);
+      const res = await fetch('/api/sprints/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.state) setState(json.state);
+      }
+      setEvents([]);
+    } catch (e) {
+      console.error('Error starting sprint:', e);
+    }
+  };
+
   const agents = state ? state.agents : [];
   // The office draws a desk only for the saved team; the board and analytics keep the whole catalog
   const officeAgents = useMemo(() => teamAgentsOf(agents), [agents]);
@@ -374,6 +393,7 @@ export const App: React.FC = () => {
             activeSprintPath={state?.activeSprintPath}
             sprints={state?.sprints}
             portalUrl={state?.workflow?.portalUrl}
+            onStartSprint={handleStartSprint}
             onReplay={handleReplay}
           />
         </section>
