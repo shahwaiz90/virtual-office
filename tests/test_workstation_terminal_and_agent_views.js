@@ -7,47 +7,6 @@ const path = require('node:path');
 // to verify algorithmic correctness, zero regressions, and full edge-case coverage.
 
 /**
- * Bounds & layout computation in VirtualOffice.tsx
- */
-function computeOfficeLayout(agentCount) {
-  const LOGICAL_WIDTH = 1200;
-  const totalSlots = Math.max(agentCount, 4);
-  const leftCount = Math.ceil(totalSlots / 2);
-  const rightCount = Math.floor(totalSlots / 2);
-  const maxRows = Math.max(leftCount, rightCount, 2);
-  const rowHeight = maxRows <= 2 ? 290 : 240;
-  const rowGap = maxRows <= 2 ? 30 : 25;
-  const topMargin = 35;
-  const LOGICAL_HEIGHT = topMargin + maxRows * rowHeight + (maxRows - 1) * rowGap + topMargin;
-
-  const getAgentBounds = (agent, idx) => {
-    const isLeft = idx % 2 === 0;
-    const row = Math.floor(idx / 2);
-    const defaultBounds = {
-      x: isLeft ? 35 : 745,
-      y: topMargin + row * (rowHeight + rowGap),
-      w: 420,
-      h: rowHeight,
-    };
-    return agent?.theme?.roomBounds || defaultBounds;
-  };
-
-  const isPointInAgent = (clickX, clickY, agent, idx) => {
-    const bounds = getAgentBounds(agent, idx);
-    const insideRoom =
-      clickX >= bounds.x &&
-      clickX <= bounds.x + bounds.w &&
-      clickY >= bounds.y &&
-      clickY <= bounds.y + bounds.h;
-    const pos = agent?.currentPosition || agent?.theme?.deskPosition || { x: bounds.x + 100, y: bounds.y + 100 };
-    const dist = Math.hypot(clickX - pos.x, clickY - (pos.y - 20));
-    return insideRoom || dist < 55;
-  };
-
-  return { LOGICAL_WIDTH, LOGICAL_HEIGHT, rowHeight, rowGap, getAgentBounds, isPointInAgent };
-}
-
-/**
  * Status calculation logic in LiveLogs.tsx
  */
 function computeAgentLiveStatus(currentAgent, events) {
@@ -275,49 +234,60 @@ function formatTerminalCopyLogs(agent, events) {
 // Test Suites
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-test('VirtualOffice: Logical bounds and room hit-testing for 4 agents', () => {
-  const layout = computeOfficeLayout(4);
-  assert.equal(layout.LOGICAL_WIDTH, 1200);
-  assert.equal(layout.rowHeight, 290);
-  assert.equal(layout.rowGap, 30);
-  // maxRows = 2: 35 + 2 * 290 + 30 + 35 = 680
-  assert.equal(layout.LOGICAL_HEIGHT, 680);
+// VO-3: the floor plan comes from src/components/floorLayout.ts (corridor grid for any team size);
+// these tests import the real module instead of a copy of the old two-column layout.
+const loadFloorLayout = () => import('./load_floor_layout.mjs').then((m) => m.default);
 
-  const mockAgent0 = {
-    id: 'agent-lead',
-    name: 'Tech Lead',
-    theme: { deskPosition: { x: 200, y: 150 } },
-  };
-  const mockAgent1 = {
-    id: 'agent-dev',
-    name: 'Android Dev',
-    theme: { deskPosition: { x: 900, y: 150 } },
-  };
+test('VirtualOffice: 4 agents lay out as a 2x2 grid of rooms with corridors, room hit areas disjoint', async () => {
+  const { computeFloorLayout, CORRIDOR } = await loadFloorLayout();
+  const layout = computeFloorLayout(4, 1200);
+  assert.equal(layout.width, 1200);
+  assert.equal(layout.cols, 2);
+  assert.equal(layout.rows, 2);
+  assert.equal(layout.hCorridors.length, 2, 'one corridor band under each row');
+  assert.equal(layout.vCorridors.length, 3, 'left margin, one gutter, right margin');
+  assert.equal(layout.vCorridors[1].w, CORRIDOR);
 
-  const bounds0 = layout.getAgentBounds(mockAgent0, 0);
-  assert.deepEqual(bounds0, { x: 35, y: 35, w: 420, h: 290 });
+  const [a, b, c] = layout.slots;
+  assert.equal(a.room.y, b.room.y, 'first row shares a top');
+  assert.ok(b.room.x >= a.room.x + a.room.w + CORRIDOR, 'gutter between columns');
+  assert.ok(c.room.y >= a.room.y + a.room.h + CORRIDOR, 'band between rows');
 
-  const bounds1 = layout.getAgentBounds(mockAgent1, 1);
-  assert.deepEqual(bounds1, { x: 745, y: 35, w: 420, h: 290 });
-
-  // Test inside room bounds hit
-  assert.ok(layout.isPointInAgent(100, 100, mockAgent0, 0), 'Point inside room bounds 0 must hit');
-  assert.ok(layout.isPointInAgent(800, 100, mockAgent1, 1), 'Point inside room bounds 1 must hit');
-
-  // Test character proximity hit (even if slightly outside bounding box)
-  assert.ok(layout.isPointInAgent(200, 140, mockAgent0, 0), 'Point within 55px of desk must hit');
-
-  // Test point outside room bounds and far from desk
-  assert.ok(!layout.isPointInAgent(600, 300, mockAgent0, 0), 'Center cafe point must not hit room 0');
+  // Room hit area: a point inside room 0 is not inside room 1
+  const inside = (r, x, y) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+  const p = { x: a.room.x + 20, y: a.room.y + 20 };
+  assert.ok(inside(a.room, p.x, p.y));
+  assert.ok(!inside(b.room, p.x, p.y));
+  // The gutter between rooms hits no room
+  const gx = layout.vCorridors[1].x + CORRIDOR / 2;
+  assert.ok(layout.slots.every((s) => !inside(s.room, gx, a.room.y + 20)), 'corridor is not a hit target');
 });
 
-test('VirtualOffice: Scaled height for multi-agent expansion (6 agents)', () => {
-  const layout = computeOfficeLayout(6);
-  // maxRows = 3: rowHeight = 240, rowGap = 25
-  // 35 + 3 * 240 + 2 * 25 + 35 = 840
-  assert.equal(layout.rowHeight, 240);
-  assert.equal(layout.rowGap, 25);
-  assert.equal(layout.LOGICAL_HEIGHT, 840);
+test('VirtualOffice: the floor grows taller with the team instead of shrinking rooms (6 and 20 agents)', async () => {
+  const { computeFloorLayout } = await loadFloorLayout();
+  const six = computeFloorLayout(6, 1200);
+  assert.equal(six.cols, 3);
+  assert.equal(six.rows, 2);
+  const twenty = computeFloorLayout(20, 1200);
+  assert.equal(twenty.cols, 4);
+  assert.equal(twenty.rows, 5);
+  assert.ok(twenty.height > six.height);
+  const phone = computeFloorLayout(6, 375);
+  assert.equal(phone.cols, 1, 'one column on a phone');
+  assert.ok(phone.height > six.height);
+});
+
+test('VirtualOffice: server roomBounds/deskPosition no longer drive drawing or hit-testing', () => {
+  const content = fs.readFileSync(path.resolve(__dirname, '../src/components/VirtualOffice.tsx'), 'utf8');
+  assert.ok(!content.includes('roomBounds'), 'theme.roomBounds is not read');
+  assert.ok(!content.includes('deskPosition'), 'theme.deskPosition is not read');
+  assert.ok(!content.includes('currentPosition'), 'agent.currentPosition is not read');
+  assert.ok(!content.includes('fromPos') && !content.includes('toPos'), 'activeHandoff positions are not read');
+  assert.ok(!content.includes('drawHandoffAnimation'), 'old handoff arc removed');
+  assert.ok(!content.includes('drawCentralLoungeAndCoffeeBar'), 'central lounge column removed');
+  assert.ok(content.includes('computeFloorLayout(agents.length, containerWidth)'), 'layout from agent count and width');
+  assert.ok(content.includes('const hitTest = useCallback'), 'one hit test');
+  assert.ok(content.includes("matchMedia('(prefers-reduced-motion: reduce)')"), 'reduced motion followed');
 });
 
 test('LiveLogs Status Banner: Executing tool indicator', () => {

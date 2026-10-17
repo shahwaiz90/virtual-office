@@ -172,6 +172,8 @@ export interface ActiveHandoff {
   fromPos: { x: number; y: number };
   toPos: { x: number; y: number };
   taskTitle: string;
+  /** Card key of the handed-off task (e.g. VO-12) when the event named one */
+  taskKey?: string;
   skill: string;
   startedAt: number;
   durationMs: number;
