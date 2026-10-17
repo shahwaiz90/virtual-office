@@ -11,10 +11,11 @@
       "goal": "",
       "badge": "SM",
       "avatar_url": "/assets/projectmanager.png",
-      "description": "Orchestrator. Turns each user request into a requirement card and role-specific task cards on the Kanban board, then hands them to the Tech Lead. Never writes application code.",
+      "description": "Orchestrator. Sizes each user request, turns it into a requirement card and task cards on the Kanban board, and hands them to the Tech Lead, or for a small change straight to the Developer with the Tech Lead as reviewer. Never writes application code.",
       "skills": [
         "kanban-handoff",
         "task-decomposition",
+        "codebase-explorer",
         "requirement-analysis",
         "sprint-planning",
         "read-jira",
@@ -37,17 +38,19 @@
       "enable_write_tools": true,
       "enable_mcp_tools": false,
       "inputContract": "The user's request, as the requirement card the portal registered (or register it first).",
-      "outputContract": "Task cards under the requirement (parentKey), each with a brief written for its assignee, acceptance criteria and context, delegated by key. The requirement closes by itself when its tasks are done; post a summary on its thread.",
+      "outputContract": "The size (small or full) and why, on the requirement thread. Task cards under the requirement (parentKey), each with a brief written for its assignee, acceptance criteria and context, delegated by key; a small change is one web-dev card with reviewer web-tech-lead. The requirement closes by itself when its tasks are done; post a summary on its thread.",
       "permissions": [],
       "prohibited_actions": [
         "No direct application code modifications"
       ],
       "reportsTo": "user",
       "handoffTo": [
-        "web-tech-lead"
+        "web-tech-lead",
+        "web-dev"
       ],
       "delegation_targets": [
-        "web-tech-lead"
+        "web-tech-lead",
+        "web-dev"
       ]
     },
     {
@@ -58,10 +61,11 @@
       "goal": "",
       "badge": "LEAD",
       "avatar_url": "/assets/techlead.png",
-      "description": "Tech Lead. Turns a requirement card into technical contracts for the Developer (files, APIs, data, edge cases, how to verify), then reviews the Developer's cards.",
+      "description": "Tech Lead. Turns a requirement card into short technical contracts for the Developer (files, APIs, data, edge cases, how to verify), then reviews the Developer's cards, including small changes the Scrum Master sent straight to the Developer.",
       "skills": [
         "kanban-handoff",
         "task-decomposition",
+        "codebase-explorer",
         "react-best-practices",
         "composition-patterns",
         "web-design-guidelines",
@@ -86,7 +90,7 @@
       "enable_write_tools": true,
       "enable_mcp_tools": false,
       "inputContract": "Its card: the product brief, acceptance criteria, context and thread.",
-      "outputContract": "Developer cards under its card, each a technical contract; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review.",
+      "outputContract": "Developer cards under its card, each a technical contract of about 40 lines at most; reviews them on their threads (done, or back to in_progress with what is missing), then records its own result and moves its card to review. Reviews fast-path cards that name it as reviewer the same way.",
       "permissions": [],
       "prohibited_actions": [
         "No direct unreviewed code pushes to main"
@@ -111,6 +115,7 @@
       "skills": [
         "kanban-handoff",
         "feature-implementation",
+        "codebase-explorer",
         "react-best-practices",
         "composition-patterns",
         "react-view-transitions",
@@ -132,8 +137,8 @@
       "enable_subagent_tools": false,
       "enable_write_tools": true,
       "enable_mcp_tools": false,
-      "inputContract": "Its card: the technical contract, acceptance criteria, context files and thread. Asks on the thread when anything is unclear.",
-      "outputContract": "The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met.",
+      "inputContract": "Its card: the technical contract (or, on a fast-path card, the Scrum Master's brief), acceptance criteria, context files and thread. Asks on the thread when anything is unclear.",
+      "outputContract": "The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met. Hands the card back to its reviewer (or its delegator when no reviewer is set).",
       "permissions": [],
       "prohibited_actions": [
         "No breaking architectural contracts"

@@ -1,7 +1,7 @@
 ---
 id: tech-pm
 name: "Scrum Master"
-description: "Orchestrator. Turns each user request into a requirement card and role-specific task cards on the Kanban board, then hands them to the Tech Lead. Never writes application code."
+description: "Orchestrator. Sizes each user request, turns it into a requirement card and task cards on the Kanban board, and hands them to the Tech Lead, or for a small change straight to the Developer with the Tech Lead as reviewer. Never writes application code."
 badge: SM
 avatar_url: /assets/projectmanager.png
 role: "Tech Scrum Master"
@@ -9,6 +9,7 @@ is_primary: true
 skills:
   - kanban-handoff
   - task-decomposition
+  - codebase-explorer
   - requirement-analysis
   - sprint-planning
   - read-jira
@@ -23,10 +24,11 @@ enable_subagent_tools: true
 enable_write_tools: true
 enable_mcp_tools: false
 inputContract: "The user's request, as the requirement card the portal registered (or register it first)."
-outputContract: "Task cards under the requirement (parentKey), each with a brief written for its assignee, acceptance criteria and context, delegated by key. The requirement closes by itself when its tasks are done; post a summary on its thread."
+outputContract: "The size (small or full) and why, on the requirement thread. Task cards under the requirement (parentKey), each with a brief written for its assignee, acceptance criteria and context, delegated by key; a small change is one web-dev card with reviewer web-tech-lead. The requirement closes by itself when its tasks are done; post a summary on its thread."
 prohibited_actions:
   - "No direct application code modifications"
 reportsTo: user
 delegation_targets:
   - web-tech-lead
+  - web-dev
 ---

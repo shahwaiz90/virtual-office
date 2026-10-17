@@ -12,7 +12,7 @@ console.log('🧪 Starting Role Definitions Test Suite...\n');
 console.log('▶ Test 1: delegation_targets and tools are read whichever spelling a definition uses...');
 const registry = loadRegistry(root);
 const byId = (id) => registry.agents.find((a) => a.id === id);
-assert.deepStrictEqual(byId('tech-pm').delegation_targets, ['web-tech-lead']);
+assert.deepStrictEqual(byId('tech-pm').delegation_targets, ['web-tech-lead', 'web-dev'], 'Small changes go straight to the developer');
 assert.deepStrictEqual(byId('web-tech-lead').handoffTo, ['web-dev']);
 assert.deepStrictEqual(byId('web-dev').delegation_targets, [], 'The developer reports back; it delegates to no one');
 assert.strictEqual(byId('web-dev').reportsTo, 'web-tech-lead');

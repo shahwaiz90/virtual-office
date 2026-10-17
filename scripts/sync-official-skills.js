@@ -13,7 +13,7 @@ const catalogFile = path.join(root, 'server', 'officialSkills.js');
 const { OFFICIAL_SKILLS, getProjectSkills } = require(catalogFile);
 
 // Skills every generated agent prompt depends on; bundle them even if no team template lists them
-const ALWAYS_BUNDLED = { 'kanban-handoff': 'common' };
+const ALWAYS_BUNDLED = { 'kanban-handoff': 'common', 'codebase-explorer': 'common' };
 
 const disk = getProjectSkills(root);
 const changed = [];

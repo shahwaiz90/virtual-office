@@ -590,6 +590,7 @@ function carriedTaskFields(taskData, existing) {
   const fields = [
     ['type', isText],
     ['parentKey', isText],
+    ['reviewer', isText],
     ['brief', isText],
     ['acceptanceCriteria', isList],
     ['dependsOn', isList],

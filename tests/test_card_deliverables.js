@@ -133,6 +133,23 @@ async function deliverables(port) {
     assert.ok(skill.includes('/api/deliverables') && skill.includes('taskKey'));
     console.log('  ✅ Test 4 Passed: Skill and prompts describe the role deliverable.\n');
 
+    // Test 5: a small change goes straight to the developer and is reviewed by the card's reviewer
+    console.log('▶ Test 5: A card with a reviewer hands back to the reviewer, not the delegator...');
+    await request(port, 'POST', '/api/tasks/register', { tasks: [{
+      key: 'WEB-710', title: 'Shorten handoff walk timings', brief: 'Change the timing constants.',
+      assignedTo: 'web-dev', delegatedBy: 'tech-pm', reviewer: 'web-tech-lead', column: 'assigned',
+    }] });
+    const md = await new Promise((resolve) => http.get({ hostname: '127.0.0.1', port, path: '/api/tasks/WEB-710?format=md' }, (res) => {
+      let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve(d));
+    }));
+    assert.ok(md.includes('Reviewed by:'), 'The card shows who reviews it');
+    const fin = await request(port, 'POST', '/api/tasks/WEB-710/finish', { agentId: 'web-dev', result: 'Timings shortened.', deliverable: { type: 'source_code', content: 'done' } });
+    assert.strictEqual(fin.body.column, 'review');
+    assert.strictEqual(fin.body.reviewer, 'web-tech-lead', 'Finish names the reviewer for the HANDOFF line');
+    const dev = (await deliverables(port)).find((x) => x.metadata?.taskKey === 'WEB-710');
+    assert.strictEqual(dev.deliveredTo, 'web-tech-lead', 'The deliverable goes to the reviewer');
+    console.log('  ✅ Test 5 Passed: Fast-path cards are reviewed by their reviewer.\n');
+
     console.log('🎉 ALL CARD DELIVERABLES TESTS PASSED!');
   } finally {
     server.close();

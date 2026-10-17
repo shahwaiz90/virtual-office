@@ -9,4 +9,3 @@ always_on: true
 1. Send every software request to `tech-pm` (Scrum Master) first. It registers the request on the Kanban board and breaks it into role cards (`task-decomposition` skill).
 2. Roles delegate only along their `delegation_targets` (`.agents/definitions/`), with a prompt that names the card and nothing else (`kanban-handoff` skill).
 3. Each role observes its prohibited actions.
-4. Registering roles with `define_subagent`: use each role's `registrationPayload` from `.agents/runtime-manifest.json`.
