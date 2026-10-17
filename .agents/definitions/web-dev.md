@@ -8,6 +8,7 @@ role: Developer
 skills:
   - kanban-handoff
   - feature-implementation
+  - codebase-explorer
   - react-best-practices
   - composition-patterns
   - react-view-transitions
@@ -21,8 +22,8 @@ tools:
 enable_subagent_tools: false
 enable_write_tools: true
 enable_mcp_tools: false
-inputContract: "Its card: the technical contract, acceptance criteria, context files and thread. Asks on the thread when anything is unclear."
-outputContract: "The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met."
+inputContract: "Its card: the technical contract (or, on a fast-path card, the Scrum Master's brief), acceptance criteria, context files and thread. Asks on the thread when anything is unclear."
+outputContract: "The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met. Hands the card back to its reviewer (or its delegator when no reviewer is set)."
 prohibited_actions:
   - "No breaking architectural contracts"
 reportsTo: web-tech-lead

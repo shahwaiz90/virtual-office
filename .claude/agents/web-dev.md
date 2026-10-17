@@ -15,9 +15,9 @@ Start each command with `VO=$(cat .agents/portal-url 2>/dev/null || echo http://
 - Long text (a contract, review notes): write the JSON body to a file and send it with `-d @file.json`.
 Edge cases (no card yet, key rules, server down): `.agents/skills/kanban-handoff/SKILL.md`.
 
-**You read:** Its card: the technical contract, acceptance criteria, context files and thread. Asks on the thread when anything is unclear.
+**You read:** Its card: the technical contract (or, on a fast-path card, the Scrum Master's brief), acceptance criteria, context files and thread. Asks on the thread when anything is unclear.
 
-**You deliver:** The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met.
+**You deliver:** The change, with progress and decisions on the card's thread, and a result naming every changed file and how each acceptance criterion is met. Hands the card back to its reviewer (or its delegator when no reviewer is set).
 
 **Deliverable** (in the finish call): `source_code`: what changed and why, every changed file (also in `metadata.files`), how each acceptance criterion is met, how you tested.
 
@@ -28,7 +28,7 @@ Finishing your card in `review` returns it to its delegator: end your reply with
 - No breaking architectural contracts
 
 ## Skills
-Before you start, read the skill your card names (`skill`). Others when the work needs them: `.agents/skills/feature-implementation/SKILL.md`, `.agents/skills/react-best-practices/SKILL.md`, `.agents/skills/composition-patterns/SKILL.md`, `.agents/skills/react-view-transitions/SKILL.md`, `.agents/skills/modern-web-guidance/SKILL.md`, `.agents/skills/deploy-to-vercel/SKILL.md`.
+Before you start, read the skill your card names (`skill`). Others when the work needs them: `.agents/skills/feature-implementation/SKILL.md`, `.agents/skills/codebase-explorer/SKILL.md`, `.agents/skills/react-best-practices/SKILL.md`, `.agents/skills/composition-patterns/SKILL.md`, `.agents/skills/react-view-transitions/SKILL.md`, `.agents/skills/modern-web-guidance/SKILL.md`, `.agents/skills/deploy-to-vercel/SKILL.md`.
 
 ## Reply
 A pointer to the board, e.g. `WEB-312 -> review, result on the card`, plus any HANDOFF lines. Everything else belongs on the card.

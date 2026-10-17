@@ -22,7 +22,8 @@ VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s 
 ## 2. Hand on: one card per piece of work
 Rewrite the work for the receiver's role; never forward the text you were given.
 - Scrum Master → Tech Lead: user need and why, scope, acceptance criteria in user terms, open questions.
-- Tech Lead → Developer: technical contract: files, API shapes, data, edge cases, how to verify.
+- Tech Lead → Developer: technical contract of about 40 lines: impact map (files to change and files affected), API shapes, data, edge cases, how to verify (`task-decomposition`).
+- Scrum Master → Developer (small change only): what to change, the impact map, acceptance criteria, how to verify.
 - Tech Lead → QA (only if on the roster): what to test, pass/fail criteria.
 
 Register (`parentKey` = the card you work from), then delegate:
@@ -38,6 +39,8 @@ VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s 
 - `key`: short prefix plus the next number above the highest key on the board (`curl -s "$VO/api/tasks?format=brief"` lists them). Unique.
 - `type`: `requirement` for the user's request (one per request, owned by the orchestrator), otherwise `task`. The portal usually registers the requirement card when it watches your session: look with `curl -s "$VO/api/tasks?type=requirement&format=brief"` before registering one.
 - `brief` is recorded on the thread as your handoff message. `skill` must be one of the assignee's skills.
+- `reviewer` (optional): who reviews the result when it is not the delegator. A small change goes from the Scrum Master straight to the Developer with `"reviewer":"web-tech-lead"` (see `task-decomposition`); finishing in `review` then hands the card to the reviewer.
+- `context.files`: the Change and Affected paths from the impact map (`codebase-explorer`), so the receiver starts from the right files.
 
 Delegate with only the card reference:
 > Your task: **WEB-312**. Start it with `curl -s -X POST "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/WEB-312/start"` (prints the card), then follow your role prompt.
@@ -58,7 +61,7 @@ VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s 
 | Role | deliverable `type` | `content` |
 | :--- | :--- | :--- |
 | Scrum Master | `prd` | Need, scope, acceptance criteria, the cards created and their owners |
-| Tech Lead | `architecture` or `code_review` | The technical contract; or review notes per acceptance criterion |
+| Tech Lead | `architecture` or `code_review` | The technical contract with its impact map; or review notes per acceptance criterion |
 | Developer | `source_code` | What changed and why, every file, how each criterion is met, how you tested |
 | QA | `test_report` | What was tested, results, defects |
 
@@ -69,14 +72,15 @@ VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s 
 - The older calls still work: `POST /api/tasks/<KEY>/status` (`column`, `note`, `result`) and `POST /api/deliverables` (`taskKey`, `type`, `title`, `content`). Board replies are short; `?format=full` returns the whole card or office state.
 
 ## 5. Hand back up
-Finishing in `review` hands the card to its delegator. A subagent cannot start another subagent (Claude Code; OpenCode by default), so it ends its reply with:
+Finishing in `review` hands the card to its reviewer, or its delegator when no reviewer is set. A subagent cannot start another subagent (Claude Code; OpenCode by default), so it ends its reply with:
 ```
 WEB-312 -> review, result on the card
 HANDOFF WEB-312 -> web-tech-lead
 ```
+The finish reply names the agent in `reviewer`; put that agent in the HANDOFF line.
 Skip the HANDOFF line only for a card you delegated to yourself; then the reply goes to the user.
 
-Reviewing a card you delegated: finish it with `"column":"done"`, or `"column":"in_progress"` with what is missing in `note` (then `HANDOFF <KEY> -> <assignee>` where HANDOFF lines apply).
+Reviewing a card you delegated, or one that names you as `reviewer`: finish it with `"column":"done"`, or `"column":"in_progress"` with what is missing in `note` (then `HANDOFF <KEY> -> <assignee>` where HANDOFF lines apply).
 
 ## Rules
 - No card, no handoff. Briefs are in your own words for the receiver's role, never the user's sentence pasted.

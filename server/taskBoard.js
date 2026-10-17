@@ -239,6 +239,11 @@ function cardDeliverablesBy(key, agentId) {
  * Fill in card-derived fields on a deliverable an agent posts with a taskKey:
  * the card link, sprint, who it goes to (the card's delegator) and a stable id.
  */
+/** Who reviews a card's result: its `reviewer` when set (fast path), otherwise whoever delegated it */
+function reviewerOf(task) {
+  return task.reviewer || task.delegatedBy;
+}
+
 function normalizeCardDeliverable(item) {
   const taskKey = item.taskKey || item.metadata?.taskKey;
   const task = taskKey ? findTask(taskKey) : null;
@@ -247,7 +252,7 @@ function normalizeCardDeliverable(item) {
   // The assignee delivers to its delegator (or the user on a self-assigned card); a reviewer's notes go to the assignee
   const deliveredTo =
     item.deliveredTo ||
-    (agentId !== task.assignedTo ? task.assignedTo : task.delegatedBy && task.delegatedBy !== agentId ? task.delegatedBy : 'user');
+    (agentId !== task.assignedTo ? task.assignedTo : reviewerOf(task) && reviewerOf(task) !== agentId ? reviewerOf(task) : 'user');
   const target = eventBus.agents.get(deliveredTo);
   const type = item.type || ROLE_DELIVERABLE_TYPES[roleSlugOf(agentId)] || 'source_code';
   if (!item.metadata?.auto) {
@@ -354,6 +359,7 @@ function renderTaskMarkdown(detail) {
   lines.push(`- Status: ${detail.column}`);
   lines.push(`- Assigned to: ${agentLabel(detail.assignedTo)}`);
   if (detail.delegatedBy) lines.push(`- Delegated by: ${agentLabel(detail.delegatedBy)}`);
+  if (detail.reviewer) lines.push(`- Reviewed by: ${agentLabel(detail.reviewer)}`);
   if (detail.skill) lines.push(`- Skill: ${detail.skill}`);
   const tokens = formatTokenUsage(detail.tokenUsage);
   if (tokens) lines.push(`- Tokens: ${tokens}`);
@@ -408,6 +414,7 @@ function renderTaskBrief(detail, { threadLimit = 4 } = {}) {
   const lines = [`# ${detail.key}: ${detail.title}`, ''];
   const meta = [`${detail.type || 'task'}`, detail.column, `assigned to ${detail.assignedTo || '-'}`];
   if (detail.delegatedBy) meta.push(`by ${detail.delegatedBy}`);
+  if (detail.reviewer) meta.push(`reviewed by ${detail.reviewer}`);
   if (detail.skill) meta.push(`skill ${detail.skill}`);
   lines.push(`- ${meta.join(' · ')}`);
   if (detail.parent) lines.push(`- Part of: ${detail.parent.key} ${detail.parent.title} (${detail.parent.column})`);
@@ -466,7 +473,7 @@ function renderTaskList(tasks) {
 function startTask(task, { agentId, note } = {}) {
   // Without an agentId (the delegation prompt's call), a card waiting for review is dispatched to its delegator
   const inReview = ['review', 'testing'].includes(task.column);
-  const actor = agentId || (inReview && task.delegatedBy ? task.delegatedBy : task.assignedTo);
+  const actor = agentId || (inReview && reviewerOf(task) ? reviewerOf(task) : task.assignedTo);
   const open = (task.dependsOn || []).map((k) => findTask(k)).filter((d) => d && d.column !== 'done');
   if (actor !== task.assignedTo) {
     return inReview
@@ -490,7 +497,7 @@ function startTask(task, { agentId, note } = {}) {
  */
 function finishTask(task, { agentId, column, result, note, deliverable } = {}) {
   const actor = agentId || task.assignedTo;
-  const target = column || (actor === task.assignedTo && task.delegatedBy && task.delegatedBy !== actor ? 'review' : 'done');
+  const target = column || (actor === task.assignedTo && reviewerOf(task) && reviewerOf(task) !== actor ? 'review' : 'done');
   if (!COLUMNS.includes(target)) throw new Error(`column must be one of: ${COLUMNS.join(', ')}`);
   let saved = null;
   if (deliverable) {
@@ -509,7 +516,7 @@ function finishTask(task, { agentId, column, result, note, deliverable } = {}) {
   const outcome = result || (saved && saved.summary) || undefined;
   setTaskStatus(task, { column: target, agentId: actor, note, result: outcome });
   recordCardDeliverable(task, { agentId: actor, result: outcome, column: target });
-  const handBackTo = task.column === 'review' && task.delegatedBy && task.delegatedBy !== actor ? task.delegatedBy : null;
+  const handBackTo = task.column === 'review' && reviewerOf(task) && reviewerOf(task) !== actor ? reviewerOf(task) : null;
   return {
     key: task.key,
     column: task.column,

@@ -14,14 +14,30 @@ Use for every requirement (feature, change, bug, idea). Think about that specifi
 5. **Review/test tasks only when they add value** and a roster agent may do them.
 6. **Backlog first.** New requirements go to `backlog`. Don't interrupt cards in `assigned`, `in_progress`, `review` or `testing`; pull the next backlog item (FIFO) when active work is `done`.
 
+## Size first: small or full
+Before splitting, find the impact with the `codebase-explorer` skill and size the request. Post the size and the reason on the requirement thread (`kind: "decision"`), e.g. "Small: one constant in src/components/handoffChoreo.ts and its test".
+- **Small** (1–3 files to change, no change to a shared type, API, event payload or stored data, no new dependency): the Scrum Master registers **one** card straight to the Developer with `"reviewer":"web-tech-lead"`. Its brief carries the impact map, the acceptance criteria and how to verify. No contract card; the Tech Lead only reviews. If the Developer is not in your `delegation_targets`, send the card to the Tech Lead marked small instead; it forwards it to the Developer without writing a contract.
+- **Full** (anything else, or unsure): the usual flow, Scrum Master → Tech Lead → Developer.
+A Developer who finds a small card is bigger than it looked says so on the thread and hands it back instead of growing it.
+
 ## Steps
 1. Use the request's requirement card as the parent of every task (kanban-handoff §2).
 2. Restate the requirement in one sentence and list what "done" means for the user.
-3. Read the code to find what actually has to change.
+3. Find what actually has to change with `codebase-explorer`, and size the request (above).
 4. Split into independent, verifiable tasks, each small enough for one specialist; record order in `dependsOn`.
 5. Assign each task, and write each `brief` for the role receiving it: the Tech Lead gets product intent and constraints, the Developer gets the technical contract.
 6. Register all cards, then delegate each by card key. Follow progress on the board, not in replies. The requirement closes itself when every sub-task is `done`; post a summary on its thread.
 
+## Technical contract (Tech Lead → Developer)
+Keep it to about 40 lines. Name what to do and how to check it; don't write the code.
+1. **Goal**: one sentence.
+2. **Impact map** from `codebase-explorer`: Change, Affected, Unchanged and Risk lines. Put the Change and Affected paths in the card's `context.files` too.
+3. **Interfaces**: new or changed signatures, props, API shapes, payloads. Only the ones that change.
+4. **Edge cases**: the few that matter.
+5. **Verify**: how each acceptance criterion is checked (test name, command, what to look at).
+The same contract, impact map included, is your `architecture` deliverable.
+
 ## Example breakdowns (illustrations, not a template)
-- "Fix the typo in the Settings modal title" → `WEB-301 Fix typo in Settings modal title` → web-dev.
+- "Fix the typo in the Settings modal title" → small: `WEB-301 Fix typo in Settings modal title` → web-dev, reviewer web-tech-lead.
+- "Make handoff walks faster" → small: `WEB-305 Shorten handoff walk timings` → web-dev, reviewer web-tech-lead (one constants block and one test).
 - "Export the board as CSV" → `WEB-310 Define CSV columns` (web-tech-lead), `WEB-311 Add GET /api/tasks/export.csv` (web-dev, dependsOn WEB-310), `WEB-312 Add Export button to Kanban header` (web-dev, dependsOn WEB-311).
