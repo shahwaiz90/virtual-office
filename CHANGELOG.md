@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Changed
-- **Fewer tokens per role.** Every board reply stays in an agent's context for the rest of its work, so the calls agents make are now small:
+- **Fewer tokens per role** (46% fewer context tokens and 46% fewer output tokens per requirement on the benchmark, with the same quality markers; see `docs/benchmarks/token-use.md`). Every board reply stays in an agent's context for the rest of its work, so the calls agents make are now small:
   - `POST /api/tasks/<KEY>/start` moves the card to `in_progress` and prints the compact card in one call. A card with an open dependency stays put. A card in review is read by its delegator.
   - `GET /api/tasks/<KEY>?format=brief` is the compact card: brief, acceptance criteria, context, sub-tasks with results, deliverable ids and the latest 4 thread entries (`&thread=<n>` for more). `?format=md` still returns everything.
   - `POST /api/tasks/<KEY>/finish` posts the deliverable, records the result and moves the card (`review`, or `done` on a card you own) in one call.
