@@ -23,7 +23,7 @@ VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s 
 Rewrite the work for the receiver's role; never forward the text you were given.
 - Scrum Master → Tech Lead: user need and why, scope, acceptance criteria in user terms, open questions.
 - Tech Lead → Developer: technical contract of about 40 lines: impact map (files to change and files affected), API shapes, data, edge cases, how to verify (`task-decomposition`).
-- Scrum Master → Developer (small change only): what to change, the impact map, acceptance criteria, how to verify.
+- Scrum Master → Developer (small change only): the scope (what to change, where), acceptance criteria, how to verify. The Developer maps the impact first (`codebase-explorer`), posts it on the thread, and hands the card back if it is bigger than small.
 - Tech Lead → QA (only if on the roster): what to test, pass/fail criteria.
 
 Register (`parentKey` = the card you work from), then delegate:
@@ -40,7 +40,7 @@ VO=$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000); curl -s 
 - `type`: `requirement` for the user's request (one per request, owned by the orchestrator), otherwise `task`. The portal usually registers the requirement card when it watches your session: look with `curl -s "$VO/api/tasks?type=requirement&format=brief"` before registering one.
 - `brief` is recorded on the thread as your handoff message. `skill` must be one of the assignee's skills.
 - `reviewer` (optional): who reviews the result when it is not the delegator. A small change goes from the Scrum Master straight to the Developer with `reviewer` set to the Tech Lead's id from the roster (see `task-decomposition`); finishing in `review` then hands the card to the reviewer.
-- `context.files`: the Change and Affected paths from the impact map (`codebase-explorer`), so the receiver starts from the right files.
+- `context.files`: the Change and Affected paths from the impact map (`codebase-explorer`), or on a small card the files you expect, so the receiver starts from the right files.
 
 Delegate with only the card reference:
 > Your task: **WEB-312**. Start it with `curl -s -X POST "$(cat .agents/portal-url 2>/dev/null || echo http://localhost:3000)/api/tasks/WEB-312/start"` (prints the card), then follow your role prompt.
