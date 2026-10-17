@@ -221,7 +221,7 @@ test('choreo: layout change snaps everyone to a seat and keeps queues; stale han
   const ch = C.createChoreo();
   C.enqueueHandoff(ch, handoff('a', 'pm', 'dev', 'Build', 0), env.seatOf('pm'));
   C.enqueueHandoff(ch, handoff('b', 'pm', 'lead', 'Review', 0), env.seatOf('pm'));
-  run(ch, env, 800);
+  run(ch, env, 300);
   assert.equal(ch.actors.get('pm').phase, 'walking');
   L = computeFloorLayout(3, 375);
   const env2 = makeEnv(L, ids, { now: env.now });

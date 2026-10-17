@@ -90,11 +90,14 @@ export interface ChoreoEnv {
   isWorking: (agentId: string) => boolean;
 }
 
-export const STAND_MS = 250;
-export const SIT_MS = 250;
-export const PACKET_MS = 850;
-export const WALK_SPEED = 0.17;
-export const MAX_WALK_MS = 2600;
+// A whole handoff (stand, walk, hand over, walk back, sit) stays under ~2.2 s
+export const STAND_MS = 100;
+export const SIT_MS = 100;
+export const PACKET_MS = 400;
+export const WALK_SPEED = 0.5;
+export const MAX_WALK_MS = 800;
+/** With more handoffs waiting behind this one, walks take at most this long */
+export const RUSH_WALK_MS = 400;
 export const QUEUE_CAP = 5;
 export const DEDUPE_MS = 10_000;
 export const STALE_MS = 20_000;
@@ -305,7 +308,8 @@ export function stepChoreo(choreo: Choreo, rawDt: number, env: ChoreoEnv) {
         actor.outbound = route;
         actor.path = route.map((p) => ({ x: p.x, y: p.y }));
         const base = WALK_SPEED * env.scaleOf(actor.id);
-        actor.speed = Math.max(base, pathLength(actor.home, route) / MAX_WALK_MS);
+        const maxWalk = actor.queue.length > 0 ? RUSH_WALK_MS : MAX_WALK_MS;
+        actor.speed = Math.max(base, pathLength(actor.home, route) / maxWalk);
         actor.walkClock = 0;
         actor.phase = 'walking';
         break;
