@@ -112,6 +112,17 @@ Nothing to install in your agent tool: the portal reads each tool's own session 
 
 Board updates themselves (cards, handoffs, deliverables) come from the agents calling the board API, as described in the `kanban-handoff` skill.
 
+The calls agents make are kept small, because every response stays in the agent's context for the rest of its work:
+
+| Call | What it does |
+| :--- | :--- |
+| `POST /api/tasks/<KEY>/start` | Moves the card to `in_progress` (unless a dependency is open) and prints the compact card |
+| `GET /api/tasks/<KEY>?format=brief` | Compact card: brief, acceptance criteria, context, sub-tasks, deliverable ids and the latest thread entries (`&thread=<n>` for more) |
+| `POST /api/tasks/<KEY>/finish` | Deliverable, result and move (`review`, or `done` on a card you own) in one call |
+| `GET /api/tasks/<KEY>?format=md` | The whole card with its full thread, for people and edge cases |
+
+Agents can send JSON with a plain `curl -d` (no Content-Type header). The older `/status`, `/thread`, `/register` and `POST /api/deliverables` calls still work and reply with a short summary; `?format=full` returns the old reply with the whole card and office state.
+
 > [!TIP]
 > **Zero Global Installation Required:** You do **not** need to install anything globally, run `npm init`, or pollute your codebase with extra configuration files.
 
@@ -191,6 +202,11 @@ npx agents skills
 # Run a complete health check on your project's agent configuration
 npx agents doctor
 ```
+
+To pin the model OpenCode runs a role with, add `model: provider/model` (for example `model: opencode/deepseek-v4.1-flash-free`) to that role's `.agents/definitions/<id>.md` and run `npx agents sync`. Without it, roles use OpenCode's default model.
+
+#### Measuring token use per role
+`npm run bench -- run --label after --out bench/after.json` runs a fixed requirement in a scratch project with OpenCode (default model `opencode/deepseek-v4.1-flash-free`) and records each role's steps and tokens from `opencode.db`, plus the quality markers: cards, acceptance criteria, deliverables, review verdict, `npm test` and a check the agents never see. `--vo <checkout>` benchmarks another checkout of Virtual Office; `npm run bench -- compare a.json b.json` prints the tables side by side.
 
 ---
 

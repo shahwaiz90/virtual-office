@@ -277,7 +277,7 @@ try {
     await new OpenCodeAdapter().generate(registry, genRoot);
     const pm = fs.readFileSync(path.join(agentDir, 'tech-pm.md'), 'utf8');
     assert.ok(/^---\ndescription: "Tech Scrum Master"\nmode: all\n---/.test(pm), 'The orchestrator is a primary + subagent agent');
-    assert.ok(pm.includes("OpenCode's subagent tool") && pm.includes('`web-dev`'), 'It delegates with the subagent tool, by card key');
+    assert.ok(pm.includes('subagent tool') && pm.includes('`web-dev`') && pm.includes('HANDOFF <KEY> -> <agentId>'), 'It delegates by card key: HANDOFF lines as a subagent, the subagent tool at the top level');
     assert.strictEqual(fs.readFileSync(path.join(agentDir, 'web-dev.md'), 'utf8'), '---\ndescription: mine\n---\nHand-written.\n', 'Hand-written agents are kept');
     assert.ok(!fs.existsSync(path.join(agentDir, 'old-role.md')), 'Generated agents of removed roles are deleted');
     assert.ok(fs.readFileSync(path.join(genRoot, 'AGENTS.md'), 'utf8').includes('.opencode/agent/<id>.md'));

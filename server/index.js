@@ -40,7 +40,23 @@ const agentRunner = new AgentRunner(eventBus, getProjectRoot);
 
 app.use(localOnly);
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
+// `curl -d '{...}'` without a Content-Type header sends JSON as form data; agents' board calls rely on this
+app.use(express.text({ type: 'application/x-www-form-urlencoded', limit: '2mb' }));
+app.use((req, res, next) => {
+  if (typeof req.body !== 'string') return next();
+  const text = req.body.trim();
+  if (!text) {
+    req.body = {};
+    return next();
+  }
+  try {
+    req.body = JSON.parse(text);
+  } catch (e) {
+    return res.status(400).json({ error: `Body is not valid JSON: ${e.message}` });
+  }
+  next();
+});
 
 // 1. API: Discovered Agents
 app.get('/api/agents', (req, res) => {
@@ -474,6 +490,11 @@ app.post('/api/deliverables', (req, res) => {
     }
     // A deliverable posted with taskKey is linked to that card (id, sprint, delivered-to, card link)
     const saved = eventBus.recordDeliverable(taskBoard.normalizeCardDeliverable(item));
+    // The reply leaves out the posted content and the office state unless ?format=full asks for them
+    if (req.query.format !== 'full') {
+      const { content, ...rest } = saved;
+      return res.json({ success: true, id: saved.id, deliverable: rest });
+    }
     res.json({
       success: true,
       deliverable: saved,
@@ -602,6 +623,11 @@ app.post('/api/tasks/register', (req, res) => {
     state: snap,
   });
 
+  // Agents are the callers here and keep every reply in their context: the registered cards only.
+  // ?format=full adds the full cards and the office state (the UI gets state over the WebSocket).
+  if (req.query.format !== 'full') {
+    return res.json({ success: true, count: registered.length, tasks: registered.map((t) => ({ key: t.key, title: t.title, column: t.column, assignedTo: t.assignedTo })) });
+  }
   res.json({
     success: true,
     count: registered.length,
@@ -618,6 +644,7 @@ app.get('/api/tasks', (req, res) => {
     .filter(t => !type || (t.type || 'task') === type)
     .filter(t => !column || t.column === column)
     .filter(t => !assignedTo || t.assignedTo === assignedTo);
+  if (req.query.format === 'brief') return res.type('text/plain').send(taskBoard.renderTaskList(tasks));
   res.json({
     success: true,
     count: tasks.length,
@@ -639,7 +666,8 @@ function broadcastBoard() {
 }
 
 // GET /api/tasks/:key - full card with parent, sub-tasks, dependencies and thread.
-// ?format=md returns a plain-text brief for agents.
+// ?format=md returns the whole card as text; ?format=brief the compact card agents work from
+// (latest thread entries only; &thread=<n> shows more).
 app.get('/api/tasks/:key', (req, res) => {
   const task = taskBoard.findTask(req.params.key);
   if (!task) return res.status(404).json({ error: `No task ${req.params.key} on the active sprint board` });
@@ -648,7 +676,34 @@ app.get('/api/tasks/:key', (req, res) => {
     res.type('text/markdown').send(taskBoard.renderTaskMarkdown(detail));
     return;
   }
+  if (req.query.format === 'brief') {
+    res.type('text/markdown').send(taskBoard.renderTaskBrief(detail, { threadLimit: Number(req.query.thread) || 4 }));
+    return;
+  }
   res.json({ success: true, task: detail });
+});
+
+// POST /api/tasks/:key/start - { agentId?, note? } the assignee starts its card; prints the compact card
+app.post('/api/tasks/:key/start', (req, res) => {
+  const task = taskBoard.findTask(req.params.key);
+  if (!task) return res.status(404).type('text/plain').send(`No task ${req.params.key} on the active sprint board\n`);
+  const line = taskBoard.startTask(task, req.body || {});
+  broadcastBoard();
+  res.type('text/markdown').send(`${line}\n\n${taskBoard.renderTaskBrief(taskBoard.getTaskDetail(task))}`);
+});
+
+// POST /api/tasks/:key/finish - { agentId?, result, column?, note?, deliverable?: { type, title, summary, content, metadata } }
+// Publishes the deliverable, records the result and moves the card (review, or done) in one call
+app.post('/api/tasks/:key/finish', (req, res) => {
+  const task = taskBoard.findTask(req.params.key);
+  if (!task) return res.status(404).json({ error: `No task ${req.params.key} on the active sprint board` });
+  try {
+    const outcome = taskBoard.finishTask(task, req.body || {});
+    broadcastBoard();
+    res.json({ success: true, ...outcome });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // POST /api/tasks/:key/thread - { agentId, text, kind?, to? } agent-to-agent message on the card
@@ -661,7 +716,8 @@ app.post('/api/tasks/:key/thread', (req, res) => {
   }
   const entry = taskBoard.appendThreadEntry(task, { agentId, text, kind, to });
   broadcastBoard();
-  res.json({ success: true, entry, task: taskBoard.getTaskDetail(task) });
+  if (req.query.format === 'full') return res.json({ success: true, entry, task: taskBoard.getTaskDetail(task) });
+  res.json({ success: true, id: entry.id, task: taskBoard.summarize(task) });
 });
 
 // POST /api/tasks/:key/status - { column, agentId, note?, result? } move the card and say why
@@ -675,7 +731,8 @@ app.post('/api/tasks/:key/status', (req, res) => {
   }
   taskBoard.recordCardDeliverable(task, req.body || {});
   broadcastBoard();
-  res.json({ success: true, task: taskBoard.getTaskDetail(task) });
+  if (req.query.format === 'full') return res.json({ success: true, task: taskBoard.getTaskDetail(task) });
+  res.json({ success: true, task: taskBoard.summarize(task) });
 });
 
 // -------------------------------------------------------------
